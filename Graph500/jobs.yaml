@@ -1,0 +1,17 @@
+sequential: true
+
+variables:
+  nodes: [1, 2, 4, 8]
+  partition: ["boost_usr_prod"]
+
+  bin:
+   - "graph500_bfs_32KiB"
+  scale: [20]
+  edgefactor: [16]
+
+command: "mpirun -np {nodes} ./bin/{bin} {scale} {edgefactor}"
+
+jobs:
+  - config: "{partition}_{nodes}nodes"
+    config_jobs:
+      - tag: "graph500_{partition}"

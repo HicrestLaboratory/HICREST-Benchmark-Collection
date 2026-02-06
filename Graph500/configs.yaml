@@ -1,0 +1,28 @@
+variables:
+  nodes: [1, 2, 4, 8, 16, 32, 64, 128]
+
+leonardo:
+  scheduler: slurm
+
+  default_conf:
+    # Replace with your account
+    account: "IscrC_OMG-25"
+    cpus_per_task: 32
+    gpus: 0
+    time: "00:10:00"
+    partition: "boost_usr_prod"
+    qos: "normal"
+    modules: 
+      - "gcc/12.2.0"
+      - "openmpi/4.1.6--gcc--12.2.0-cuda-12.2"
+    env:
+      - "SKIP_VALIDATION=1"
+      - "OMP_PROC_BIND=true"
+      - "OMP_NUM_THREADS=32"
+      - "NCCL_IB_SL=1"
+      - "UCX_IB_SL=1"
+
+  configs:
+    - name: "boost_usr_prod_{nodes}nodes"
+      nodes: "{nodes}"
+      ntasks: "{nodes}"

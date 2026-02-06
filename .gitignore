@@ -1,0 +1,9 @@
+.vscode
+.idea
+
+**build/
+**bin/
+**SbatchMan/
+**results/
+**plots/
+**__pycache__/
