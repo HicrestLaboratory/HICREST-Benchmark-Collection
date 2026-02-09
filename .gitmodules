@@ -1,3 +1,7 @@
 [submodule "NetGraph500"]
 	path = Graph500/NetGraph500
 	url = git@github.com:HicrestLaboratory/NetGraph500.git
+[submodule "ccutils"]
+	path = common/ccutils
+	url = git@github.com:ThomasPasquali/ccutils.git
+	branch = ccutils_json

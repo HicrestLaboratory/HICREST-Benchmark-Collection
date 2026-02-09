@@ -23,6 +23,6 @@ leonardo:
       - "UCX_IB_SL=1"
 
   configs:
-    - name: "boost_usr_prod_{nodes}nodes"
+    - name: "boost_usr_prod__{nodes}_nodes"
       nodes: "{nodes}"
       ntasks: "{nodes}"
