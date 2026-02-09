@@ -990,7 +990,7 @@ class LeonardoNodelistGenerator:
 
         return score, details
 
-    def get_node_distance(self, node1: int, node2: int) -> int:
+    def get_node_distance(self, node1: int | str, node2: int | str) -> int:
         """
         Calculate the network distance between two nodes.
 
@@ -1010,6 +1010,11 @@ class LeonardoNodelistGenerator:
         Raises:
             ValueError: If either node ID is not found in the topology
         """
+        if '.' in str(node1):
+            node1 = int(str(node1).split('.')[0][len('lrdn'):])
+        if '.' in str(node2):
+            node2 = int(str(node2).split('.')[0][len('lrdn'):])
+            
         # Check if nodes exist
         if node1 not in self.node_to_cell:
             raise ValueError(f"Node {node1} not found in topology")

@@ -4,6 +4,7 @@ import pandas as pd
 import seaborn as sns
 from pathlib import Path
 import matplotlib.pyplot as plt
+import numpy as np
 import argparse
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
@@ -26,7 +27,7 @@ import import_export
 FONT_AXES = 20
 FONT_TICKS = 14
 FONT_LEGEND = 12
-FONT_TITLE -= 12
+FONT_TITLE -= 14
 
 plt.rc("axes", titlesize=FONT_AXES - 6)
 plt.rc("axes", labelsize=FONT_AXES)
@@ -384,8 +385,8 @@ def plot_scaling(
 
         # --- figure-level decorations ---
         fig.suptitle(
-            f"Graph500 Scaling - Scale {scale}, Edgefactor {ef}",
-            fontsize=FONT_TITLE - 2,
+            f"Graph500 Strong Scaling - Scale {scale}, Edgefactor {ef}",
+            fontsize=FONT_TITLE - 6,
             y=0.97,
         )
         fig.supxlabel("Nodes", fontsize=FONT_AXES + 2)
@@ -396,7 +397,7 @@ def plot_scaling(
         for ax in axes:
             h, l = ax.get_legend_handles_labels()
             for handle, label in zip(h, l):
-                handles_labels[label.split()[0]] = handle
+                handles_labels[label.split()[1 if subplot_by is None else 0]] = handle
 
         handles = list(handles_labels.values())
         labels = list(handles_labels.keys())
@@ -407,7 +408,7 @@ def plot_scaling(
         fig.legend(
             handles,
             labels,
-            title="System-Partition",
+            title="Buffer size" if subplot_by is None else "System-Partition",
             ncol=len(labels) if len(labels) <= 10 else len(df["cluster"].unique()),
             fontsize=FONT_LEGEND,
             title_fontsize=FONT_LEGEND,
@@ -582,6 +583,8 @@ def main():
     Path(args.outdir / "scaling").mkdir(parents=True, exist_ok=True)
 
     plot_scaling(meta_df, args.outdir / "scaling", subplot_by="buffer_size")
+    # plot_scaling(meta_df, args.outdir / "scaling", subplot_by=None)
+    # exit()
 
     for (nodes, scale, ef), _ in meta_df.groupby(["nodes", "scale", "edgefactor"]):
         if nodes <= 1:
