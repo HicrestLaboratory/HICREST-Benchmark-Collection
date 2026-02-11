@@ -28,7 +28,7 @@ CLUSTER_NAMES_MAP = {
   'nanjing-inter': 'NJ',
   'nanjing-intra': 'NJ',
   'haicgu': 'HAICGU',
-  'leonardo': 'LEO',
+  'leonardo': 'Leonardo',
   'local': 'local',
 }
 
@@ -41,5 +41,9 @@ PARTITION_NAMES_MAP = {
   # Debug
   'test': 'test',
   'other': 'other',
+}
+
+DEFAULT_PARTITION_NAMES_MAP = {
+  CLUSTER_NAMES_MAP['leonardo']: 'booster'
 }
 

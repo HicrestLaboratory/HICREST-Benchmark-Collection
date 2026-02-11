@@ -1,0 +1,15 @@
+# Uncomment if you want the jobs to be run one at the time
+# sequential: true
+
+variables:
+  nodes: [1, 2, 4, 8, 16]
+  grid_size: [128, 256]
+
+# Here, we override .dat args
+# Reference: https://docs.nvidia.com/nvidia-hpc-benchmarks/HPCG_benchmark.html
+command: "mpirun -np $(({nodes}*4)) ./nvidia_bench/hpcg.sh --dat ../hpcg.dat --nx {grid_size} --ny {grid_size} --nz {grid_size} --rt 0 --b 1"
+
+jobs:
+  - config: "{nodes}_nodes"
+    config_jobs:
+      - tag: "NVIDIA_HPCG__grid_{grid_size}"

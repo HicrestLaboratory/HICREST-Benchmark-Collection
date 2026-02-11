@@ -194,8 +194,6 @@ def describe_pairs_content(
     elif not verbose:
         print("\n(Structural checks disabled.)")
 
-
-
 def write_multiple_to_parquet(
     pairs: List[Tuple[Dict[Any, Any], Dict[str, pd.DataFrame]]], path: Path
 ):
@@ -305,3 +303,48 @@ def read_multiple_from_parquet(
             metadata_df = pd.DataFrame(serialized_records)
 
     return combined_result, metadata_df
+
+
+def read_multiple_from_csv(
+    paths: List[Path | str] | Path | str,
+) -> pd.DataFrame | None:
+    """
+    Read one or multiple CSV paths and merge them into a single DataFrame.
+
+    Parameters
+    ----------
+    paths : List[Path] | Path
+        A single path or list of paths. Each path can be:
+        - a CSV file
+        - a directory (all *.csv files inside will be read)
+
+    Returns
+    -------
+    pd.DataFrame | None
+        Concatenated DataFrame or None if no valid CSV files were found.
+    """
+
+    if isinstance(paths, Path):
+        paths = [paths]
+
+    dataframes = []
+
+    for p in paths:
+        path = Path(p)
+            
+        if not path.exists():
+            continue
+
+        if path.is_file() and path.suffix.lower() == ".csv":
+            df = pd.read_csv(path)
+            dataframes.append(df)
+
+        elif path.is_dir():
+            for csv_file in sorted(path.glob("*.csv")):
+                df = pd.read_csv(csv_file)
+                dataframes.append(df)
+
+    if not dataframes:
+        return None
+
+    return pd.concat(dataframes, ignore_index=True)
