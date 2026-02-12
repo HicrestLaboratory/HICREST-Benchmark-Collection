@@ -1,0 +1,26 @@
+variables:
+  nodes: [1, 2, 4, 8, 16, 32, 64, 128]
+
+leonardo:
+  scheduler: slurm
+
+  default_conf:
+    account: "IscrC_OMG-25_0"
+    cpus_per_task: 32
+    tasks_per_node: 1
+    time: "00:15:00"
+    partition: "dcgp_usr_prod"
+    qos: "normal"
+    modules: 
+      - "gcc/12.2.0"
+      - "gcc/12.2.0 nvhpc/24.5"
+      - "hpcx-mpi/2.19"
+      - "openblas/0.3.26--nvhpc--24.5"
+    env:
+      - "OMP_PROC_BIND=true"
+      - "OMP_NUM_THREADS=32"
+
+  configs:
+    - name: "{nodes}_nodes"
+      nodes: "{nodes}"
+      ntasks: "{nodes}"

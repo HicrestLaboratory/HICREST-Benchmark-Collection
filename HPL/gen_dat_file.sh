@@ -1,23 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
+while getopts "o:m:" opt; do
+  case $opt in
+    o) output_file="$OPTARG" ;;
+    m) mem="$OPTARG" ;;
+    *) echo "Usage: $0 [-o output_file] [-m mem_per_node] <nodes> <tasks>" && exit 1 ;;
+  esac
+done
+shift $((OPTIND - 1))
+
 if [ $# -lt 2 ]; then
-  echo "Usage: $0 <nodes> <tasks> [output_file]"
+  echo "Usage: $0 [-o output_file] [-m mem_per_node] <nodes> <tasks>"
   echo "  nodes = number of nodes"
   echo "  tasks = total MPI tasks (P * Q grid)"
-  echo "  output_file = path to the output file (default: ./HPL.dat)"
+  echo "  -o output_file = path to the output file (default: ./HPL.dat)"
+  echo "  -m mem_per_node = memory per node in GB (default: 0.5)"
   exit 1
 fi
-
-output_file=${3:-"./HPL.dat"}
 
 nodes=$1
 tasks=$2
 
+output_file=${output_file:-"./HPL.dat"}
+mem=${mem:-"0.5"} # GB per node
+
 # -------------------------
 # Fixed parameters
 # -------------------------
-mem=0.5                     # GB per node
-hpl_NB=192                  # block size
+hpl_NB=232                  # block size
 hpl_threshold=16.0
 hpl_PFACT=2
 hpl_NBMIN=4
@@ -36,7 +46,7 @@ hpl_PMAP=0
 # -------------------------
 # Derived parameters
 # -------------------------
-N_factor="0.5"
+N_factor="0.6"
 totalmem=$(awk "BEGIN {print $mem * $nodes}")   # GB
 # Compute N (rounded to multiple of NB)
 N=$(python3 - <<EOF
@@ -47,8 +57,12 @@ NB = $hpl_NB
 # totalmem in GB, convert to bytes
 val = (totalmem * (1024**3) * nodes / 8.0)**0.5
 N = int(round(val / NB) * NB)
-if nodes >= 4:
-  N = int(0.7*N)
+if nodes >= 16:
+  N = int(0.1*N)
+elif nodes >= 8:
+  N = int(0.25*N)
+elif nodes >= 4:
+  N = int(0.5*N)
 N = int(N * ${N_factor})
 N = int(round(N / NB) * NB)
 print(N)

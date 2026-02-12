@@ -1,0 +1,14 @@
+# Uncomment if you want the jobs to be run one at the time
+# sequential: true
+
+variables:
+  nodes: [1, 2, 4, 8, 16]
+  mem_per_node: [0.4] # In GB. This will define the problem size
+
+preprocess: "mkdir -p dat_{nodes}_nodes && ../gen_dat_file.sh -o dat_{nodes}_nodes/HPL.dat -m {mem_per_node} {nodes} {nodes} && cd dat_{nodes}_nodes"
+command: "mpirun -np {nodes} ../xhpl"
+
+jobs:
+  - config: "{nodes}_nodes"
+    config_jobs:
+      - tag: "HPL_CPU-only"
