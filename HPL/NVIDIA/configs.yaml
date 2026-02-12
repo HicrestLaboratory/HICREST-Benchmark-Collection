@@ -1,0 +1,51 @@
+variables:
+  nodes: [1, 2, 4, 8]
+
+leonardo:
+  scheduler: slurm
+
+  default_conf:
+    account: "IscrC_OMG-25"
+    gpus: 4
+    tasks_per_node: 4
+    cpus_per_task: 8
+    time: "00:10:00"
+    partition: "boost_usr_prod"
+    qos: "normal"
+    modules: 
+      - "gcc/12.2.0"
+      - "nvhpc/24.5"
+      - "hpcx-mpi/2.19"
+      # - "cuda/12.2"
+      # - "openmpi/4.1.6--gcc--12.2.0-cuda-12.2"
+    env:
+      - "NCCL_IB_SL=1"
+      - "UCX_IB_SL=1"
+      # NVIDIA HPL env (refer to https://docs.nvidia.com/nvidia-hpc-benchmarks/HPL_benchmark.html for other env variables)
+      - "WARMUP_END_PROG=2"
+
+  # FIXME none of these works on Leonardo
+  configs:
+    - name: "{nodes}_nodes__nccl-sndrcv"
+      nodes: "{nodes}"
+      env:
+        # 0 (NCCL bcast), 1 (NCCL send/recv), 2 (CUDA-aware MPI), 3 (host MPI), 4 (NVSHMEM)
+        - "HPL_P2P_AS_BCAST=1"
+
+    - name: "{nodes}_nodes__mpi-cuda-aware"
+      nodes: "{nodes}"
+      env:
+        # 0 (NCCL bcast), 1 (NCCL send/recv), 2 (CUDA-aware MPI), 3 (host MPI), 4 (NVSHMEM)
+        - "HPL_P2P_AS_BCAST=2"
+        - "HPL_USE_NVSHMEM=0"
+        - "HPL_FCT_COMM_POLICY=1"
+
+    
+    - name: "{nodes}_nodes__nvshmem"
+      nodes: "{nodes}"
+      env:
+        # 0 (NCCL bcast), 1 (NCCL send/recv), 2 (CUDA-aware MPI), 3 (host MPI), 4 (NVSHMEM)
+        - "HPL_P2P_AS_BCAST=4"
+        - "HPL_USE_NVSHMEM=1"
+        # 0 (NVSHMEM), 1 (host MPI)
+        - "HPL_FCT_COMM_POLICY=0"

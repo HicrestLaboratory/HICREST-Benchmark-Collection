@@ -1,0 +1,14 @@
+# Uncomment if you want the jobs to be run one at the time
+# sequential: true
+
+variables:
+  nodes: [1] #, 2, 4, 8]
+  p2p: ["nvshmem"] # ["mpi-cuda-aware", "nccl-sndrcv"]
+
+preprocess: "echo $CUDA_VISIBLE_DEVICES; nvidia-smi; ../gen_dat_file.sh {nodes} $(({nodes}*4)) ./HPL_{nodes}_nodes.dat"
+command: "srun --mpi=pmix --gpus-per-task=1 ./nvidia_bench/hpl.sh --dat ./HPL_{nodes}_nodes.dat"
+
+jobs:
+  - config: "{nodes}_nodes__{p2p}"
+    config_jobs:
+      - tag: "NVIDIA_HPL__{p2p}"
