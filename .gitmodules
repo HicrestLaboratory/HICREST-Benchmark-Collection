@@ -5,3 +5,10 @@
 	path = common/ccutils
 	url = git@github.com:ThomasPasquali/ccutils.git
 	branch = ccutils_json
+[submodule "JobPlacer"]
+	path = common/JobPlacer
+	url = git@github.com:HicrestLaboratory/JobPlacer.git
+[submodule "hicrest-axccl"]
+	path = AXCCL/hicrest-axccl
+	url = git@github.com:HicrestLaboratory/hicrest-axccl.git
+	branch = automation_and_plots

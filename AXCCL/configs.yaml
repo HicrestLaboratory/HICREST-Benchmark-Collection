@@ -1,0 +1,45 @@
+variables:
+  nodes: [2, 4]
+  gpus: [0,1]
+
+isarco:
+  scheduler: local
+
+  default_conf:
+    modules: 
+      - "nvhpc/26.1"
+
+  configs:
+    - name: "isarco__1_tasks_per_node__{gpus}_gpus__{nodes}_nodes"
+
+leonardo:
+  scheduler: slurm
+
+  default_conf:
+    account: "IscrC_OMG-25"
+    cpus_per_task: 1
+    time: "00:05:00"
+    partition: "boost_usr_prod"
+    qos: "normal"
+    modules: 
+      - "nvhpc/24.5" # Make sure this is coherent with AXCCL config
+    env:
+      - "NCCL_IB_SL=1"
+      - "UCX_IB_SL=1"
+
+  configs:
+    - name: "leonardo__boost_usr_prod__1_tasks_per_node__{gpus}_gpus__{nodes}_nodes"
+      nodes: "{nodes}"
+      ntasks: "{nodes}"
+      gpus: "{gpus}"
+      custom_headers:
+        - "#SBATCH --ntasks-per-node=1"
+
+    - name: "leonardo__boost_usr_prod__2_tasks_per_node__{gpus}_gpus__1_nodes"
+      nodes: 1
+      ntasks: 2
+      gpus: "{gpus}"
+      custom_headers:
+        - "#SBATCH --ntasks-per-node=2"
+
+    - name: "placeholder"
