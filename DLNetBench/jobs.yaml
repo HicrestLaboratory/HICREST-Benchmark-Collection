@@ -54,4 +54,4 @@ jobs:
       - tag: "dp__{model}__distance_{peers_distance}"
         variables:
           num_buckets: [10] # This is the number of buckets to be used for the bucketing strategy
-        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/dp {num_buckets} ./DLNetBench"
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/dp vit_h_16 {num_buckets} ./DLNetBench"
