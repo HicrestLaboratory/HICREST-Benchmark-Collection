@@ -12,6 +12,6 @@
 	path = AXCCL/hicrest-axccl
 	url = git@github.com:HicrestLaboratory/hicrest-axccl.git
 	branch = automation_and_plots
-[submodule "dlnetbench"]
+[submodule "DLNetBench"]
 	path = DLNetBench/DLNetBench
 	url = git@github.com:HicrestLaboratory/DLNetBench.git
