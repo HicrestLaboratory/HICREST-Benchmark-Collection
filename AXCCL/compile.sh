@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -e
-SUPPORTED_SYSTEMS=("leonardo")
+SUPPORTED_SYSTEMS=("leonardo" "isarco")
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <system>"
@@ -37,3 +37,4 @@ source "configure/${system^^}_DEFAULT.conf"
 make pingpong p2p a2a ar
 
 echo "HICREST AXCCL Ready!"
+echo "AXCCL binaries are in: 'hicrest-axccl/bin'"

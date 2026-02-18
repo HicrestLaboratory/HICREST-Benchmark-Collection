@@ -2,6 +2,11 @@
 # sequential: true
 
 variables:
+  # System info
+  system: ['leonardo']
+  system_upper: ['LEONARDO']
+  partition: ['boost_usr_prod']
+
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
   nodes: [4]
 
@@ -17,15 +22,18 @@ variables:
 # In case it is not possible to satisfy placements constraints, this will fail with return code 456
 preprocess: |
   # Make sure you ran the `init.sh` script that generates this file
-  source ./hicrest-axccl/configure/LEONARDO_DEFAULT.conf
-  # NOTE: this is a weird Leonardo behavior. The nvhpc module does not the MPI lib path.
-  export LD_LIBRARY_PATH="${BLINKGPU_MPI_HOME}/lib:${LD_LIBRARY_PATH}"
+  source ./hicrest-axccl/configure/{system_upper}_DEFAULT.conf
+
+  if [[ "{system}" == "leonardo" ]]; then
+    # NOTE: this is a weird Leonardo behavior. The nvhpc module does not the MPI lib path.
+    export LD_LIBRARY_PATH="${BLINKGPU_MPI_HOME}/lib:${LD_LIBRARY_PATH}"
+  fi
 
   echo "--- Searching for desired topology within $SLURM_JOB_NUM_NODES nodes ---"
   echo "Allocated nodes: $SLURM_JOB_NODELIST"
 
   # Run the tool and capture output
-  TOPO_OUTPUT=$(../common/JobPlacer/target/release/job_placer -s leonardo --topology-scontrol <(cat <<EOF
+  TOPO_OUTPUT=$(../common/JobPlacer/target/release/job_placer -s {system} --topology-scontrol <(cat <<EOF
   {
       "constraints": [
           {
@@ -56,7 +64,7 @@ preprocess: |
 
 jobs:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
-  - config: "leonardo__boost_usr_prod__1_tasks_per_node__1_gpus__{nodes}_nodes"
+  - config: "{system}__{partition}__1_tasks_per_node__1_gpus__{nodes}_nodes"
     config_jobs:
 
       - tag: "p2p__gpu_buff__{implementation}__distance_{peers_distance}"

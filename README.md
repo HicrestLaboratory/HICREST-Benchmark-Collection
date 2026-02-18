@@ -6,10 +6,12 @@ This repository gathers and uniforms the usage of benchmarks from different doma
 
 ### Distributed Memory
 
-- [HICREST NetGraph500](./Graph500/) (submodule)
-- [High-Performance LINPACK](./HPL/cpu-only) (downloaded from netlib.org)
 - [NVIDIA High-Performance LINPACK](./HPL/NVIDIA) (downloaded from NVIDIA)
+- [High-Performance LINPACK](./HPL/cpu-only) (downloaded from netlib.org)
 - [NVIDIA High-Performance Conjugate Gradient](./HPCG/NVIDIA) (downloaded from NVIDIA)
+- [HICREST NetGraph500](./Graph500/) (submodule)
+- [HICREST AXCCL](./AXCCL/) (submodule)
+- [HICREST DLNetBench](./DLNetBench/) (submodule)
 
 <!-- ### Shared Memory -->
 
