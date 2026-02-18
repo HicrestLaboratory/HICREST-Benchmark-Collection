@@ -1,0 +1,57 @@
+# In this example we run Data Parallelism with 2 nodes (4 GPUs each node) using the ViT-H model from Google ViTs. 
+
+# Uncomment the following line if you want experiments to run one after the another
+# sequential: true
+
+variables:
+  # The number of nodes can be incremented to have a better chance to satisfy the placement 
+  nodes: [4]
+  model: ['vit_h_16'] # 16 indicate the local batch size, you can change to 32, 64 or 128
+
+  # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
+  peers_distance: [2.0, 4.0, 5.0]
+
+# In case it is not possible to satisfy placements constraints, this will fail with return code 456
+preprocess: |
+  echo "--- Searching for desired topology within $SLURM_JOB_NUM_NODES nodes ---"
+  echo "Allocated nodes: $SLURM_JOB_NODELIST"
+
+  # Run the tool and capture output
+  TOPO_OUTPUT=$(../common/JobPlacer/target/release/job_placer -s leonardo --topology-scontrol <(cat <<EOF
+  {
+      "constraints": [
+          {
+              "type": "NodesAtDistance",
+              "count": 1,
+              "distance": {peers_distance},
+              "reference": "First"
+          }
+      ]
+  }
+  EOF
+  ))
+  TOPO_EXIT_CODE=$?
+
+  echo "Tool exit code: $TOPO_EXIT_CODE"
+  echo "Tool output: $TOPO_OUTPUT"
+
+  # Check if the command failed
+  if [ $TOPO_EXIT_CODE -ne 0 ]; then
+      echo "❌ ERROR: Topology search failed with exit code $TOPO_EXIT_CODE."
+      exit 456
+  fi
+
+  SELECTED_NODES="$TOPO_OUTPUT"
+
+  echo "✅ SUCCESS! Selected Nodes: $SELECTED_NODES"
+
+
+jobs:
+  # The number of nodes can be incremented to have a better chance to satisfy the placement 
+  - config: "leonardo__boost_usr_prod__{nodes}_nodes"
+    config_jobs:
+
+      - tag: "dp__{model}__distance_{peers_distance}"
+        variables:
+          num_buckets: [10] # This is the number of buckets to be used for the bucketing strategy
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/dp {num_buckets} ./DLNetBench"
