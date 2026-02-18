@@ -1,5 +1,5 @@
 variables:
-  nodes: [2]
+  nodes: [16]
 
 leonardo:
   scheduler: slurm
@@ -19,8 +19,7 @@ leonardo:
   configs:
     - name: "leonardo__boost_usr_prod__{nodes}_nodes"
       nodes: "{nodes}"
-      ntasks: "{nodes}"
-      gpus: "{gpus}"
       custom_headers:
         - "#SBATCH --ntasks-per-node=4"
         - "#SBATCH --gpus-per-task=1"
+        - "#SBATCH --gres=gpu:4"

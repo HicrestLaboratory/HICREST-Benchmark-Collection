@@ -45,7 +45,7 @@ def main():
             sys.exit(0)
         else:
             print("Job not finished. Running deleting failed jobs...")
-            run_command(["sbatchman", "delete-jobs", "-s", "FAILED"])
+            run_command(["sbatchman", "delete-jobs", "-s", "FAILED_SUBMISSION", "-na"])
             print("Restarting...\n")
 
 

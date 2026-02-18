@@ -5,7 +5,7 @@
 
 variables:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
-  nodes: [4]
+  nodes: [16]
   model: ['vit_h_16'] # 16 indicate the local batch size, you can change to 32, 64 or 128
 
   # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
@@ -48,7 +48,7 @@ preprocess: |
 
 jobs:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
-  - config: "leonardo__boost_usr_prod__{nodes}_nodes"
+  - config: "leonardo__boost_usr_prod__16_nodes"
     config_jobs:
 
       - tag: "dp__{model}__distance_{peers_distance}"
