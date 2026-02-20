@@ -21,8 +21,9 @@ leonardo:
     time: "00:05:00"
     partition: "boost_usr_prod"
     qos: "normal"
-    modules: 
-      - "nvhpc/24.5" # Make sure this is coherent with AXCCL config
+    modules: # Make sure this is coherent with AXCCL config
+      - "nvhpc/24.5"
+      - "hpcx-mpi/2.19"
     env:
       - "NCCL_IB_SL=1"
       - "UCX_IB_SL=1"
