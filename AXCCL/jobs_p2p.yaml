@@ -2,10 +2,14 @@
 # sequential: true
 
 variables:
-  # System info
+  # System info (comment as needed)
+  # system: ['alps']
+  # system_upper: ['ALPS']
+  # partition: ['normal'] 
+
   system: ['leonardo']
   system_upper: ['LEONARDO']
-  partition: ['boost_usr_prod']
+  partition: ['boost_usr_prod'] 
 
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
   nodes: [4]
@@ -19,7 +23,7 @@ variables:
   # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
   peers_distance: [2.0, 4.0, 5.0]
 
-# In case it is not possible to satisfy placements constraints, this will fail with return code 456
+# In case it is not possible to satisfy placements constraints, this will fail
 preprocess: |
   # Make sure you ran the `init.sh` script that generates this file
   source ./hicrest-axccl/configure/{system_upper}_DEFAULT.conf
@@ -62,26 +66,19 @@ jobs:
     config_jobs:
 
       # Peer-to-Peer
-      - tag: "p2p__gpu_buff__{implementation}__distance_{peers_distance}"
+      - tag: "p2p__gpu_buff__{implementation}"
         variables:
           implementation:
             - 'CudaAware'
             - 'Baseline'
-            # - 'Nccl'
+            - 'Nccl'
         command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/p2p_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
 
       # Ping-Pong
-      - tag: "pingpong__gpu_buff__{implementation}__distance_{peers_distance}"
+      - tag: "pingpong__gpu_buff__{implementation}"
         variables:
           implementation:
             - 'CudaAware'
             - 'Baseline'
-            # - 'Nccl'
+            - 'Nccl'
         command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/pingpong_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
-
-
-      # - tag: "pp__cpu_buff__{implementation}"
-      #   variables:
-      #     implementation:
-      #       - 'host2host_Host'
-      #   command: "mpirun -np 8 ./bin/hostmem/pp_{implementation} --buff-cycle {buff_cycle} --peering {peering}"

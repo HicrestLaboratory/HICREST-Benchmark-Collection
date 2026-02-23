@@ -1,0 +1,51 @@
+# Uncomment the following line if you want experiments to run one after the another
+# sequential: true
+
+variables:
+  # System info (comment as needed)
+  system: ['alps']
+  system_upper: ['ALPS']
+  partition: ['normal'] 
+
+  # system: ['leonardo']
+  # system_upper: ['LEONARDO']
+  # partition: ['boost_usr_prod'] 
+
+  nodes: [2]
+
+  # This will increase buffer sizes up to 2^29 Bytes = 512 MiB
+  buff_cycle: [29]
+
+  # peering='process' means that only a pair of precesses communicate
+  peering: ['process']
+
+preprocess: |
+  # Make sure you ran the `init.sh` script that generates this file
+  source ./hicrest-axccl/configure/{system_upper}_DEFAULT.conf
+
+  echo "Allocated nodes: $SLURM_JOB_NODELIST"
+  echo "SKIPPING allocation check..."
+
+
+jobs:
+  # The number of nodes can be incremented to have a better chance to satisfy the placement 
+  - config: "{system}__{partition}__1_tasks_per_node__1_gpus__{nodes}_nodes"
+    config_jobs:
+
+      # Peer-to-Peer
+      - tag: "p2p__gpu_buff__{implementation}__distance_{peers_distance}"
+        variables:
+          implementation:
+            - 'CudaAware'
+            # - 'Baseline'
+            # - 'Nccl'
+        command: "srun -N 2 ./hicrest-axccl/bin/std/p2p_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
+
+      # Ping-Pong
+      # - tag: "pingpong__gpu_buff__{implementation}__distance_{peers_distance}"
+      #   variables:
+      #     implementation:
+      #       - 'CudaAware'
+      #       - 'Baseline'
+      #       # - 'Nccl'
+      #   command: "srun -N 2 ./hicrest-axccl/bin/std/pingpong_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
