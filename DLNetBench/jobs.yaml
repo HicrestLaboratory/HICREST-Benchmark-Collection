@@ -6,7 +6,11 @@
 variables:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
   nodes: [16]
-  model: ['vit_h_16'] # 16 indicate the local batch size, you can change to 32, 64 or 128
+  dp_model: ['vit_h_16'] # 16 indicate the local batch size, you can change to 32, 64 or 128
+  fsdp_model: ['llama3_8b_16']
+  hybrid2d_model: ['minerva_7b_16']
+  hybrid3d_model: ['llama3_70b_16']
+  hybrid3d_moe_model: ['mixtral_8x7b_16']
 
   # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
   peers_distance: [2.0, 4.0, 5.0]
@@ -51,7 +55,18 @@ jobs:
   - config: "leonardo__boost_usr_prod__16_nodes"
     config_jobs:
 
-      - tag: "dp__{model}__distance_{peers_distance}"
+      - tag: "dp_{dp_model}_distance_{peers_distance}"
         variables:
-          num_buckets: [10] # This is the number of buckets to be used for the bucketing strategy
-        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/dp vit_h_16 {num_buckets} ./DLNetBench"
+          num_buckets: [50]
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench"
+      - tag: "fsdp_{fsdp_model}_distance_{peers_distance}"
+        variables:
+          num_units: [16]
+          sharding_factor: [4]
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/fsdp {fsdp_model} {num_units} {sharding_factor} ./DLNetBench"
+      - tag: "hybrid2d_{hybrid2d_model}_distance_{peers_distance}"
+        variables: 
+          num_stages: [4]
+          num_microbatches: [16]
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench"
+
