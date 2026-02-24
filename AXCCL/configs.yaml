@@ -1,6 +1,6 @@
 variables:
   nodes: [2, 4]
-  gpus: [0,1]
+  gpus:  [0, 1]
 
 isarco:
   scheduler: local
@@ -21,8 +21,9 @@ leonardo:
     time: "00:05:00"
     partition: "boost_usr_prod"
     qos: "normal"
-    modules: 
-      - "nvhpc/24.5" # Make sure this is coherent with AXCCL config
+    modules: # Make sure this is coherent with AXCCL config
+      - "nvhpc/24.5"
+      - "hpcx-mpi/2.19"
     env:
       - "NCCL_IB_SL=1"
       - "UCX_IB_SL=1"
@@ -42,4 +43,35 @@ leonardo:
       custom_headers:
         - "#SBATCH --ntasks-per-node=2"
 
-    - name: "placeholder"
+alps:
+  scheduler: slurm
+
+  default_conf:
+    account: "lp100"
+    cpus_per_task: 1
+    time: "00:05:00"
+    partition: "normal"
+    modules: # Make sure this is coherent with AXCCL config
+      - "gcc/14.2.0"
+      - "cuda/12.9.0"
+      - "nccl/2.27.5-1"
+      - "cray-mpich/8.1.32"
+    custom_headers:
+      - "#SBATCH --uenv=prgenv-gnu/25.6:v2"
+      - "#SBATCH --view=modules"
+
+  configs:
+    - name: "alps__normal__1_tasks_per_node__{gpus}_gpus__{nodes}_nodes"
+      nodes: "{nodes}"
+      ntasks: "{nodes}"
+      gpus: "{gpus}"
+      custom_headers:
+        - "#SBATCH --ntasks-per-node=1"
+
+    - name: "alps__normal__2_tasks_per_node__{gpus}_gpus__1_nodes"
+      nodes: 1
+      ntasks: 2
+      gpus: "{gpus}"
+      custom_headers:
+        - "#SBATCH --ntasks-per-node=2"
+

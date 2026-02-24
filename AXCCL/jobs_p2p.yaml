@@ -2,10 +2,14 @@
 # sequential: true
 
 variables:
-  # System info
+  # System info (comment as needed)
+  # system: ['alps']
+  # system_upper: ['ALPS']
+  # partition: ['normal'] 
+
   system: ['leonardo']
   system_upper: ['LEONARDO']
-  partition: ['boost_usr_prod']
+  partition: ['boost_usr_prod'] 
 
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
   nodes: [4]
@@ -19,15 +23,10 @@ variables:
   # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
   peers_distance: [2.0, 4.0, 5.0]
 
-# In case it is not possible to satisfy placements constraints, this will fail with return code 456
+# In case it is not possible to satisfy placements constraints, this will fail
 preprocess: |
   # Make sure you ran the `init.sh` script that generates this file
   source ./hicrest-axccl/configure/{system_upper}_DEFAULT.conf
-
-  if [[ "{system}" == "leonardo" ]]; then
-    # NOTE: this is a weird Leonardo behavior. The nvhpc module does not the MPI lib path.
-    export LD_LIBRARY_PATH="${BLINKGPU_MPI_HOME}/lib:${LD_LIBRARY_PATH}"
-  fi
 
   echo "--- Searching for desired topology within $SLURM_JOB_NUM_NODES nodes ---"
   echo "Allocated nodes: $SLURM_JOB_NODELIST"
@@ -54,11 +53,10 @@ preprocess: |
   # Check if the command failed
   if [ $TOPO_EXIT_CODE -ne 0 ]; then
       echo "❌ ERROR: Topology search failed with exit code $TOPO_EXIT_CODE."
-      exit 456
+      exit 1
   fi
 
   SELECTED_NODES="$TOPO_OUTPUT"
-
   echo "✅ SUCCESS! Selected Nodes: $SELECTED_NODES"
 
 
@@ -67,25 +65,20 @@ jobs:
   - config: "{system}__{partition}__1_tasks_per_node__1_gpus__{nodes}_nodes"
     config_jobs:
 
-      - tag: "p2p__gpu_buff__{implementation}__distance_{peers_distance}"
+      # Peer-to-Peer
+      - tag: "p2p__gpu_buff__{implementation}"
         variables:
           implementation:
             - 'CudaAware'
-            # - 'Baseline'
-            # - 'Nccl'
+            - 'Baseline'
+            - 'Nccl'
         command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/p2p_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
 
-      # - tag: "pp__cpu_buff__{implementation}"
-      #   variables:
-      #     implementation:
-      #       - 'host2host_Host'
-      #   command: "mpirun -np 8 ./bin/hostmem/pp_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
-
-      # - tag: "pp__hybrid_buff__{implementation}"
-      #   variables:
-      #     implementation:
-      #       - 'dev2host_Baseline'
-      #       - 'dev2host_CudaAware'
-      #       - 'host2dev_Baseline'
-      #       - 'host2dev_CudaAware'
-      #   command: "mpirun -np 8 ./bin/hostmem/pp_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
+      # Ping-Pong
+      - tag: "pingpong__gpu_buff__{implementation}"
+        variables:
+          implementation:
+            - 'CudaAware'
+            - 'Baseline'
+            - 'Nccl'
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/pingpong_{implementation} --buff-cycle {buff_cycle} --peering {peering}"

@@ -47,3 +47,13 @@ DEFAULT_PARTITION_NAMES_MAP = {
   CLUSTER_NAMES_MAP['leonardo']: 'booster'
 }
 
+SPECS_LEONARDO = {
+  # Interconnect
+  ## Bandwidth in Gb/s (per direction)
+  'bw_gpu_gpu': 4 * 200, # NVLink 3.0
+  'bw_gpu_nic': 1 * 256, # 16x PCI-E 4.0
+  'bw_cpu_nic': 1 * 256, # 16x PCI-E 4.0
+  'bw_nic_l1' : 1 * 200, # Infiniband HDR 100
+  'bw_l1_l2'  : 1 * 100, # 
+  'bw_l2_l2'  : 1 * 200, # 
+}
