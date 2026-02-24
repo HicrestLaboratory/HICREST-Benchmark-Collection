@@ -9,16 +9,18 @@ variables:
 
   system: ['leonardo']
   system_upper: ['LEONARDO']
-  partition: ['boost_usr_prod'] 
+  partition: ['boost_usr_prod-1'] # format: partition-serviceLevel
 
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
-  nodes: [4]
+  nodes: [2]
+  gpus_per_node: [4]
 
   # This will increase buffer sizes up to 2^29 Bytes = 512 MiB
   buff_cycle: [29]
 
   # peering='process' means that only a pair of precesses communicate
-  peering: ['process']
+  # peering='node' means that all processes form one node communicate with the same-rank process on the other (i.e., in pairs)
+  peering: ['node']
 
   # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
   peers_distance: [2.0, 4.0, 5.0]
@@ -62,23 +64,23 @@ preprocess: |
 
 jobs:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
-  - config: "{system}__{partition}__1_tasks_per_node__1_gpus__{nodes}_nodes"
+  - config: "{system}__{partition}__{gpus_per_node}_gpus__{nodes}_nodes"
     config_jobs:
 
       # Peer-to-Peer
-      - tag: "p2p__gpu_buff__{implementation}"
+      - tag: "p2p__gpu__{implementation}__{peering}__{buff_cycle}__{peers_distance}"
         variables:
           implementation:
             - 'CudaAware'
             - 'Baseline'
-            - 'Nccl'
+            # - 'Nccl'
         command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/p2p_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
 
       # Ping-Pong
-      - tag: "pingpong__gpu_buff__{implementation}"
+      - tag: "pingpong__gpu__{implementation}__{peering}__{buff_cycle}__{peers_distance}"
         variables:
           implementation:
             - 'CudaAware'
             - 'Baseline'
-            - 'Nccl'
+            # - 'Nccl'
         command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/pingpong_{implementation} --buff-cycle {buff_cycle} --peering {peering}"

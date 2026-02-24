@@ -80,7 +80,7 @@ def main():
         if ret != 0:
             print(f"Launch command failed with exit code {ret}")
 
-        print(f"Waiting {WAIT_SECONDS} seconds... (CTRL+C to skip, CTRL+Z to exit)")
+        print(f"Waiting {WAIT_SECONDS} seconds... (CTRL+C to try again, CTRL+Z to exit)")
         interruptible_sleep(WAIT_SECONDS)
 
         print("Checking if all is done...")

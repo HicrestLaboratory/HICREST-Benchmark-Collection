@@ -1,6 +1,9 @@
 variables:
-  nodes: [2, 4]
-  gpus:  [0, 1]
+  nodes: [2, 4, 6, 8]
+  gpus_per_node: [0, 4]
+
+  leonardo_service_level: [0, 1]
+
 
 isarco:
   scheduler: local
@@ -10,7 +13,7 @@ isarco:
       - "nvhpc/26.1"
 
   configs:
-    - name: "isarco__1_tasks_per_node__{gpus}_gpus__{nodes}_nodes"
+    - name: "isarco__{gpus_per_node}_gpus__{nodes}_nodes"
 
 leonardo:
   scheduler: slurm
@@ -24,24 +27,17 @@ leonardo:
     modules: # Make sure this is coherent with AXCCL config
       - "nvhpc/24.5"
       - "hpcx-mpi/2.19"
-    env:
-      - "NCCL_IB_SL=1"
-      - "UCX_IB_SL=1"
+    custom_headers:
+      - "#SBATCH --ntasks-per-node=4"
 
   configs:
-    - name: "leonardo__boost_usr_prod__1_tasks_per_node__{gpus}_gpus__{nodes}_nodes"
+    - name: "leonardo__boost_usr_prod-{leonardo_service_level}__{gpus_per_node}_gpus__{nodes}_nodes"
       nodes: "{nodes}"
-      ntasks: "{nodes}"
-      gpus: "{gpus}"
-      custom_headers:
-        - "#SBATCH --ntasks-per-node=1"
+      gpus: "{gpus_per_node}"
+      env:
+        - "NCCL_IB_SL={leonardo_service_level}"
+        - "UCX_IB_SL={leonardo_service_level}"
 
-    - name: "leonardo__boost_usr_prod__2_tasks_per_node__{gpus}_gpus__1_nodes"
-      nodes: 1
-      ntasks: 2
-      gpus: "{gpus}"
-      custom_headers:
-        - "#SBATCH --ntasks-per-node=2"
 
 alps:
   scheduler: slurm
@@ -52,26 +48,18 @@ alps:
     time: "00:05:00"
     partition: "normal"
     modules: # Make sure this is coherent with AXCCL config
-      - "gcc/14.2.0"
-      - "cuda/12.9.0"
-      - "nccl/2.27.5-1"
-      - "cray-mpich/8.1.32"
+      - "gcc/13.2.0"
+      - "cuda/12.4.0"
+      - "nccl/2.20.3-1"
+      - "cray-mpich/8.1.30"
     custom_headers:
-      - "#SBATCH --uenv=prgenv-gnu/25.6:v2"
+      - "#SBATCH --uenv=prgenv-gnu/24.7:v3"
       - "#SBATCH --view=modules"
+      - "#SBATCH --ntasks-per-node=4"
 
   configs:
-    - name: "alps__normal__1_tasks_per_node__{gpus}_gpus__{nodes}_nodes"
+    - name: "alps__normal__{gpus_per_node}_gpus__{nodes}_nodes"
       nodes: "{nodes}"
       ntasks: "{nodes}"
-      gpus: "{gpus}"
-      custom_headers:
-        - "#SBATCH --ntasks-per-node=1"
-
-    - name: "alps__normal__2_tasks_per_node__{gpus}_gpus__1_nodes"
-      nodes: 1
-      ntasks: 2
-      gpus: "{gpus}"
-      custom_headers:
-        - "#SBATCH --ntasks-per-node=2"
+      gpus: "{gpus_per_node}"
 

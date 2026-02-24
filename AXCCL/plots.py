@@ -25,7 +25,7 @@ plt.rc('legend', fontsize=FONT_LEGEND + 1)
 plt.rc('figure', titlesize=FONT_TITLE - 10)
 
 
-def format_bytes_tick(x, pos):
+def format_bytes_tick(x, _pos):
     return format_bytes(int(x), binary=True, precision=0)
 
 
@@ -34,7 +34,7 @@ def format_bytes_tick(x, pos):
 # ==============================
 
 def parse_implementation(impl: str) -> str:
-    parts = impl.split('_')
+    parts = impl.split('__')
     return impl if len(parts) <= 1 else parts[-1]
 
 
@@ -42,9 +42,10 @@ TOPOLOGY_MAP = {
     'same-l1': 'same-l1',
     'same-group': 'same-group',
     'inter-group': 'inter-group',
-    'distance_2.0': 'same-l1',
-    'distance_4.0': 'same-group',
-    'distance_5.0': 'inter-group',
+    '2.0': 'same-l1',
+    '4.0': 'same-group',
+    '5.0': 'inter-group',
+    'unknown': '?',
 }
 
 
@@ -57,8 +58,8 @@ def get_primitive_from_tag(tag: str) -> str:
 
 
 COMM_TYPE_MAP = {
-    'gpu_buff': 'G2G',
-    'cpu_buff': 'C2C',
+    'gpu': 'G2G',
+    'cpu': 'C2C',
     'host2dev': 'C2G',
     'dev2host': 'G2C',
 }
@@ -67,7 +68,7 @@ COMM_TYPE_MAP = {
 def get_comm_type(tag: str) -> str:
     parts = tag.split('__')
     comm_type = parts[1]
-    if comm_type == 'hybrid_buff':
+    if comm_type == 'hybrid':
         direction = parts[2].split('_')[0]
         comm_type = direction
     return COMM_TYPE_MAP[comm_type]
@@ -124,7 +125,6 @@ def build_statistics_dataframe(meta_df_dict_pairs, gib_to_gbps):
 # ==========================================================
 
 def detect_high_variability(stats_df, metric='bandwidth', threshold=0.15):
-
     std_col = f'std_{metric}'
     mean_col = f'mean_{metric}'
 

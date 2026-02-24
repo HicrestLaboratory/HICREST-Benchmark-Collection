@@ -80,7 +80,8 @@ def parse_job_stdout(text: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
 def parse_job(j: sbm.Job) -> Tuple[Dict[str, Any], Dict[str, pd.DataFrame]]:
     raw_df, avg_df = parse_job_stdout(raise_none(j.get_stdout(), "stdout"))
     vars = raise_none(j.variables, "job variables")
-    meta = {k: vars[k] for k in ["implementation", "peering", "buff_cycle"]}
+    # meta = {k: vars[k] for k in ["implementation", "peering", "buff_cycle", "gpus_per_node"]}
+    meta = {k: vars[k] for k in vars.keys()}
     meta['tag'] = j.tag
     meta["cluster"] = j.cluster_name
     

@@ -9,15 +9,17 @@ variables:
 
   # system: ['leonardo']
   # system_upper: ['LEONARDO']
-  # partition: ['boost_usr_prod'] 
+  # partition: ['boost_usr_prod-1'] 
 
   nodes: [2]
+  gpus_per_node: [4]
 
   # This will increase buffer sizes up to 2^29 Bytes = 512 MiB
   buff_cycle: [29]
 
   # peering='process' means that only a pair of precesses communicate
-  peering: ['process']
+  # peering='node' means that all processes form one node communicate with the same-rank process on the other (i.e., in pairs)
+  peering: ['node']
 
 preprocess: |
   # Make sure you ran the `init.sh` script that generates this file
@@ -29,23 +31,23 @@ preprocess: |
 
 jobs:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
-  - config: "{system}__{partition}__1_tasks_per_node__1_gpus__{nodes}_nodes"
+  - config: "{system}__{partition}__{gpus_per_node}_gpus__{nodes}_nodes"
     config_jobs:
 
       # Peer-to-Peer
-      - tag: "p2p__gpu_buff__{implementation}__distance_{peers_distance}"
+      - tag: "p2p__gpu__{implementation}__{peering}__{buff_cycle}__unknown"
         variables:
           implementation:
             - 'CudaAware'
-            # - 'Baseline'
+            - 'Baseline'
             # - 'Nccl'
         command: "srun -N 2 ./hicrest-axccl/bin/std/p2p_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
 
       # Ping-Pong
-      # - tag: "pingpong__gpu_buff__{implementation}__distance_{peers_distance}"
-      #   variables:
-      #     implementation:
-      #       - 'CudaAware'
-      #       - 'Baseline'
-      #       # - 'Nccl'
-      #   command: "srun -N 2 ./hicrest-axccl/bin/std/pingpong_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
+      - tag: "pingpong__gpu__{implementation}__{peering}__{buff_cycle}__unknown"
+        variables:
+          implementation:
+            - 'CudaAware'
+            - 'Baseline'
+            # - 'Nccl'
+        command: "srun -N 2 ./hicrest-axccl/bin/std/pingpong_{implementation} --buff-cycle {buff_cycle} --peering {peering}"

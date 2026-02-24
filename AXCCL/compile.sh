@@ -39,10 +39,10 @@ TARGETS="pingpong p2p a2a ar"
 cd hicrest-axccl
 
 if [[ $system == "alps" ]]; then
-    if [[ ! -d "/user-environment/linux-neoverse_v2" ]]; then
-        # Note: NCCL 22.3 does not have A2A
-        echo "Please pull the uenv image: 'uenv image pull prgenv-gnu/25.6:v2'"
-        echo "Then, start a new session with that image: 'uenv start prgenv-gnu/25.6:v2 --view=modules'"
+    if [[ ! -d "/user-environment/linux-sles15-neoverse_v2" ]]; then
+        # Note: NCCL 2.20.3 does not have A2A
+        echo "Please pull the uenv image: 'uenv image pull prgenv-gnu/24.7:v3'"
+        echo "Then, start a new session with that image: 'uenv start prgenv-gnu/24.7:v3 --view=modules'"
         exit 1
     fi
 fi
