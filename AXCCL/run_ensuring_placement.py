@@ -65,7 +65,7 @@ def main():
     args = parser.parse_args()
     loop_i = 0
 
-    MAIN_COMMAND = ["sbatchman", "launch", "--ignore-conf-in-dup-check", "--ignore-commands-in-dup-check", "-f", args.jobs_file]
+    MAIN_COMMAND = ["sbatchman", "launch", "--ignore-archived", "--ignore-conf-in-dup-check", "--ignore-commands-in-dup-check", "-f", args.jobs_file]
 
     while True:
         loop_i += 1

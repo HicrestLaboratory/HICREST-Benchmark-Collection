@@ -47,13 +47,82 @@ DEFAULT_PARTITION_NAMES_MAP = {
   CLUSTER_NAMES_MAP['leonardo']: 'booster'
 }
 
-SPECS_LEONARDO = {
-  # Interconnect
-  ## Bandwidth in Gb/s (per direction)
-  'bw_gpu_gpu': 4 * 200, # NVLink 3.0
-  'bw_gpu_nic': 1 * 256, # 16x PCI-E 4.0
-  'bw_cpu_nic': 1 * 256, # 16x PCI-E 4.0
-  'bw_nic_l1' : 1 * 200, # Infiniband HDR 100
-  'bw_l1_l2'  : 1 * 100, # 
-  'bw_l2_l2'  : 1 * 200, # 
+# ==========================================================
+# System Interconnect Specs (Gb/s per direction)
+# ==========================================================
+
+SYSTEM_INTERCONNECT_SPECS = {
+    'leonardo': {
+        'bw_gpu_gpu': 200,  # 4 x NVLink 3.0
+        'bw_gpu_nic': 256,  # 1 x PCIe 4.0 x16
+        'bw_cpu_nic': 256,  # 1 x PCIe 4.0 x16
+        'bw_nic_l1':  100,  # Infiniband HDR
+        'bw_l1_l2':   100,  # Dragonfly+
+        'bw_l2_l2':   200,  # Dragonfly+
+    },
+    'alps': {
+        'bw_gpu_gpu': 200,  # 4 x NVLink 4.0
+        'bw_cpu_gpu': 3600, # NVLink C2C
+        'bw_gpu_nic': 512,  # ?
+        'bw_cpu_nic': 512,  # 1 x PCIe 4.0 x16
+        'bw_nic_l1':  200,  # Slingshot 11
+        'bw_l1_l1':   200,  # ? Slingshot 11
+    }
 }
+
+
+# ==========================================================
+# Path mapping and bottleneck computation (for bandwidth)
+# ==========================================================
+
+# TODO double-check
+def get_path_links(system, comm_type, topology):
+    if system in ['leonardo']: # Dragonfly+
+        if comm_type == 'G2G':
+            if topology == 'same-l1':
+                return ['bw_gpu_gpu', 'bw_nic_l1']
+            elif topology == 'same-group':
+                return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l2']
+            elif topology == 'inter-group':
+                return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l2', 'bw_l2_l2']
+
+        elif comm_type == 'C2C':
+            if topology == 'same-l1':
+                return ['bw_cpu_nic']
+            elif topology == 'same-group':
+                return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l2']
+            elif topology == 'inter-group':
+                return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l2', 'bw_l2_l2']
+    
+    if system in ['alps']: # Dragonfly+
+        if comm_type == 'G2G':
+            if topology == 'same-l1':
+                return ['bw_gpu_gpu', 'bw_nic_l1']
+            elif topology == 'same-group':
+                return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l1']
+            elif topology == 'inter-group':
+                return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l1']
+
+        elif comm_type == 'C2C':
+            if topology == 'same-l1':
+                return ['bw_cpu_nic']
+            elif topology == 'same-group':
+                return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l1']
+            elif topology == 'inter-group':
+                return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l1']
+
+    return []
+
+
+def compute_theoretical_bandwidth(system, comm_type, topology):
+    if system not in SYSTEM_INTERCONNECT_SPECS:
+        return None
+
+    specs = SYSTEM_INTERCONNECT_SPECS[system]
+    links = get_path_links(system, comm_type, topology)
+
+    values = [specs[l] for l in links if l in specs]
+    if not values:
+        return None
+
+    return min(values)

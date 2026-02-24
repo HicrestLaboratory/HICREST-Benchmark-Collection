@@ -8,9 +8,9 @@ from matplotlib.ticker import FuncFormatter
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 import import_export
-from utils.plots import format_bytes, create_color_map, create_linestyle_map
+from utils.plots import format_bytes, parse_bytes, create_color_map, create_linestyle_map
 from constants.plots import *
-from constants.systems import SPECS_LEONARDO
+from constants.systems import compute_theoretical_bandwidth
 
 
 # ==============================
@@ -42,6 +42,9 @@ TOPOLOGY_MAP = {
     'same-l1': 'same-l1',
     'same-group': 'same-group',
     'inter-group': 'inter-group',
+    'distance_2.0': 'same-l1',
+    'distance_4.0': 'same-group',
+    'distance_5.0': 'inter-group',
     '2.0': 'same-l1',
     '4.0': 'same-group',
     '5.0': 'inter-group',
@@ -58,6 +61,8 @@ def get_primitive_from_tag(tag: str) -> str:
 
 
 COMM_TYPE_MAP = {
+    'gpu_buff': 'G2G',
+    'cpu_buff': 'C2C',
     'gpu': 'G2G',
     'cpu': 'C2C',
     'host2dev': 'C2G',
@@ -114,6 +119,7 @@ def build_statistics_dataframe(meta_df_dict_pairs, gib_to_gbps):
                 'implementation': meta['implementation'],
                 'comm_type': meta['comm_type'],
                 'topology': meta['topology'],
+                'peering': meta['peering'],
                 **row.to_dict()
             })
 
@@ -156,6 +162,7 @@ def detect_high_variability(stats_df, metric='bandwidth', threshold=0.15):
 
 def plot_grouped_experiments(
         stats_df,
+        peering,
         group_by='implementation',
         metric='bandwidth',
         outdir=Path('plots'),
@@ -165,9 +172,9 @@ def plot_grouped_experiments(
         show_minmax=False,
         same_y_lim=True,
 ):
-
     filtered = stats_df.copy()
 
+    filtered = filtered[filtered['peering'] == peering]
     if cluster:
         filtered = filtered[filtered['cluster'] == cluster]
     if primitive:
@@ -245,10 +252,32 @@ def plot_grouped_experiments(
             if show_minmax:
                 ax.fill_between(x, ymin, ymax,
                                 alpha=0.12, color=color)
+            
+            if metric == 'bandwidth':
+                theoretical_bw = compute_theoretical_bandwidth(
+                    cluster,
+                    combo['comm_type'],
+                    combo['topology']
+                )
+                if theoretical_bw is not None:
+                    if isinstance(y_lim, tuple):
+                        y_lim_min, y_lim_max = y_lim
+                        y_lim = (y_lim_min, max(y_lim_max, theoretical_bw))
+                    ax.axhline(
+                        theoretical_bw,
+                        linestyle='--',
+                        linewidth=1.5,
+                        alpha=0.7,
+                        color=color
+                    )
+                    ax.text(x.iloc[0], theoretical_bw, 'Expected Goodput',
+                            fontsize=9, alpha=0.7, color=color,
+                            verticalalignment='bottom', horizontalalignment='left')
 
         ax.set_xscale('log', base=2)
         ax.set_xlabel('Message Size')
-        ax.set_ylabel(ylabel)
+        if idx % n_cols == 0:
+            ax.set_ylabel(ylabel)
         ax.set_title(group_val)
         ax.grid(True, alpha=0.3)
         ax.xaxis.set_major_formatter(FuncFormatter(format_bytes_tick))
@@ -265,13 +294,13 @@ def plot_grouped_experiments(
     primitive_str = primitive if primitive else 'all_primitives'
 
     fig.suptitle(
-        f'{cluster_str.capitalize()} - {primitive_str} - {ylabel}',
+        f'System: {cluster_str.capitalize()} - {primitive_str} - Peering: {peering} - Metric: {ylabel}',
         y=0.995
     )
 
     plt.tight_layout()
 
-    filename = f"{cluster_str}_{primitive_str}_grouped_by_{group_by}_{metric}.png"
+    filename = f"{cluster_str}_{primitive_str}_peering-{peering}_grouped-by-{group_by}_{metric}.png"
     filepath = outdir / filename
 
     plt.savefig(filepath, dpi=150, bbox_inches='tight')
@@ -299,9 +328,16 @@ def main():
                         default='implementation')
     parser.add_argument("--show-std", "-std", action="store_true")
     parser.add_argument("--show-minmax", "-minmax", action="store_true")
+    parser.add_argument("--min-size", type=str, default=None,
+                    help="Minimum transfer size (e.g., 128MiB)")
+    parser.add_argument("--max-size", type=str, default=None,
+                        help="Maximum transfer size (e.g., 2GiB)")
 
     args = parser.parse_args()
     args.outdir.mkdir(parents=True, exist_ok=True)
+    
+    min_size_B = parse_bytes(args.min_size, binary=False) if args.min_size else None
+    max_size_B = parse_bytes(args.max_size, binary=False) if args.max_size else None
 
     meta_df_dict_pairs, meta_df = import_export.read_multiple_from_parquet(
         args.parquet_files
@@ -328,40 +364,50 @@ def main():
 
     # Build statistics dataframe
     stats_df = build_statistics_dataframe(meta_df_dict_pairs, GIB_TO_GBPS)
+    
+    if min_size_B is not None:
+        stats_df = stats_df[stats_df['transfer_size_B'] >= min_size_B]
+    if max_size_B is not None:
+        stats_df = stats_df[stats_df['transfer_size_B'] <= max_size_B]
 
     # Detect unstable experiments
     detect_high_variability(stats_df, metric=args.metric, threshold=0.15)
 
     clusters = sorted(stats_df['cluster'].unique(), key=natural_sort_key)
     primitives = sorted(stats_df['primitive'].unique(), key=natural_sort_key)
+    peerings = sorted(stats_df['peering'].unique(), key=natural_sort_key)
     
     print('DATA')
+    print(meta_df.columns)
     display_df = stats_df.copy()
     display_df['experiment'] = (
         display_df['cluster'] + '|' +
         display_df['primitive'] + '|' +
         display_df['implementation'] + '|' +
         display_df['topology'] + '|' +
+        display_df['peering'] + '|' +
         display_df['comm_type']
     )
     display_df['size'] = display_df['transfer_size_B'].apply(
         lambda x: format_bytes(int(x), binary=True, precision=0)
     )
     display_df = display_df[['experiment', 'size'] + [col for col in display_df.columns if col not in ['experiment', 'size']]]
-    print(display_df.drop(columns=['cluster', 'primitive', 'implementation', 'topology', 'transfer_size_B', 'comm_type']))
+    print(display_df.drop(columns=['cluster', 'primitive', 'implementation', 'topology', 'transfer_size_B', 'comm_type', 'peering']))
 
     for cluster in clusters:
-        for primitive in primitives:
-            plot_grouped_experiments(
-                stats_df,
-                group_by=args.group_by,
-                metric=args.metric,
-                outdir=args.outdir,
-                cluster=cluster,
-                primitive=primitive,
-                show_std=args.show_std,
-                show_minmax=args.show_minmax,
-            )
+        for peering in peerings:
+            for primitive in primitives:
+                plot_grouped_experiments(
+                    stats_df,
+                    peering,
+                    group_by=args.group_by,
+                    metric=args.metric,
+                    outdir=args.outdir,
+                    cluster=cluster,
+                    primitive=primitive,
+                    show_std=args.show_std,
+                    show_minmax=args.show_minmax,
+                )
 
     print(f"\nAll plots saved to '{args.outdir}'")
 

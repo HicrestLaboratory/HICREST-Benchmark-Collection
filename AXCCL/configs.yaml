@@ -29,6 +29,8 @@ leonardo:
       - "hpcx-mpi/2.19"
     custom_headers:
       - "#SBATCH --ntasks-per-node=4"
+    env:
+      - "UCX_NETDEVICES=mlx5$SLURM_LOCALID:1"
 
   configs:
     - name: "leonardo__boost_usr_prod-{leonardo_service_level}__{gpus_per_node}_gpus__{nodes}_nodes"

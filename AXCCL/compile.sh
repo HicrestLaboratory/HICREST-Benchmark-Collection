@@ -1,6 +1,9 @@
 #!/bin/bash
 
 set -e
+
+source ../common/compile/utils.sh
+
 SUPPORTED_SYSTEMS=("leonardo" "isarco" "alps")
 
 if [[ $# -eq 0 ]]; then
@@ -9,28 +12,9 @@ if [[ $# -eq 0 ]]; then
 fi
 
 system="$1"
+validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
 
-if [[ ! " ${SUPPORTED_SYSTEMS[@]} " =~ " ${system} " ]]; then
-    echo "Error: Unsupported system '$system'. Supported systems: ${SUPPORTED_SYSTEMS[*]}"
-    exit 1
-fi
-
-
-echo "==== Setting up JobPlacer ===="
-
-if ! [ -x "$(command -v cargo)" ]; then
-    echo "This requires a Rust compiler. If you don't have it, install it locally running:"
-    echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-    exit 1
-fi
-[[ -d "../common/JobPlacer" ]] || { echo "Error: JobPlacer not found. Please get the submodule (from the repo root: \`git submodule update --init common/JobPlacer\`)."; exit 1; }
-
-cd ../common/JobPlacer
-cargo build --release
-cd ../../AXCCL
-
-echo "JobPlacer Ready!"
-
+. ../common/compile/setup_job_placer.sh
 
 echo "==== Compiling AXCCL for $system ===="
 [[ -d "hicrest-axccl" ]] || { echo "Error: hicrest-axccl not found. Please get the submodule (from the repo root: \`git submodule update --init AXCCL/hicrest-axccl\`)."; exit 1; }
@@ -39,12 +23,7 @@ TARGETS="pingpong p2p a2a ar"
 cd hicrest-axccl
 
 if [[ $system == "alps" ]]; then
-    if [[ ! -d "/user-environment/linux-sles15-neoverse_v2" ]]; then
-        # Note: NCCL 2.20.3 does not have A2A
-        echo "Please pull the uenv image: 'uenv image pull prgenv-gnu/24.7:v3'"
-        echo "Then, start a new session with that image: 'uenv start prgenv-gnu/24.7:v3 --view=modules'"
-        exit 1
-    fi
+    check_alps_uenv
 fi
 
 ./init.sh --system $system
