@@ -68,5 +68,11 @@ jobs:
         variables: 
           num_stages: [4]
           num_microbatches: [16]
-        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench"
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/hybrid_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench"
+                  #- tag: "hybrid3d_fake_{hybrid3d_model}_distance_{peer_distance}"
+                  #variables:
+                  #num_shards: [4]
+                  #num_stages: [32]
+                  #command: "srun -N 32 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/hybrid_3d {hybrid3d_model} {num_stages} {num_microbatches} {num_shards} ./DLNetBench""
+          
 
