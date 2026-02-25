@@ -25,8 +25,10 @@ leonardo:
     partition: "boost_usr_prod"
     qos: "normal"
     modules: # Make sure this is coherent with AXCCL config
+      - "gcc/12.2.0"
       - "nvhpc/24.5"
-      - "hpcx-mpi/2.19"
+      - "openmpi/4.1.6--gcc--12.2.0-cuda-12.2"
+      # This saturates half the bandwidth - "hpcx-mpi/2.19"
     custom_headers:
       - "#SBATCH --ntasks-per-node=4"
     env:

@@ -79,11 +79,11 @@ python plots.py <results_file_1> <results_file_2> ...
 
 ## Tested Benchmarks and Systems
 
-| Benchmark     | Variant               | Leonardo | Alps Daint | LUMI | Perlmutter | Notes |
-|---------------|-----------------------|----------|------------|------|------------|-------|
-| HPL           | CPU-only              | ✅       |            |      |            | |
-| HPL           | NVIDIA                | ~        |            |      |            | |
-| HPCG          | NVIDIA                | ✅       |            |      |            | |
-| Graph500      | HICREST CPU-only      | ✅       |            |      |            | Scale 20, EF 16 |
-| AXCCL         | Peer-to-Peer          | ✅       |            |      |            | |
-| DLNetBench    |                       | ✅       | ✅         | ✅   |            | |
+| Benchmark     | Variant               | Leonardo | Alps Daint | LUMI | Perlmutter | Notes                 |
+|---------------|-----------------------|----------|------------|------|------------|-----------------------|
+| HPL           | CPU-only              | ✅       |            |      |            |                       |
+| HPL           | NVIDIA                | ~        |            |      |            |                       |
+| HPCG          | NVIDIA                | ✅       |            |      |            |                       |
+| Graph500      | HICREST CPU-only      | ✅       |            |      |            | Scale 20, EF 16       |
+| AXCCL         | Peer-to-Peer          | ✅       | ✅         |      |            | Missing placement     |
+| DLNetBench    |                       | ✅       | ✅         | ✅   |            |                       |
