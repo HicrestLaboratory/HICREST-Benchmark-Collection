@@ -70,7 +70,7 @@ def main():
     while True:
         loop_i += 1
         print('='*50)
-        print(f'\t\t Loop #{loop_i}')
+        print(f'\t\t Try #{loop_i}')
         print('='*50)
         print("Launching jobs...")
         proc = subprocess.Popen(MAIN_COMMAND)
@@ -90,7 +90,7 @@ def main():
         else:
             print("Job not finished. Running deleting failed jobs...")
             run_command(["sbatchman", "delete-jobs", "-na", "-s", "FAILED", "-s", "CANCELLED"])
-            print("Restarting...\n")
+            print("Make a new try...\n")
 
 
 if __name__ == "__main__":
