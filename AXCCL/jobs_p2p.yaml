@@ -11,6 +11,8 @@ variables:
   system_upper: ['LEONARDO']
   partition: ['boost_usr_prod-1'] # format: partition-serviceLevel
 
+  #------------------------------------------
+
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
   nodes: [2]
   gpus_per_node: [4]

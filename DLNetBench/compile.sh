@@ -1,7 +1,10 @@
 #!/bin/bash
 
 set -e
-SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo")
+
+source ../common/compile/utils.sh
+
+SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps")
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <system>"
@@ -9,48 +12,24 @@ if [[ $# -eq 0 ]]; then
 fi
 
 system="$1"
+validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
 
-if [[ ! " ${SUPPORTED_SYSTEMS[@]} " =~ " ${system} " ]]; then
-    echo "Error: Unsupported system '$system'. Supported systems: ${SUPPORTED_SYSTEMS[*]}"
-    exit 1
-fi
+# Setup JobPlacer
+. ../common/compile/setup_job_placer.sh
 
+check_ccutils_installation
 
-echo "==== Setting up JobPlacer ===="
-echo "This requires a Rust compiler. If you don't have it, install it locally running:"
-echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-[[ -d "../common/JobPlacer" ]] || { echo "Error: JobPlacer not found. Please get the submodule (from the repo root: \`git submodule update --init common/JobPlacer\`)."; exit 1; }
-
-cd ../common/JobPlacer
-cargo build --release
-cd ../../DLNetBench
-
-echo "JobPlacer Ready!"
-
-
-echo "==== Compiling DLNetBench for $system ===="
+echo "==== Compiling DLNetBench for ${system^^} ===="
 [[ -d "DLNetBench" ]] || { echo "Error: DLNetBench not found. Please get the submodule (from the repo root: \`git submodule update --init DLNetBench/DLNetBench\`)."; exit 1; }
 
-cd DLNetBench/cpp
+cd DLNetBench
 
+if [[ $system == "alps" ]]; then
+    check_alps_uenv
+fi
 
-case "$system" in
-    leonardo)
-        echo "Compiling for Leonardo"
-        make -f Makefile.LEONARDO all
-        ;;
-    baldo)
-        echo "Compiling for Baldo"
-        make -f Makefile.BALDO all
-        ;;
-    lumi)
-        echo "Compiling for Lumi"
-        make -f Makefile.LUMI all
-        ;;
-    cpu)
-        echo "Compiling for CPU-only system"
-        make -f Makefile all
-        ;;
-esac
+make -f "Makefile.${system^^}" clean
+make -f "Makefile.${system^^}"
 
 echo "HICREST DLNetBench Ready!"
+echo "Binaries saved in: 'DLNetBench/bin'"

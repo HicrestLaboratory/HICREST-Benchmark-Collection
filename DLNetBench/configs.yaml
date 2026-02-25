@@ -1,5 +1,5 @@
 variables:
-  nodes: [16]
+  nodes: [2, 4, 8, 16, 32, 64, 128, 256]
 
 leonardo:
   scheduler: slurm
@@ -10,6 +10,7 @@ leonardo:
     time: "00:05:00"
     partition: "boost_usr_prod"
     qos: "normal"
+    gpus: 4
     modules: 
       - "gcc/12.2.0"
       - "cuda/12.2"
@@ -21,4 +22,26 @@ leonardo:
       nodes: "{nodes}"
       custom_headers:
         - "#SBATCH --ntasks-per-node=4"
-        - "#SBATCH --gres=gpu:4"
+
+alps:
+  scheduler: slurm
+
+  default_conf:
+    account: "lp100"
+    cpus_per_task: 1
+    time: "00:05:00"
+    partition: "normal"
+    gpus: 4
+    modules:
+      - "gcc/13.2.0"
+      - "cuda/12.4.0"
+      - "nccl/2.20.3-1"
+      - "cray-mpich/8.1.30"
+    custom_headers:
+      - "#SBATCH --uenv=prgenv-gnu/24.7:v3"
+      - "#SBATCH --view=modules"
+      - "#SBATCH --ntasks-per-node=4"
+
+  configs:
+    - name: "alps__normal__{nodes}_nodes"
+      nodes: "{nodes}"

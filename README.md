@@ -74,4 +74,16 @@ python plots.py <results_file_1> <results_file_2> ...
 1) Create the sub-directory(ies)
 2) Add the submodule (if needed): `git submodule add [-b <branch>] --name <name> <repository_clone_url> <subdirectory_path>`
 3) Populate it with the files listed in the `Structure` section
-4) Document!
+4) Use, add and/or improve utilities and scripts in `common`
+5) Document!
+
+## Tested Benchmarks and Systems
+
+| Benchmark     | Variant               | Leonardo | Alps Daint | LUMI | Perlmutter | Notes |
+|---------------|-----------------------|----------|------------|------|------------|-------|
+| HPL           | CPU-only              | ✅       |            |      |            | |
+| HPL           | NVIDIA                | ~        |            |      |            | |
+| HPCG          | NVIDIA                | ✅       |            |      |            | |
+| Graph500      | HICREST CPU-only      | ✅       |            |      |            | Scale 20, EF 16 |
+| AXCCL         | Peer-to-Peer          | ✅       |            |      |            | |
+| DLNetBench    |                       | ✅       | ✅         | ✅   |            | |

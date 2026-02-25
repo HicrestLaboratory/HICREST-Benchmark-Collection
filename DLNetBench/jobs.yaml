@@ -52,27 +52,27 @@ preprocess: |
 
 jobs:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
-  - config: "leonardo__boost_usr_prod__16_nodes"
+  - config: "{system}__{partition}__{nodes}_nodes"
     config_jobs:
 
-      - tag: "dp_{dp_model}_distance_{peers_distance}"
+      - tag: "dp_{dp_model}_{comm_lib}_distance_{peers_distance}"
         variables:
           num_buckets: [50]
-        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench"
-      - tag: "fsdp_{fsdp_model}_distance_{peers_distance}"
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench"
+      - tag: "fsdp_{fsdp_model}_{comm_lib}_distance_{peers_distance}"
         variables:
           num_units: [16]
           sharding_factor: [4]
-        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/fsdp {fsdp_model} {num_units} {sharding_factor} ./DLNetBench"
-      - tag: "hybrid2d_{hybrid2d_model}_distance_{peers_distance}"
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/fsdp {fsdp_model} {num_units} {sharding_factor} ./DLNetBench"
+      - tag: "hybrid2d_{hybrid2d_model}_{comm_lib}_distance_{peers_distance}"
         variables: 
           num_stages: [4]
           num_microbatches: [16]
-        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/hybrid_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench"
-                  #- tag: "hybrid3d_fake_{hybrid3d_model}_distance_{peer_distance}"
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench"
+                  #- tag: "hybrid3d_fake_{hybrid3d_model}_{comm_lib}_distance_{peer_distance}"
                   #variables:
                   #num_shards: [4]
                   #num_stages: [32]
-                  #command: "srun -N 32 -w \"$SELECTED_NODES\" ./DLNetBench/cpp/data_parallel/hybrid_3d {hybrid3d_model} {num_stages} {num_microbatches} {num_shards} ./DLNetBench""
+                  #command: "srun -N 32 -w \"$SELECTED_NODES\" ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/hybrid_3d {hybrid3d_model} {num_stages} {num_microbatches} {num_shards} ./DLNetBench""
           
 

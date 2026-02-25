@@ -10,6 +10,8 @@ variables:
   # system: ['leonardo']
   # system_upper: ['LEONARDO']
   # partition: ['boost_usr_prod-1'] 
+  
+  #------------------------------------------
 
   nodes: [2]
   gpus_per_node: [4]
