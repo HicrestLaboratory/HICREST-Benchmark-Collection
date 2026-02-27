@@ -3,25 +3,21 @@
 
 variables:
   # System info (comment as needed)
-  system: ['alps']
-  system_upper: ['ALPS']
-  partition: ['normal'] 
+  # system: ['alps']
+  # system_upper: ['ALPS']
+  # partition: ['normal'] 
 
-  # system: ['leonardo']
-  # system_upper: ['LEONARDO']
-  # partition: ['boost_usr_prod-1'] 
+  system: ['leonardo']
+  system_upper: ['LEONARDO']
+  partition: ['boost_usr_prod-1'] 
   
   #------------------------------------------
 
-  nodes: [2]
+  nodes: [4]
   gpus_per_node: [4]
 
   # This will increase buffer sizes up to 2^29 Bytes = 512 MiB
   buff_cycle: [29]
-
-  # peering='process' means that only a pair of precesses communicate
-  # peering='node' means that all processes form one node communicate with the same-rank process on the other (i.e., in pairs)
-  peering: ['node']
 
   implementation:
     - 'CudaAware'
@@ -29,8 +25,8 @@ variables:
     # - 'Nccl'
 
   primitive:
-    - 'p2p'       # Peer-to-Peer
-    - 'pingpong'  # Ping-Pong
+    - 'a2a'     # All-to-All
+    - 'ar'      # All-Reduce
 
   buffer_type:
     - 'devicebuff' # GPU to GPU communication
@@ -48,5 +44,4 @@ jobs:
   - config: "{system}__{partition}__{gpus_per_node}_gpus__{nodes}_nodes"
     config_jobs:
       - tag: "{primitive}__{buffer_type}__{implementation}__{peering}__{buff_cycle}__unknown"
-        command: "srun -N 2 ./hicrest-axccl/bin/std/{buffer_type}/{primitive}_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
-
+        command: "srun -N {nodes} ./hicrest-axccl/bin/std/{buffer_type}/{primitive}_{implementation} --buff-cycle {buff_cycle}"

@@ -19,7 +19,7 @@ validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
 echo "==== Compiling AXCCL for $system ===="
 [[ -d "hicrest-axccl" ]] || { echo "Error: hicrest-axccl not found. Please get the submodule (from the repo root: \`git submodule update --init AXCCL/hicrest-axccl\`)."; exit 1; }
 
-TARGETS="pingpong p2p a2a ar"
+TARGETS="std_d"
 cd hicrest-axccl
 
 if [[ $system == "alps" ]]; then

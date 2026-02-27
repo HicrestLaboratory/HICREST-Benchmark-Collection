@@ -119,7 +119,7 @@ def build_statistics_dataframe(meta_df_dict_pairs, gib_to_gbps):
                 'implementation': meta['implementation'],
                 'comm_type': meta['comm_type'],
                 'topology': meta['topology'],
-                'peering': meta['peering'],
+                'peering': meta.get('peering', 'na'),
                 **row.to_dict()
             })
 

@@ -27,6 +27,18 @@ variables:
   # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
   peers_distance: [2.0, 4.0, 5.0]
 
+  implementation:
+    - 'CudaAware'
+    - 'Baseline'
+    # - 'Nccl'
+
+  primitive:
+    - 'p2p'       # Peer-to-Peer
+    - 'pingpong'  # Ping-Pong
+
+  buffer_type:
+    - 'devicebuff' # GPU to GPU communication
+
 # In case it is not possible to satisfy placements constraints, this will fail
 preprocess: |
   # Make sure you ran the `init.sh` script that generates this file
@@ -68,21 +80,5 @@ jobs:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
   - config: "{system}__{partition}__{gpus_per_node}_gpus__{nodes}_nodes"
     config_jobs:
-
-      # Peer-to-Peer
-      - tag: "p2p__gpu__{implementation}__{peering}__{buff_cycle}__{peers_distance}"
-        variables:
-          implementation:
-            - 'CudaAware'
-            - 'Baseline'
-            # - 'Nccl'
-        command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/p2p_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
-
-      # Ping-Pong
-      - tag: "pingpong__gpu__{implementation}__{peering}__{buff_cycle}__{peers_distance}"
-        variables:
-          implementation:
-            - 'CudaAware'
-            - 'Baseline'
-            # - 'Nccl'
-        command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/pingpong_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
+      - tag: "{primitive}__{buffer_type}__{implementation}__{peering}__{buff_cycle}__unknown"
+        command: "srun -N 2 ./hicrest-axccl/bin/std/{buffer_type}/{primitive}_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
