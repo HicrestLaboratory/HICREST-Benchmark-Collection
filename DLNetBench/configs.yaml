@@ -7,15 +7,14 @@ leonardo:
   default_conf:
     account: "IscrC_OMG-25"
     cpus_per_task: 1
-    time: "00:05:00"
+    time: "00:10:00"
     partition: "boost_usr_prod"
     qos: "normal"
     gpus: 4
     modules: 
       - "gcc/12.2.0"
-      - "cuda/12.2"
       - "openmpi/4.1.6--gcc--12.2.0-cuda-12.2"
-      - "nccl/2.22.3-1--gcc--12.2.0-cuda-12.2-spack0.22"
+      - "nvhpc/24.5"
 
   configs:
     - name: "leonardo__boost_usr_prod__{nodes}_nodes"
