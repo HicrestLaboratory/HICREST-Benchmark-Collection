@@ -1,6 +1,8 @@
 from pathlib import Path
 import argparse
 import sys
+from turtle import title
+import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -22,7 +24,7 @@ plt.rc('axes', labelsize=FONT_AXES - 2)
 plt.rc('xtick', labelsize=FONT_TICKS)
 plt.rc('ytick', labelsize=FONT_TICKS)
 plt.rc('legend', fontsize=FONT_LEGEND + 1)
-plt.rc('figure', titlesize=FONT_TITLE - 10)
+plt.rc('figure', titlesize=FONT_TITLE - 12)
 
 
 def format_bytes_tick(x, _pos):
@@ -61,6 +63,7 @@ def get_primitive_from_tag(tag: str) -> str:
 
 
 COMM_TYPE_MAP = {
+    'devicebuff': 'G2G',
     'gpu_buff': 'G2G',
     'cpu_buff': 'C2C',
     'gpu': 'G2G',
@@ -115,6 +118,7 @@ def build_statistics_dataframe(meta_df_dict_pairs, gib_to_gbps):
         for _, row in stats.iterrows():
             rows.append({
                 'cluster': meta['cluster'],
+                'nodes': meta['nodes'],
                 'primitive': meta['primitive'],
                 'implementation': meta['implementation'],
                 'comm_type': meta['comm_type'],
@@ -163,11 +167,12 @@ def detect_high_variability(stats_df, metric='bandwidth', threshold=0.15):
 def plot_grouped_experiments(
         stats_df,
         peering,
+        cluster,
+        primitive,
+        nodes,
         group_by='implementation',
         metric='bandwidth',
         outdir=Path('plots'),
-        cluster=None,
-        primitive=None,
         show_std=True,
         show_minmax=False,
         same_y_lim=True,
@@ -175,10 +180,9 @@ def plot_grouped_experiments(
     filtered = stats_df.copy()
 
     filtered = filtered[filtered['peering'] == peering]
-    if cluster:
-        filtered = filtered[filtered['cluster'] == cluster]
-    if primitive:
-        filtered = filtered[filtered['primitive'] == primitive]
+    filtered = filtered[filtered['cluster'] == cluster]
+    filtered = filtered[filtered['primitive'] == primitive]
+    filtered = filtered[filtered['nodes'] == nodes]
 
     if filtered.empty:
         return
@@ -293,14 +297,22 @@ def plot_grouped_experiments(
     cluster_str = cluster if cluster else 'all_clusters'
     primitive_str = primitive if primitive else 'all_primitives'
 
-    fig.suptitle(
-        f'System: {cluster_str.capitalize()} - {primitive_str} - Peering: {peering} - Metric: {ylabel}',
-        y=0.995
-    )
+    title = None
+    if primitive_str in ['a2a', 'ar']:
+        title = f'System: {cluster_str.capitalize()} - {primitive_str} - Nodes: {nodes} - Metric: {ylabel}'
+        filename = f"{cluster_str}_{primitive_str}_nodes-{nodes}_grouped-by-{group_by}_{metric}.png"
+    elif primitive_str in ['p2p', 'pp']:
+        title = f'System: {cluster_str.capitalize()} - {primitive_str} - Peering: {peering} - Metric: {ylabel}'
+        filename = f"{cluster_str}_{primitive_str}_peering-{peering}_grouped-by-{group_by}_{metric}.png"
+    else:
+        warnings.warn(f'Primitive {primitive_str} not handled')
+        return
+        
+    if title:
+        fig.suptitle(title, y=0.995)
 
     plt.tight_layout()
 
-    filename = f"{cluster_str}_{primitive_str}_peering-{peering}_grouped-by-{group_by}_{metric}.png"
     filepath = outdir / filename
 
     plt.savefig(filepath, dpi=150, bbox_inches='tight')
@@ -376,6 +388,7 @@ def main():
     clusters = sorted(stats_df['cluster'].unique(), key=natural_sort_key)
     primitives = sorted(stats_df['primitive'].unique(), key=natural_sort_key)
     peerings = sorted(stats_df['peering'].unique(), key=natural_sort_key)
+    node_counts = sorted(stats_df['nodes'].unique())
     
     print('DATA')
     print(meta_df.columns)
@@ -397,17 +410,19 @@ def main():
     for cluster in clusters:
         for peering in peerings:
             for primitive in primitives:
-                plot_grouped_experiments(
-                    stats_df,
-                    peering,
-                    group_by=args.group_by,
-                    metric=args.metric,
-                    outdir=args.outdir,
-                    cluster=cluster,
-                    primitive=primitive,
-                    show_std=args.show_std,
-                    show_minmax=args.show_minmax,
-                )
+                for nodes in node_counts:
+                    plot_grouped_experiments(
+                        stats_df,
+                        peering,
+                        cluster,
+                        primitive,
+                        nodes,
+                        group_by=args.group_by,
+                        metric=args.metric,
+                        outdir=args.outdir,
+                        show_std=args.show_std,
+                        show_minmax=args.show_minmax,
+                    )
 
     print(f"\nAll plots saved to '{args.outdir}'")
 

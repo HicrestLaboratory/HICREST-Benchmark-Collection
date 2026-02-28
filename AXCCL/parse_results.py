@@ -85,6 +85,10 @@ def parse_job(j: sbm.Job) -> Tuple[Dict[str, Any], Dict[str, pd.DataFrame]]:
     meta['tag'] = j.tag
     meta["cluster"] = j.cluster_name
     
+    match = re.search(r'run -N (\d+)', j.command)
+    if match:
+        meta['nodes'] = int(match.group(1))
+    
     return meta, {
         'raw': raw_df,
         'avg': avg_df,

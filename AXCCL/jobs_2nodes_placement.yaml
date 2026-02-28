@@ -17,15 +17,12 @@ variables:
   nodes: [2]
   gpus_per_node: [4]
 
-  # This will increase buffer sizes up to 2^29 Bytes = 512 MiB
-  buff_cycle: [29]
+  # This will increase buffer sizes up to 2^30 Bytes = 1 GiB
+  buff_cycle: [30]
 
   # peering='process' means that only a pair of precesses communicate
   # peering='node' means that all processes form one node communicate with the same-rank process on the other (i.e., in pairs)
   peering: ['node']
-
-  # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
-  peers_distance: [2.0, 4.0, 5.0]
 
   implementation:
     - 'CudaAware'
@@ -36,8 +33,15 @@ variables:
     - 'p2p'       # Peer-to-Peer
     - 'pingpong'  # Ping-Pong
 
+  collective:
+    - 'a2a'     # All-to-All
+    - 'ar'      # All-Reduce
+
   buffer_type:
     - 'devicebuff' # GPU to GPU communication
+
+  # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
+  peers_distance: [2.0, 4.0, 5.0]
 
 # In case it is not possible to satisfy placements constraints, this will fail
 preprocess: |
@@ -80,5 +84,9 @@ jobs:
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
   - config: "{system}__{partition}__{gpus_per_node}_gpus__{nodes}_nodes"
     config_jobs:
-      - tag: "{primitive}__{buffer_type}__{implementation}__{peering}__{buff_cycle}__unknown"
-        command: "srun -N 2 ./hicrest-axccl/bin/std/{buffer_type}/{primitive}_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
+
+      - tag: "{primitive}__{buffer_type}__{implementation}__{peering}__{buff_cycle}__{peers_distance}"
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/{buffer_type}/{primitive}_{implementation} --buff-cycle {buff_cycle} --peering {peering}"
+
+      - tag: "{collective}__{buffer_type}__{implementation}__na__{buff_cycle}__{peers_distance}"
+        command: "srun -N 2 -w \"$SELECTED_NODES\" ./hicrest-axccl/bin/std/{buffer_type}/{collective}_{implementation} --buff-cycle {buff_cycle}"
