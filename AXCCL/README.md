@@ -6,9 +6,6 @@
 ./compile <system_name>
 ```
 
-Supported systems:
-- `leonardo`
-
 ## Forcing Job Placement
 
 To ensure the benchmark is run under controlled placements (emulating different topologies), there are two main strategies:

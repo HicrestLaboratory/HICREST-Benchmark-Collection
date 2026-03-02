@@ -1,0 +1,47 @@
+# Uncomment the following line if you want experiments to run one after the another
+# sequential: true
+
+variables:
+  # System info (comment as needed)
+  # system: ['alps']
+  # system_upper: ['ALPS']
+  # partition: ['normal'] 
+
+  system: ['leonardo']
+  system_upper: ['LEONARDO']
+  partition: ['boost_usr_prod-1'] 
+  
+  #------------------------------------------
+
+  nodes: [4]
+  gpus_per_node: [4]
+
+  # This will increase buffer sizes up to 2^30 Bytes = 1 GiB
+  buff_cycle: [30]
+
+  implementation:
+    - 'CudaAware'
+    - 'Baseline'
+    # - 'Nccl'
+
+  collective:
+    - 'a2a'     # All-to-All
+    - 'ar'      # All-Reduce
+
+  buffer_type:
+    - 'devicebuff' # GPU to GPU communication
+
+preprocess: |
+  # Make sure you ran the `init.sh` script that generates this file
+  source ./hicrest-axccl/configure/{system_upper}_DEFAULT.conf
+
+  echo "Allocated nodes: $SLURM_JOB_NODELIST"
+  echo "SKIPPING allocation check..."
+
+
+jobs:
+  # The number of nodes can be incremented to have a better chance to satisfy the placement 
+  - config: "{system}__{partition}__{gpus_per_node}_gpus__{nodes}_nodes"
+    config_jobs:
+      - tag: "{collective}__{buffer_type}__{implementation}__na__{buff_cycle}__unknown"
+        command: "srun -N {nodes} ./hicrest-axccl/bin/std/{buffer_type}/{primitive}_{implementation} --buff-cycle {buff_cycle}"

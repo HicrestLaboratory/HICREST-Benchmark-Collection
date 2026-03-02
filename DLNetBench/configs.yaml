@@ -1,5 +1,5 @@
 variables:
-  nodes: [2]
+  nodes: [2, 4, 8, 16, 32, 64, 128, 256]
 
 leonardo:
   scheduler: slurm
@@ -7,20 +7,57 @@ leonardo:
   default_conf:
     account: "IscrC_OMG-25"
     cpus_per_task: 1
-    time: "00:05:00"
+    time: "00:10:00"
     partition: "boost_usr_prod"
     qos: "normal"
+    gpus: 4
     modules: 
       - "gcc/12.2.0"
-      - "cuda/12.2"
       - "openmpi/4.1.6--gcc--12.2.0-cuda-12.2"
-      - "nccl/2.22.3-1--gcc--12.2.0-cuda-12.2-spack0.22"
+      - "nvhpc/24.5"
 
   configs:
     - name: "leonardo__boost_usr_prod__{nodes}_nodes"
       nodes: "{nodes}"
-      ntasks: "{nodes}"
-      gpus: "{gpus}"
       custom_headers:
         - "#SBATCH --ntasks-per-node=4"
-        - "#SBATCH --gpus-per-task=1"
+
+alps:
+  scheduler: slurm
+
+  default_conf:
+    account: "lp100"
+    cpus_per_task: 1
+    time: "00:05:00"
+    partition: "normal"
+    gpus: 4
+    modules:
+      - "gcc/13.2.0"
+      - "cuda/12.4.0"
+      - "nccl/2.20.3-1"
+      - "cray-mpich/8.1.30"
+    custom_headers:
+      - "#SBATCH --uenv=prgenv-gnu/24.7:v3"
+      - "#SBATCH --view=modules"
+      - "#SBATCH --ntasks-per-node=4"
+
+  configs:
+    - name: "alps__normal__{nodes}_nodes"
+      nodes: "{nodes}"
+
+lumi:
+  scheduler: slurm
+
+  default_conf:
+    account: "project_465002469"
+    cpus_per_task: 1
+    time: "00:05:00"
+    partition: "standard-g"
+    gpus: 8
+    modules:
+      - "LUMI/25.03 partition/G"
+    custom_headers:
+      - "#SBATCH --ntasks-per-node=8"
+  configs:
+    - name: "lumi__standard-g__{nodes}_nodes"
+      nodes: "{nodes}"
