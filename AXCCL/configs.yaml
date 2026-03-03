@@ -1,6 +1,7 @@
 variables:
   nodes: [2, 4, 6, 8]
   gpus_per_node: [0, 4]
+  gpus_per_node_isarco: [0, 1, 2, 3, 4]
 
   leonardo_service_level: [0, 1]
 
@@ -10,10 +11,10 @@ isarco:
 
   default_conf:
     modules: 
-      - "nvhpc/26.1"
+      - "nvhpc-hpcx-cuda13/26.1"
 
   configs:
-    - name: "isarco__{gpus_per_node}_gpus__{nodes}_nodes"
+    - name: "isarco__default__{gpus_per_node_isarco}_gpus__1_nodes"
 
 leonardo:
   scheduler: slurm

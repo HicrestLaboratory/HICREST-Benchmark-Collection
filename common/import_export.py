@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 import warnings
 import pandas as pd
 import pyarrow as pa
@@ -233,8 +233,8 @@ def write_multiple_to_parquet(
 
 
 def read_multiple_from_parquet(
-    paths: List[Path] | Path,
-) -> Tuple[List[Tuple[Any, Dict[str, pd.DataFrame]]], pd.DataFrame | None]:
+    paths: Union[List[Path], Path],
+) -> Tuple[List[Tuple[Any, Dict[str, pd.DataFrame]]], Union[pd.DataFrame, None]]:
     """
     Read one or multiple Parquet files written by write_multiple_to_parquet().
     Returns:
@@ -306,8 +306,8 @@ def read_multiple_from_parquet(
 
 
 def read_multiple_from_csv(
-    paths: List[Path | str] | Path | str,
-) -> pd.DataFrame | None:
+    paths: Union[List[Union[Path, str]], Path, str],
+) -> Union[pd.DataFrame, None]:
     """
     Read one or multiple CSV paths and merge them into a single DataFrame.
 
