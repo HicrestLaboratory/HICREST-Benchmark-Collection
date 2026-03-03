@@ -7,6 +7,9 @@
 **results/
 **plots/
 **__pycache__/
+*.png
+*.jpeg
+*.jpg
 
 leonardo/
 daint/
