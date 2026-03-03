@@ -12,10 +12,12 @@ variables:
   hybrid3d_model: ['llama3_70b_16']
   hybrid3d_moe_model: ['mixtral_8x7b_16']
 
-  # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
-  peers_distance: [2.0, 4.0, 5.0]
+  # Peers distance: 2 = same L1, 4 = same group, different L1, 5 = different group
+  peers_distance: [2, 4, 5]
 
-# In case it is not possible to satisfy placements constraints, this will fail with return code 456
+  comm_lib: ['nccl']
+
+# In case it is not possible to satisfy placements constraints, this will fail
 preprocess: |
   echo "--- Searching for desired topology within $SLURM_JOB_NUM_NODES nodes ---"
   echo "Allocated nodes: $SLURM_JOB_NODELIST"
@@ -42,7 +44,7 @@ preprocess: |
   # Check if the command failed
   if [ $TOPO_EXIT_CODE -ne 0 ]; then
       echo "❌ ERROR: Topology search failed with exit code $TOPO_EXIT_CODE."
-      exit 456
+      exit 1
   fi
 
   SELECTED_NODES="$TOPO_OUTPUT"

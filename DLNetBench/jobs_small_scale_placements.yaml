@@ -1,0 +1,62 @@
+variables:
+  # System info (comment as needed)
+  # system: ['alps']
+  # partition: ['normal'] 
+
+  system: ['leonardo']
+  partition: ['boost_usr_prod-1'] 
+
+  # The number of nodes can be incremented to have a better chance to satisfy the placement 
+  nodes:      [6]
+  dp_model:   ['vit_h_16_bfloat16']
+
+  comm_lib: ['nccl']
+
+
+# In case it is not possible to satisfy placements constraints, this will fail
+preprocess: |
+  echo "--- Searching for desired topology within $SLURM_JOB_NUM_NODES nodes ---"
+  echo "Allocated nodes: $SLURM_JOB_NODELIST"
+
+  # Run the tool and capture output
+  TOPO_OUTPUT=$(../common/JobPlacer/target/release/job_placer -s leonardo --topology-scontrol ./placements/{placement}.json)
+  TOPO_EXIT_CODE=$?
+
+  echo "Tool exit code: $TOPO_EXIT_CODE"
+  echo "Tool output: $TOPO_OUTPUT"
+
+  # Check if the command failed
+  if [ $TOPO_EXIT_CODE -ne 0 ]; then
+      echo "❌ ERROR: Topology search failed with exit code $TOPO_EXIT_CODE."
+      exit 1
+  fi
+
+  SELECTED_NODES="$TOPO_OUTPUT"
+
+  echo "✅ SUCCESS! Selected Nodes: $SELECTED_NODES"
+
+
+jobs:
+  # The number of nodes can be incremented to have a better chance to satisfy the placement 
+  - config: "{system}__{partition}__{nodes}_nodes"
+    config_jobs:
+
+      # 4 nodes jobs
+      # - tag: "dp_{dp_model}_{num_buckets}_{comm_lib}_{placement}"
+      #   variables:
+      #     num_buckets: [50]
+      #     placement:
+      #       - '4_at_distance_5'
+      #       - '3_on_same_l1_1_same_group'
+      #       - '3_on_same_l1_1_different_group'
+      #   command: "srun -N 4 -w \"$SELECTED_NODES\" ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench"
+        
+      # 3 nodes jobs
+      - tag: "dp_{dp_model}_{num_buckets}_{comm_lib}_{placement}"
+        variables:
+          num_buckets: [50]
+          placement:
+            - '3_at_distance_5'
+            - '2_on_same_l1_1_same_group'
+            - '2_on_same_l1_1_different_group'
+        command: "srun -N 4 -w \"$SELECTED_NODES\" ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench"

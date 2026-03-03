@@ -1,0 +1,16 @@
+{
+  "constraints": [
+    {
+      "type": "NodesAtDistance",
+      "count": 1,
+      "distance": 2,
+      "reference": "First"
+    },
+    {
+      "type": "NodesAtDistance",
+      "count": 1,
+      "distance": 5,
+      "reference": "First"
+    }
+  ]
+}
