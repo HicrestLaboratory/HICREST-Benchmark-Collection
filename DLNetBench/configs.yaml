@@ -1,5 +1,7 @@
 variables:
-  nodes: [2, 4, 8, 16, 32, 64, 128, 256]
+  nodes: [2, 4, 6, 8, 10, 12, 14, 16, 32, 64, 128, 256]
+  
+  leonardo_service_level: [0, 1]
 
 leonardo:
   scheduler: slurm
@@ -17,10 +19,13 @@ leonardo:
       - "nvhpc/24.5"
 
   configs:
-    - name: "leonardo__boost_usr_prod__{nodes}_nodes"
+    - name: "leonardo__boost_usr_prod-{leonardo_service_level}__{nodes}_nodes"
       nodes: "{nodes}"
       custom_headers:
         - "#SBATCH --ntasks-per-node=4"
+      env:
+        - "NCCL_IB_SL={leonardo_service_level}"
+        - "UCX_IB_SL={leonardo_service_level}"
 
 alps:
   scheduler: slurm

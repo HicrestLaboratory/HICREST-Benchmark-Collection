@@ -40,8 +40,8 @@ variables:
   buffer_type:
     - 'devicebuff' # GPU to GPU communication
 
-  # Peers distance: 2.0 = same L1, 4.0 = same group, different L1, 5.0 = different group
-  peers_distance: [2.0, 4.0, 5.0]
+  # Peers distance: 2 = same L1, 4 = same group, different L1, 5 = different group
+  peers_distance: [2, 4, 5]
 
 # In case it is not possible to satisfy placements constraints, this will fail
 preprocess: |
