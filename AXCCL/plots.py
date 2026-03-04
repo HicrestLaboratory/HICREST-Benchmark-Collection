@@ -23,7 +23,7 @@ plt.rc('axes', labelsize=FONT_AXES - 2)
 plt.rc('xtick', labelsize=FONT_TICKS)
 plt.rc('ytick', labelsize=FONT_TICKS)
 plt.rc('legend', fontsize=FONT_LEGEND + 1)
-plt.rc('figure', titlesize=FONT_TITLE - 12)
+plt.rc('figure', titlesize=FONT_TITLE - 16)
 
 
 def format_bytes_tick(x, _pos):
@@ -62,13 +62,13 @@ def get_primitive_from_tag(tag: str) -> str:
 
 
 COMM_TYPE_MAP = {
-    'devicebuff': 'G2G',
-    'gpu_buff': 'G2G',
-    'cpu_buff': 'C2C',
-    'gpu': 'G2G',
-    'cpu': 'C2C',
-    'host2dev': 'C2G',
-    'dev2host': 'G2C',
+    'devicebuff': 'Gpu2Gpu',
+    'gpu_buff': 'Gpu2Gpu',
+    'cpu_buff': 'Cpu2Cpu',
+    'gpu': 'Gpu2Gpu',
+    'cpu': 'Cpu2Cpu',
+    'host2dev': 'Cpu2Gpu',
+    'dev2host': 'Gpu2Cpu',
 }
 
 
@@ -238,7 +238,9 @@ def plot_grouped_experiments(
             color = color_map[combo['topology']]
             linestyle = linestyle_map[combo['comm_type']]
 
-            label = f"{combo['comm_type']} | {combo['topology']}"
+            label = combo['comm_type']
+            if combo['topology'] != TOPOLOGY_MAP['unknown']:
+                label += f' | {combo['topology']}'
 
             ax.plot(x, y,
                     marker='o',
@@ -300,7 +302,7 @@ def plot_grouped_experiments(
     if primitive_str in ['a2a', 'ar']:
         title = f'System: {cluster_str.capitalize()} - {primitive_str} - Nodes: {nodes} - Metric: {ylabel}'
         filename = f"{cluster_str}_{primitive_str}_nodes-{nodes}_grouped-by-{group_by}_{metric}.png"
-    elif primitive_str in ['p2p', 'pp']:
+    elif primitive_str in ['p2p', 'pingpong']:
         title = f'System: {cluster_str.capitalize()} - {primitive_str} - Peering: {peering} - Metric: {ylabel}'
         filename = f"{cluster_str}_{primitive_str}_peering-{peering}_grouped-by-{group_by}_{metric}.png"
     else:
@@ -312,7 +314,8 @@ def plot_grouped_experiments(
 
     plt.tight_layout()
 
-    filepath = outdir / filename
+    filepath = outdir / cluster_str.lower() / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
 
     plt.savefig(filepath, dpi=150, bbox_inches='tight')
     plt.close()
@@ -343,12 +346,16 @@ def main():
                     help="Minimum transfer size (e.g., 128MiB)")
     parser.add_argument("--max-size", type=str, default=None,
                         help="Maximum transfer size (e.g., 2GiB)")
+    parser.add_argument("--implementation-whitelist", "-impls", type=str, nargs="+", default=None,
+                        help="Only plot specified implementations",
+                        choices=['Baseline', 'CudaAware', 'Nccl']) 
 
     args = parser.parse_args()
     args.outdir.mkdir(parents=True, exist_ok=True)
     
     min_size_B = parse_bytes(args.min_size, binary=False) if args.min_size else None
     max_size_B = parse_bytes(args.max_size, binary=False) if args.max_size else None
+    implementation_whitelist = args.implementation_whitelist
 
     meta_df_dict_pairs, meta_df = import_export.read_multiple_from_parquet(
         args.parquet_files
@@ -380,7 +387,9 @@ def main():
         stats_df = stats_df[stats_df['transfer_size_B'] >= min_size_B]
     if max_size_B is not None:
         stats_df = stats_df[stats_df['transfer_size_B'] <= max_size_B]
-
+    if implementation_whitelist is not None:
+        stats_df = stats_df[stats_df['implementation'].isin(implementation_whitelist)]
+        
     # Detect unstable experiments
     detect_high_variability(stats_df, metric=args.metric, threshold=0.15)
 

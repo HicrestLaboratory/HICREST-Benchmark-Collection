@@ -148,6 +148,15 @@ def describe_pairs_content(
                     print("    + internal columns: _pair_id, _df_name")
 
     # ------------------------------------------------------------------
+    # Meta dataframe
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 80)
+    print("Metadata Dataframe")
+    print("=" * 80)
+    all_meta = [meta for meta, _ in pairs]
+    print(pd.DataFrame(all_meta))
+        
+    # ------------------------------------------------------------------
     # Summary
     # ------------------------------------------------------------------
     print("\n" + "=" * 80)
@@ -172,8 +181,10 @@ def describe_pairs_content(
         if meta_structure_mismatch and meta_mismatch_example:
             pair_id, meta_struct = meta_mismatch_example
             print("\nMETADATA STRUCTURE MISMATCH EXAMPLE")
-            print(f"  Reference (pair 0): {ref_meta_structure}")
-            print(f"  Pair {pair_id}     : {meta_struct}")
+            print(f"  Reference (pair 0)   : {ref_meta_structure}")
+            print(f"  Pair {pair_id}       : {meta_struct}")
+            print(f"  Ref keys - Pair keys : {set(ref_meta_structure.keys()) - set(meta_struct.keys())}")
+            print(f"  Pair keys - Ref keys : {set(meta_struct.keys()) - set(ref_meta_structure.keys())}")
 
         if df_name_mismatch and df_name_mismatch_example:
             pair_id, df_names = df_name_mismatch_example
