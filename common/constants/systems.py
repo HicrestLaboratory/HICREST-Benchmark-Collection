@@ -78,7 +78,7 @@ SYSTEM_INTERCONNECT_SPECS = {
 # TODO double-check
 def get_path_links(system, comm_type, topology):
     if system in ['leonardo']: # Dragonfly+
-        if comm_type == 'G2G':
+        if comm_type in ['G2G', 'Gpu2Gpu']:
             if topology == 'same-l1':
                 return ['bw_gpu_gpu', 'bw_nic_l1']
             elif topology == 'same-group':
@@ -86,7 +86,7 @@ def get_path_links(system, comm_type, topology):
             elif topology == 'inter-group':
                 return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l2', 'bw_l2_l2']
 
-        elif comm_type == 'C2C':
+        elif comm_type in ['C2C', 'Cpu2Cpu']:
             if topology == 'same-l1':
                 return ['bw_cpu_nic']
             elif topology == 'same-group':
@@ -95,7 +95,7 @@ def get_path_links(system, comm_type, topology):
                 return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l2', 'bw_l2_l2']
     
     if system in ['alps']: # Dragonfly+
-        if comm_type == 'G2G':
+        if comm_type in ['G2G', 'Gpu2Gpu']:
             if topology == 'same-l1':
                 return ['bw_gpu_gpu', 'bw_nic_l1']
             elif topology == 'same-group':
@@ -103,7 +103,7 @@ def get_path_links(system, comm_type, topology):
             elif topology == 'inter-group':
                 return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l1']
 
-        elif comm_type == 'C2C':
+        elif comm_type in ['C2C', 'Cpu2Cpu']:
             if topology == 'same-l1':
                 return ['bw_cpu_nic']
             elif topology == 'same-group':

@@ -36,7 +36,8 @@ def format_bytes_tick(x, _pos):
 
 def parse_implementation(impl: str) -> str:
     parts = impl.split('__')
-    return impl if len(parts) <= 1 else parts[-1]
+    implementation = impl if len(parts) <= 1 else parts[-1]
+    return IMPLEMENTATION_MAP.get(implementation, implementation)
 
 
 TOPOLOGY_MAP = {
@@ -52,6 +53,10 @@ TOPOLOGY_MAP = {
     'unknown': '?',
 }
 
+IMPLEMENTATION_MAP = {
+    'Baseline': 'Trivial Staging',
+    'CudaAware': 'MPI Cuda-Aware'
+}
 
 def get_topology_from_tag(tag: str) -> str:
     return TOPOLOGY_MAP[tag.split('__')[-1]]
@@ -220,10 +225,9 @@ def plot_grouped_experiments(
         ax = axes[idx]
         df_group = filtered[filtered[group_by] == group_val]
 
-        combinations = df_group[['comm_type', 'topology']].drop_duplicates()
+        combinations = df_group[['comm_type', 'topology']].drop_duplicates().sort_values(['comm_type', 'topology'])
 
         for _, combo in combinations.iterrows():
-
             df_line = df_group[
                 (df_group['comm_type'] == combo['comm_type']) &
                 (df_group['topology'] == combo['topology'])
@@ -258,7 +262,7 @@ def plot_grouped_experiments(
                 ax.fill_between(x, ymin, ymax,
                                 alpha=0.12, color=color)
             
-            if metric == 'bandwidth':
+            if metric == 'bandwidth' and primitive in ['p2p', 'pingpong'] and group_val != IMPLEMENTATION_MAP['Baseline']:
                 theoretical_bw = compute_theoretical_bandwidth(
                     cluster,
                     combo['comm_type'],
@@ -289,8 +293,9 @@ def plot_grouped_experiments(
 
         if y_lim:
             ax.set_ylim(y_lim)
-
-        ax.legend()
+            
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels)
 
     for idx in range(n_groups, len(axes)):
         axes[idx].set_visible(False)
