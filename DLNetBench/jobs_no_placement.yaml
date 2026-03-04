@@ -33,26 +33,26 @@ jobs:
   - config: "{system}__{partition}__{nodes}_nodes"
     config_jobs:
 
-      - tag: "dp_{dp_model}_{comm_lib}_distance_unknown"
+      - tag: "dp_{dp_model}_{comm_lib}_test"
         variables:
           num_buckets: [50]
-        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench"
+        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench -r 3 -w 4"
       
-      - tag: "fsdp_{fsdp_model}_{comm_lib}_distance_unknown"
+      - tag: "fsdp_{fsdp_model}_{comm_lib}_test"
         variables:
           num_units: [16]
           sharding_factor: [4]
-        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/fsdp {fsdp_model} {num_units} {sharding_factor} ./DLNetBench"
+        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/fsdp {fsdp_model} {num_units} {sharding_factor} ./DLNetBench -w 1"
       
-      - tag: "hybrid2d_{hybrid2d_model}_{comm_lib}_distance_unknown"
+      - tag: "hybrid2d_{hybrid2d_model}_{comm_lib}_test"
         variables: 
           num_stages: [4]
           num_microbatches: [16]
-        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench"
-      - tag: "hybrid3d_moe_{hybrid3d_moe_model}_{comm_lib}_distance_unknown"
+        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench -w 1"
+      - tag: "hybrid3d_moe_{hybrid3d_moe_model}_{comm_lib}_test"
         variables:
           experts_shards: [8]
-          num_stages: [4]
+          num_stages: [8]
           num_microbatches: [16]
-          nodes: [8]
-        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_3d_moe {hybrid3d_moe_model} {num_stages} {num_microbatches} {experts_shards} ./DLNetBench"       
+          nodes: [16]
+        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_3d_moe {hybrid3d_moe_model} {num_stages} {num_microbatches} {experts_shards} ./DLNetBench -r 1 -w 1"       
