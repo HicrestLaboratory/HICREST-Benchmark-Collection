@@ -183,6 +183,55 @@ def stdout_to_csv(stdout_content):
                 
                 results.append((runtime, commtime))
     
+    elif strategy_name == "dp_pp_ep":
+        # DP+PP+EP: pp_comm, ep_comm are pure communication, plus dp_ep_comm and dp_comm
+        # commtime = sum(pp_comm) + sum(ep_comm) + dp_ep_comm + dp_comm
+        
+        rank_outputs = section.mpi_all_prints["ccutils_rank_json"].rank_outputs
+        
+        for rank, json_str in rank_outputs.items():
+            try:
+                parsed = json.loads(json_str)
+            except (json.JSONDecodeError, KeyError):
+                continue
+            
+            runtimes = parsed.get("runtimes", [])
+            pp_comm_times = parsed.get("pp_comm_time", [])
+            ep_comm_times = parsed.get("ep_comm_time", [])
+            dp_ep_comm_times = parsed.get("dp_ep_comm_time", [])
+            dp_comm_times = parsed.get("dp_comm_time", [])
+            
+            num_runs = len(runtimes)
+            if num_runs == 0:
+                continue
+            
+            # Calculate ops per run
+            pp_ops_per_run = len(pp_comm_times) // num_runs if num_runs > 0 else 0
+            ep_ops_per_run = len(ep_comm_times) // num_runs if num_runs > 0 else 0
+            
+            for run_idx in range(num_runs):
+                runtime = runtimes[run_idx]
+                
+                # Sum all pp_comm operations for this run (pure communication)
+                pp_start = run_idx * pp_ops_per_run
+                pp_end = pp_start + pp_ops_per_run
+                pp_comm_sum = sum(pp_comm_times[pp_start:pp_end])
+                
+                # Sum all ep_comm operations for this run (pure all-to-all)
+                ep_start = run_idx * ep_ops_per_run
+                ep_end = ep_start + ep_ops_per_run
+                ep_comm_sum = sum(ep_comm_times[ep_start:ep_end])
+                
+                # Add dp_ep_comm time for this run (all-reduce within EP group)
+                dp_ep_comm = dp_ep_comm_times[run_idx] if run_idx < len(dp_ep_comm_times) else 0
+                
+                # Add dp_comm time for this run (all-reduce for DP)
+                dp_comm = dp_comm_times[run_idx] if run_idx < len(dp_comm_times) else 0
+                
+                commtime = pp_comm_sum + ep_comm_sum + dp_ep_comm + dp_comm
+                
+                results.append((runtime, commtime))
+    
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}")
     
