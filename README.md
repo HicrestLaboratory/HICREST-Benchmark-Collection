@@ -79,11 +79,37 @@ python plots.py <results_file_1> <results_file_2> ...
 
 ## Tested Benchmarks and Systems
 
-| Benchmark     | Variant               | Leonardo | Alps Daint | LUMI | Perlmutter | Notes                 |
+| Benchmark     | Variant               | Leonardo | Alps Daint | LUMI | Jupiter    | Notes                 |
 |---------------|-----------------------|----------|------------|------|------------|-----------------------|
 | HPL           | CPU-only              | ✅       |            |      |            |                       |
 | HPL           | NVIDIA                | ~        |            |      |            |                       |
 | HPCG          | NVIDIA                | ✅       |            |      |            |                       |
 | Graph500      | HICREST CPU-only      | ✅       |            |      |            | Scale 20, EF 16       |
-| AXCCL         | Peer-to-Peer          | ✅       | ✅         |      |            | Missing placement     |
+| AXCCL         | p2p, pp, a2a, ar      | ✅       | ✅         |      | ✅         |                       |
 | DLNetBench    |                       | ✅       | ✅         | ✅   |            |                       |
+
+
+<!-- | System       | HPL (CPU-only) | HPL (NVIDIA) | HPCG (NVIDIA) | Graph500 (HICREST CPU-only) | AXCCL (Peer-to-Peer) | DLNetBench | Notes |
+|--------------|----------------|--------------|----------------|-----------------------------|----------------------|------------|-------|
+| Leonardo     | ✅             | ~            | ✅             | ✅                          | ✅                   | ✅         | Graph500: Scale 20, EF 16 |
+| Alps Daint   |                |              |                |                             | ✅                   | ✅         | AXCCL: Missing placement |
+| LUMI         |                |              |                |                             |                      | ✅         |       |
+| Perlmutter   |                |              |                |                             |                      |            |       | -->
+
+## Useful Scripts and Python Utils
+
+### Compilation
+
+When you create a new `compile.sh` script, please check out utilities in [`common/compile`](common/compile).
+
+### Running Experiments
+
+When you will run experiments, please check out scripts in [`common/run_scripts`](common/run_scripts)
+
+### Parsing Results
+
+When you create a new `parse_results.py` script, please check out utilities in [`common/import_export.py`](common/import_export.py), [`common/utils`](common/utils) and [`common/ccutils/parser/ccutils_parser.py`](common/ccutils/parser/ccutils_parser.py) (if you used `CCUTILS`).
+
+### Plots with Python
+
+When you create a new `plots.py` script, please check out utilities in [`common/constants`](common/constants) and [`common/utils`](common/utils).

@@ -22,7 +22,7 @@ plt.rc('axes', titlesize=FONT_AXES - 2)
 plt.rc('axes', labelsize=FONT_AXES - 2)
 plt.rc('xtick', labelsize=FONT_TICKS)
 plt.rc('ytick', labelsize=FONT_TICKS)
-plt.rc('legend', fontsize=FONT_LEGEND + 1)
+plt.rc('legend', fontsize=FONT_LEGEND - 1)
 plt.rc('figure', titlesize=FONT_TITLE - 16)
 
 
@@ -180,6 +180,7 @@ def plot_grouped_experiments(
         show_std=True,
         show_minmax=False,
         same_y_lim=True,
+        show_title=False,
 ):
     filtered = stats_df.copy()
 
@@ -198,7 +199,7 @@ def plot_grouped_experiments(
     n_rows = int(np.ceil(n_groups / n_cols))
 
     fig, axes = plt.subplots(n_rows, n_cols,
-                             figsize=(10*n_cols, 8*n_rows))
+                             figsize=(8*n_cols, 9*n_rows))
 
     axes = np.array(axes).flatten()
 
@@ -305,16 +306,16 @@ def plot_grouped_experiments(
 
     title = None
     if primitive_str in ['a2a', 'ar']:
-        title = f'System: {cluster_str.capitalize()} - {primitive_str} - Nodes: {nodes} - Metric: {ylabel}'
+        title = f'System: {cluster_str.capitalize()} - {primitive_str} - Nodes: {nodes}'
         filename = f"{cluster_str}_{primitive_str}_nodes-{nodes}_grouped-by-{group_by}_{metric}.png"
     elif primitive_str in ['p2p', 'pingpong']:
-        title = f'System: {cluster_str.capitalize()} - {primitive_str} - Peering: {peering} - Metric: {ylabel}'
+        title = f'System: {cluster_str.capitalize()} - {primitive_str} - Peering: {peering}'
         filename = f"{cluster_str}_{primitive_str}_peering-{peering}_grouped-by-{group_by}_{metric}.png"
     else:
         warnings.warn(f'Primitive {primitive_str} not handled')
         return
         
-    if title:
+    if show_title and title:
         fig.suptitle(title, y=0.995)
 
     plt.tight_layout()
@@ -354,13 +355,14 @@ def main():
     parser.add_argument("--implementation-whitelist", "-impls", type=str, nargs="+", default=None,
                         help="Only plot specified implementations",
                         choices=['Baseline', 'CudaAware', 'Nccl']) 
+    parser.add_argument("--title", "-tit", action="store_true")
 
     args = parser.parse_args()
     args.outdir.mkdir(parents=True, exist_ok=True)
     
-    min_size_B = parse_bytes(args.min_size, binary=False) if args.min_size else None
-    max_size_B = parse_bytes(args.max_size, binary=False) if args.max_size else None
-    implementation_whitelist = args.implementation_whitelist
+    min_size_B = parse_bytes(args.min_size, binary=True) if args.min_size else None
+    max_size_B = parse_bytes(args.max_size, binary=True) if args.max_size else None
+    implementation_whitelist = [IMPLEMENTATION_MAP.get(impl, impl) for impl in (args.implementation_whitelist if args.implementation_whitelist else [])]
 
     meta_df_dict_pairs, meta_df = import_export.read_multiple_from_parquet(
         args.parquet_files
@@ -435,6 +437,7 @@ def main():
                         outdir=args.outdir,
                         show_std=args.show_std,
                         show_minmax=args.show_minmax,
+                        show_title=args.title,
                     )
 
     print(f"\nAll plots saved to '{args.outdir}'")

@@ -10,6 +10,9 @@
 *.png
 *.jpeg
 *.jpg
+*.parquet
 
 leonardo/
 daint/
+jupiter/
+isarco1/
