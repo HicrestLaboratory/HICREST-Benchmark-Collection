@@ -16,3 +16,6 @@ leonardo/
 daint/
 jupiter/
 isarco1/
+
+DLNetBench/experiments*/
+DLNetBench/**.json
