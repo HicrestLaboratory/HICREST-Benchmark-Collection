@@ -78,7 +78,7 @@ STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
     },
     "large": {
         "tier_weight": 0.05,
-        "sizes": [32, 64],
+        "sizes": [32, 64], # FIXME
         "sub_weights": {},
     },
 }
@@ -724,10 +724,10 @@ class PlacementClass:
 
     # Short names used in experiment output JSONs consumed by expand_experiments.py
     SHORT_NAME: dict[str, str] = {
-        "intra-node":  "class0",  # excluded by default
-        "intra-L1":    "class1",
-        "intra-group": "class2",
-        "inter-group": "class3",
+        "intra-node":  "intra-node",  # excluded by default
+        "intra-L1":    "intra-L1",
+        "intra-group": "intra-group",
+        "inter-group": "inter-group",
     }
 
     SCORE: dict[str, float] = {
