@@ -7,6 +7,15 @@
 **results/
 **plots/
 **__pycache__/
+*.png
+*.jpeg
+*.jpg
+*.parquet
 
 leonardo/
 daint/
+jupiter/
+isarco1/
+
+DLNetBench/experiments*/
+DLNetBench/**.json

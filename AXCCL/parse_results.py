@@ -85,6 +85,19 @@ def parse_job(j: sbm.Job) -> Tuple[Dict[str, Any], Dict[str, pd.DataFrame]]:
     meta['tag'] = j.tag
     meta["cluster"] = j.cluster_name
     
+    # This assumes either primitive or collective is set in vars
+    if 'collective' not in vars:
+        meta['collective'] = meta['primitive']
+    if 'primitive' not in vars:
+        meta['primitive'] = meta['collective']
+        
+    if 'peering' not in meta:
+        meta['peering'] = "na"
+    
+    match = re.search(r'run -N (\d+)', j.command)
+    if match:
+        meta['nodes'] = int(match.group(1))
+    
     return meta, {
         'raw': raw_df,
         'avg': avg_df,

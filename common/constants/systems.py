@@ -51,14 +51,23 @@ DEFAULT_PARTITION_NAMES_MAP = {
 # System Interconnect Specs (Gb/s per direction)
 # ==========================================================
 
+# TODO double-check (especially "per-direction")
 SYSTEM_INTERCONNECT_SPECS = {
     'leonardo': {
-        'bw_gpu_gpu': 200,  # 4 x NVLink 3.0
+        'bw_gpu_gpu': 100,  # 4 x NVLink 3.0
         'bw_gpu_nic': 256,  # 1 x PCIe 4.0 x16
         'bw_cpu_nic': 256,  # 1 x PCIe 4.0 x16
         'bw_nic_l1':  100,  # Infiniband HDR
         'bw_l1_l2':   100,  # Dragonfly+
         'bw_l2_l2':   200,  # Dragonfly+
+    },
+    'jupiter': {
+        'bw_gpu_gpu': 150,  # 4 x NVLink 4.0
+        'bw_gpu_cpu': 450,  # NVLink-C2C
+        'bw_cpu_nic': 64,   # ?
+        'bw_nic_l1':  200,  # Infiniband HDR
+        'bw_l1_l2':   400,  # Dragonfly+
+        'bw_l2_l2':   400,  # Dragonfly+
     },
     'alps': {
         'bw_gpu_gpu': 200,  # 4 x NVLink 4.0
@@ -77,41 +86,51 @@ SYSTEM_INTERCONNECT_SPECS = {
 
 # TODO double-check
 def get_path_links(system, comm_type, topology):
-    if system in ['leonardo']: # Dragonfly+
-        if comm_type == 'G2G':
+    # FIXME
+    if topology not in ['same-l1', 'same-group', 'inter-group']:
+        topology = 'inter-group'
+        
+    res = []
+    
+    if system in ['leonardo', 'jupiter']: # Dragonfly+
+        if comm_type in ['G2G', 'Gpu2Gpu']:
             if topology == 'same-l1':
-                return ['bw_gpu_gpu', 'bw_nic_l1']
+                res = ['bw_gpu_gpu', 'bw_nic_l1']
             elif topology == 'same-group':
-                return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l2']
+                res = ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l2']
             elif topology == 'inter-group':
-                return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l2', 'bw_l2_l2']
+                res = ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l2', 'bw_l2_l2']
 
-        elif comm_type == 'C2C':
+        elif comm_type in ['C2C', 'Cpu2Cpu']:
             if topology == 'same-l1':
-                return ['bw_cpu_nic']
+                res = ['bw_cpu_nic']
             elif topology == 'same-group':
-                return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l2']
+                res = ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l2']
             elif topology == 'inter-group':
-                return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l2', 'bw_l2_l2']
+                res = ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l2', 'bw_l2_l2']
     
     if system in ['alps']: # Dragonfly+
-        if comm_type == 'G2G':
+        if comm_type in ['G2G', 'Gpu2Gpu']:
             if topology == 'same-l1':
-                return ['bw_gpu_gpu', 'bw_nic_l1']
+                res = ['bw_gpu_gpu', 'bw_nic_l1']
             elif topology == 'same-group':
-                return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l1']
+                res = ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l1']
             elif topology == 'inter-group':
-                return ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l1']
+                res = ['bw_gpu_nic', 'bw_nic_l1', 'bw_l1_l1']
 
-        elif comm_type == 'C2C':
+        elif comm_type in ['C2C', 'Cpu2Cpu']:
             if topology == 'same-l1':
-                return ['bw_cpu_nic']
+                res = ['bw_cpu_nic']
             elif topology == 'same-group':
-                return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l1']
+                res = ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l1']
             elif topology == 'inter-group':
-                return ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l1']
+                res = ['bw_cpu_nic', 'bw_nic_l1', 'bw_l1_l1']
 
-    return []
+    # FIXME correct?
+    if system == 'jupiter':
+        res.append('bw_cpu_nic')
+        
+    return res
 
 
 def compute_theoretical_bandwidth(system, comm_type, topology):

@@ -62,7 +62,9 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("jobs_file", help="Path to the YAML jobs file")
+    parser.add_argument("--wait", type=int, default=WAIT_SECONDS, help="Time to wait between tries (in seconds)")
     args = parser.parse_args()
+    wait_time = args.wait
     loop_i = 0
 
     MAIN_COMMAND = ["sbatchman", "launch", "--ignore-archived", "--ignore-conf-in-dup-check", "--ignore-commands-in-dup-check", "-f", args.jobs_file]
@@ -80,8 +82,8 @@ def main():
         if ret != 0:
             print(f"Launch command failed with exit code {ret}")
 
-        print(f"Waiting {WAIT_SECONDS} seconds... (CTRL+C to try again, CTRL+Z to exit)")
-        interruptible_sleep(WAIT_SECONDS)
+        print(f"Waiting {wait_time} seconds... (CTRL+C to try again, CTRL+Z to exit)")
+        interruptible_sleep(wait_time)
 
         print("Checking if all is done...")
         if is_all_done():

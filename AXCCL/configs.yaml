@@ -1,6 +1,7 @@
 variables:
   nodes: [2, 4, 6, 8]
   gpus_per_node: [0, 4]
+  gpus_per_node_isarco: [0, 1, 2, 3, 4]
 
   leonardo_service_level: [0, 1]
 
@@ -10,10 +11,10 @@ isarco:
 
   default_conf:
     modules: 
-      - "nvhpc/26.1"
+      - "nvhpc-hpcx-cuda13/26.1"
 
   configs:
-    - name: "isarco__{gpus_per_node}_gpus__{nodes}_nodes"
+    - name: "isarco__default__{gpus_per_node_isarco}_gpus__1_nodes"
 
 leonardo:
   scheduler: slurm
@@ -31,8 +32,8 @@ leonardo:
       # This saturates half the bandwidth - "hpcx-mpi/2.19"
     custom_headers:
       - "#SBATCH --ntasks-per-node=4"
-    env:
-      - "UCX_NETDEVICES=mlx5$SLURM_LOCALID:1"
+    # env: FIXME, not working
+    #   - "UCX_NET_DEVICES=mlx5$SLURM_LOCALID:1"
 
   configs:
     - name: "leonardo__boost_usr_prod-{leonardo_service_level}__{gpus_per_node}_gpus__{nodes}_nodes"
@@ -41,7 +42,6 @@ leonardo:
       env:
         - "NCCL_IB_SL={leonardo_service_level}"
         - "UCX_IB_SL={leonardo_service_level}"
-
 
 alps:
   scheduler: slurm
@@ -64,6 +64,23 @@ alps:
   configs:
     - name: "alps__normal__{gpus_per_node}_gpus__{nodes}_nodes"
       nodes: "{nodes}"
-      ntasks: "{nodes}"
       gpus: "{gpus_per_node}"
 
+jupiter:
+  scheduler: slurm
+
+  default_conf:
+    account: "exalab"
+    cpus_per_task: 1
+    time: "00:02:00"
+    partition: "booster"
+    modules: # Make sure this is coherent with AXCCL config
+      - "nvidia-compilers/25.9-CUDA-13"
+      - "OpenMPI/5.0.8"
+    custom_headers:
+      - "#SBATCH --ntasks-per-node=4"
+
+  configs:
+    - name: "jupiter__booster__{gpus_per_node}_gpus__{nodes}_nodes"
+      nodes: "{nodes}"
+      gpus: "{gpus_per_node}"
