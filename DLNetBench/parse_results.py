@@ -62,11 +62,12 @@ def stdout_to_csv(stdout_content):
         for rank, json_str in rank_outputs.items():
             parsed = json.loads(json_str)
             runtimes = parsed.get("runtimes", [])
+            throughputs = parsed.get("throughputs", [])
             barrier_times = parsed.get("barrier_time", [])
             
             rank_results = []
-            for runtime, barrier_time in zip(runtimes, barrier_times):
-                rank_results.append((runtime, barrier_time))
+            for runtime, barrier_time, throughput in zip(runtimes, barrier_times, throughputs):
+                rank_results.append((runtime, barrier_time, throughput))
             
             rank_data[rank] = rank_results
     
@@ -79,6 +80,7 @@ def stdout_to_csv(stdout_content):
         for rank, json_str in rank_outputs.items():
             parsed = json.loads(json_str)
             runtimes = parsed.get("runtime", [])
+            throughputs = parsed.get("throughputs", [])
             barrier_times = parsed.get("barrier", [])
             allgather_times = parsed.get("allgather", [])
             allgather_wait_fwd_times = parsed.get("allgather_wait_fwd", [])
@@ -90,6 +92,7 @@ def stdout_to_csv(stdout_content):
             rank_results = []
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
+                throughput = throughputs[run_idx]
                 barrier = barrier_times[run_idx]
                 allgather = allgather_times[run_idx]
                 
@@ -110,7 +113,7 @@ def stdout_to_csv(stdout_content):
                 # Total comm time
                 commtime = ag_fwd_sum + ag_bwd_sum + rs_sum + barrier + allgather
                 
-                rank_results.append((runtime, commtime))
+                rank_results.append((runtime, commtime, throughput))
             
             rank_data[rank] = rank_results
     
@@ -127,6 +130,7 @@ def stdout_to_csv(stdout_content):
                 continue
             
             runtimes = parsed.get("runtimes", [])
+            throughputs = parsed.get("throughputs", [])
             pp_comm_times = parsed.get("pp_comm_time", [])
             dp_comm_times = parsed.get("dp_comm_time", [])
             
@@ -140,6 +144,7 @@ def stdout_to_csv(stdout_content):
             rank_results = []
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
+                throughput = throughputs[run_idx]
                 
                 # Sum all pp_comm operations for this run (pure communication)
                 start_idx = run_idx * ops_per_run
@@ -151,7 +156,7 @@ def stdout_to_csv(stdout_content):
                 
                 commtime = pp_comm_sum + dp_comm
                 
-                rank_results.append((runtime, commtime))
+                rank_results.append((runtime, commtime, throughput))
             
             rank_data[rank] = rank_results
     
@@ -168,6 +173,7 @@ def stdout_to_csv(stdout_content):
                 continue
             
             runtimes = parsed.get("runtimes", [])
+            throughputs = parsed.get("throughputs", [])
             pp_comm_times = parsed.get("pp_comm_time", [])
             tp_comm_times = parsed.get("tp_comm_time", [])
             dp_comm_times = parsed.get("dp_comm_time", [])
@@ -183,6 +189,7 @@ def stdout_to_csv(stdout_content):
             rank_results = []
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
+                throughput = throughputs[run_idx]
                 
                 # Sum all pp_comm operations for this run (pure communication)
                 pp_start = run_idx * pp_ops_per_run
@@ -199,7 +206,7 @@ def stdout_to_csv(stdout_content):
                 
                 commtime = pp_comm_sum + tp_comm_sum + dp_comm
                 
-                rank_results.append((runtime, commtime))
+                rank_results.append((runtime, commtime, throughput))
             
             rank_data[rank] = rank_results
     
@@ -216,6 +223,7 @@ def stdout_to_csv(stdout_content):
                 continue
             
             runtimes = parsed.get("runtimes", [])
+            throughputs = parsed.get("throughputs", [])
             pp_comm_times = parsed.get("pp_comm_time", [])
             ep_comm_times = parsed.get("ep_comm_time", [])
             dp_ep_comm_times = parsed.get("dp_ep_comm_time", [])
@@ -232,6 +240,7 @@ def stdout_to_csv(stdout_content):
             rank_results = []
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
+                throughput = throughputs[run_idx]
                 
                 # Sum all pp_comm operations for this run (pure communication)
                 pp_start = run_idx * pp_ops_per_run
@@ -251,7 +260,7 @@ def stdout_to_csv(stdout_content):
                 
                 commtime = pp_comm_sum + ep_comm_sum + dp_ep_comm + dp_comm
                 
-                rank_results.append((runtime, commtime))
+                rank_results.append((runtime, commtime, throughput))
             
             rank_data[rank] = rank_results
     
@@ -270,13 +279,14 @@ def stdout_to_csv(stdout_content):
         # Collect all (runtime, commtime) for this run across ranks
         max_runtime = max(rank_data[rank][run_idx][0] for rank in rank_data)
         max_commtime = max(rank_data[rank][run_idx][1] for rank in rank_data)
+        min_throughput = min(rank_data[rank][run_idx][2] for rank in rank_data)
         
-        results.append((max_runtime, max_commtime))
+        results.append((max_runtime, max_commtime, min_throughput))
     
     # Convert to CSV format string
-    csv_lines = ["runtime,commtime"]
-    for runtime, commtime in results:
-        csv_lines.append(f"{runtime},{commtime}")
+    csv_lines = ["runtime,commtime,throughput"]
+    for runtime, commtime, throughput in results:
+        csv_lines.append(f"{runtime},{commtime},{throughput}")
     
     return "\n".join(csv_lines)
 
