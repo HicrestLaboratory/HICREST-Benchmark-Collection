@@ -16,6 +16,15 @@ Structure:
   - Section 10: JSON serialization
 
 Configure everything in the CONFIG block at the top of this file.
+
+Early-exit sampling
+-------------------
+When MAX_EXPERIMENTS (or --max-experiments) is set, the generator distributes
+a budget across pattern families, entropy bins, and placement bins *before*
+generation starts.  Each generator stops as soon as its quota is filled, so the
+combinatorial space is never fully enumerated.  Variety is guaranteed because
+quotas are allocated round-robin across families/bins first, then within each
+family round-robin across patterns.
 """
 
 from __future__ import annotations
@@ -78,7 +87,7 @@ STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
     },
     "large": {
         "tier_weight": 0.05,
-        "sizes": [32, 64], # FIXME
+        "sizes": [32, 64],
         "sub_weights": {},
     },
 }
@@ -95,9 +104,9 @@ RANDOM_SEED: Optional[int] = 42
 # ── Experiment list size bounds ───────────────────────────────────────────────
 # MIN_EXPERIMENTS: lower bound on the output list.  An error is raised if the
 #   generator produces fewer experiments than this value.  Set to 0 to disable.
-# MAX_EXPERIMENTS: upper bound.  When the generated set exceeds this value,
-#   experiments are trimmed with a round-robin strategy that preserves variety
-#   across pattern families, entropy bins, and (with topology) placement bins.
+# MAX_EXPERIMENTS: upper bound.  When set, the budget is distributed across
+#   pattern families, entropy bins, and (with topology) placement bins *before*
+#   generation begins, so sampling stops early rather than trimming afterward.
 #   Set to None to disable.
 MIN_EXPERIMENTS: int = 0
 MAX_EXPERIMENTS: Optional[int] = None
@@ -106,11 +115,6 @@ MAX_EXPERIMENTS: Optional[int] = None
 USE_TOPOLOGY: bool = False
 
 # Path / command of the external topology program.
-# The oracle must support exactly two commands:
-#   find_placement        – assign jobs to nodes given target placement classes
-#   shuffle_within_class  – return N random same-class alternative node assignments
-# Topology structure is passed statically (TOPO_Q1/Q2/Q3); no topology-describe
-# query is ever issued to the external program.
 TOPOLOGY_PROGRAM: str = "topology_oracle"
 
 # Static topology parameters – describe the cluster hierarchy without any
@@ -120,35 +124,17 @@ TOPO_Q2: int = 64   # GPUs per L1-switch / rack domain
 TOPO_Q3: int = G    # GPUs per group (set equal to G for single-group clusters)
 
 # Whether to include intra-node as a valid placement class.
-# Excluded by default: in multi-job interference studies jobs rarely share a node,
-# so the intra-node class adds no practical coverage.
 INCLUDE_INTRA_NODE: bool = False
 
 # Number of additional node-selection replicates per baseline run for
 # intra-group and inter-group placement classes.
-# For each (S_i, g) in B the generator produces:
-#   1                      x intra-L1    (one canonical representative)
-#   N_BASELINE_TOPO_REPS   x intra-group (different physical node selections)
-#   N_BASELINE_TOPO_REPS   x inter-group (different physical node selections)
 N_BASELINE_TOPO_REPS: int = 2
 
 # Number of alternative node assignments to generate per (experiment, placement
-# class vector) pair.  These are recorded as (vector, seed) pairs only – actual
-# nodelists are resolved later by expand_experiments.py.
+# class vector) pair.
 N_PLACEMENT_SEEDS_PER_VECTOR: int = 1
 
 # Placement-vector scoring and bin boundaries.
-# Each placement class receives a numeric score:
-#   intra-node  -> 0  (excluded by default)
-#   intra-L1    -> 1
-#   intra-group -> 2
-#   inter-group -> 3
-# A placement-class vector κ = (κ_1, …, κ_k) is scored by
-#   mean_score(κ) = (sum_j score(κ_j)) / k  ∈ [1, 3]
-# and partitioned into three locality bins:
-#   low    [1.00, PLACEMENT_BIN_LO_HI)  – mostly intra-L1
-#   medium [PLACEMENT_BIN_LO_HI, PLACEMENT_BIN_MED_HI)
-#   high   [PLACEMENT_BIN_MED_HI, 3.00] – mostly inter-group
 PLACEMENT_BIN_LO_HI:  float = 1.67
 PLACEMENT_BIN_MED_HI: float = 2.33
 
@@ -230,15 +216,11 @@ class BaselineWithPlacement:
       N_BASELINE_TOPO_REPS x intra-group (seeds 1..N)
       N_BASELINE_TOPO_REPS x inter-group (seeds 1..N)
     intra-node is added only if INCLUDE_INTRA_NODE is True.
-
-    The 'seed' field is forwarded to the topology oracle's shuffle_within_class
-    command when nodelists are generated later, guaranteeing reproducibility
-    without storing actual nodelists at design time.
     """
     run: SingleRun
     placement_class: str
-    replicate_index: int   # 0 = canonical; 1..N = variance replicates
-    seed: int              # reproducibility seed for later nodelist generation
+    replicate_index: int
+    seed: int
 
     def __str__(self) -> str:
         return (
@@ -255,13 +237,6 @@ def build_baseline_set_with_topology(
     include_intra_node: bool,
     base_seed: int = 0,
 ) -> list[BaselineWithPlacement]:
-    """
-    Build the topology-extended baseline set.
-
-    No nodelists are stored; each entry carries a 'seed' for later
-    reproducible nodelist generation via the oracle.  The oracle is
-    instantiated here only to read topology_params; no query is issued.
-    """
     flat_baseline = build_baseline_set(strategies, g_total)
     result: list[BaselineWithPlacement] = []
     seed_ctr = base_seed
@@ -271,7 +246,6 @@ def build_baseline_set_with_topology(
             run.gpus, g_total, oracle, include_intra_node
         )
         for pc in classes_in_scope:
-            # canonical representative (rep 0)
             result.append(BaselineWithPlacement(
                 run=run,
                 placement_class=pc,
@@ -280,7 +254,6 @@ def build_baseline_set_with_topology(
             ))
             seed_ctr += 1
 
-            # variance replicates only for intra-group and inter-group
             n_reps = (
                 n_baseline_topo_reps
                 if pc in (PlacementClass.INTRA_GROUP, PlacementClass.INTER_GROUP)
@@ -508,6 +481,113 @@ def pattern_E_stochastic_tier_batch(
     return patterns
 
 
+# ===========================================================================
+# Budget computation helpers
+# ===========================================================================
+
+# Entropy and placement bin names (fixed order used everywhere for consistency).
+ENTROPY_BIN_NAMES   = ("low", "medium", "high")
+PLACEMENT_BIN_NAMES = ("low", "medium", "high")
+FAMILY_NAMES = ("A", "B", "C", "D", "E")
+
+
+def _compute_family_budgets(
+    max_experiments: Optional[int],
+    active_families: list[str],
+    n_samples_per_bin: int,
+    use_topology: bool,
+    n_placement_samples_per_bin: int,
+    n_seeds_per_vector: int,
+) -> Optional[dict[str, int]]:
+    """
+    Distribute max_experiments evenly across active pattern families.
+
+    Returns {family -> max_patterns_for_that_family} so each family can
+    independently cap the number of patterns it contributes, stopping
+    generation early rather than trimming afterward.
+
+    Derivation:
+      Each pattern yields up to (n_samples_per_bin × 3) flat experiments.
+      With topology each flat experiment expands by up to
+        (n_placement_samples_per_bin × 3 × n_seeds_per_vector) hierarchical ones.
+      We invert that to get patterns_per_family.
+
+    Returns None when max_experiments is None (no cap).
+    """
+    if max_experiments is None:
+        return None
+    if not active_families:
+        return {}
+
+    n_families = len(active_families)
+    experiments_per_family = max(1, max_experiments // n_families)
+
+    if use_topology:
+        hier_per_flat = n_placement_samples_per_bin * 3 * n_seeds_per_vector
+        flat_per_family = max(1, experiments_per_family // max(1, hier_per_flat))
+    else:
+        flat_per_family = experiments_per_family
+
+    labelling_per_pattern = n_samples_per_bin * 3  # 3 entropy bins
+    patterns_per_family = max(1, flat_per_family // max(1, labelling_per_pattern))
+
+    return {f: patterns_per_family for f in active_families}
+
+
+def _compute_per_pattern_bin_quota(
+    max_experiments: Optional[int],
+    n_active_patterns: int,
+    n_samples_per_bin: int,
+    use_topology: bool,
+    n_placement_samples_per_bin: int,
+    n_seeds_per_vector: int,
+) -> int:
+    """
+    How many labelling samples per entropy bin each pattern may contribute.
+
+    Recalculated after pattern generation with the real pattern count for
+    tighter accuracy: if fewer patterns were produced than the family budget
+    anticipated, each pattern gets a proportionally larger quota.
+    """
+    if max_experiments is None:
+        return n_samples_per_bin
+
+    if use_topology:
+        hier_per_flat = n_placement_samples_per_bin * 3 * n_seeds_per_vector
+        flat_budget = max(1, max_experiments // max(1, hier_per_flat))
+    else:
+        flat_budget = max_experiments
+
+    if n_active_patterns == 0:
+        return n_samples_per_bin
+
+    flat_per_pattern = max(1, flat_budget // n_active_patterns)
+    per_bin = max(1, flat_per_pattern // 3)  # 3 entropy bins
+    return per_bin
+
+
+def _compute_per_experiment_placement_bin_quota(
+    max_experiments: Optional[int],
+    n_flat_experiments: int,
+    n_placement_samples_per_bin: int,
+    n_seeds_per_vector: int,
+) -> int:
+    """
+    How many placement-class vectors per locality bin each flat experiment may
+    contribute.  Recalculated with the real flat-experiment count so that if
+    fewer flat experiments were produced, each gets a proportionally larger quota.
+    """
+    if max_experiments is None:
+        return n_placement_samples_per_bin
+
+    if n_flat_experiments == 0:
+        return n_placement_samples_per_bin
+
+    target_hier_per_flat = max(1, max_experiments // n_flat_experiments)
+    per_bin = max(1, target_hier_per_flat // (3 * max(1, n_seeds_per_vector)))
+    return per_bin
+
+
 def build_pattern_set(
     g_total: int, k_max: int, g_min: int, beta: float,
     hierarchical_defs: list[tuple[list[float], int]],
@@ -518,41 +598,75 @@ def build_pattern_set(
     generate_equal_splits: bool, generate_geometric: bool,
     generate_hierarchical: bool, generate_powerlaw: bool,
     generate_stochastic: bool,
+    # ── early-exit cap ──────────────────────────────────────────────────────
+    family_budgets: Optional[dict[str, int]] = None,
 ) -> list[TaggedPattern]:
+    """
+    Build the pattern set, respecting per-family caps when family_budgets is
+    provided.  Generators stop early once their quota is filled, so the
+    combinatorial space is never fully enumerated for large G.
+
+    family_budgets: {family_letter -> max_patterns_for_that_family}
+      When None, no cap is applied (original behaviour).
+    """
     seen: set[AllocationPattern] = set()
     patterns: list[TaggedPattern] = []
+    family_counts: dict[str, int] = {f: 0 for f in FAMILY_NAMES}
 
-    def add(tp: TaggedPattern) -> None:
+    def _budget_ok(family: str) -> bool:
+        if family_budgets is None:
+            return True
+        cap = family_budgets.get(family)
+        return cap is None or family_counts[family] < cap
+
+    def add(tp: TaggedPattern) -> bool:
+        if not _budget_ok(tp.family):
+            return False
         actual_util = sum(tp.slots) / g_total
         if (tp.slots not in seen and sum(tp.slots) <= g_total
                 and util_min <= actual_util <= util_max):
             seen.add(tp.slots)
             patterns.append(tp)
+            family_counts[tp.family] += 1
+            return True
+        return False
 
     for rho in utilizations:
-        if generate_equal_splits:
+        if generate_equal_splits and _budget_ok("A"):
             for tp in pattern_A_equal_splits(g_total, k_max, g_min, feasible_gpu_counts, rho):
                 add(tp)
-        if generate_geometric:
+
+        if generate_geometric and _budget_ok("B"):
             for tp in pattern_B_geometric(g_total, k_max, g_min, beta, feasible_gpu_counts, rho):
                 add(tp)
-        if generate_hierarchical:
+
+        if generate_hierarchical and _budget_ok("C"):
             for tf, nt in hierarchical_defs:
                 tp = pattern_C_hierarchical(g_total, k_max, g_min, tf, nt, feasible_gpu_counts, rho)
                 if tp is not None:
                     add(tp)
-        if generate_powerlaw:
+
+        if generate_powerlaw and _budget_ok("D"):
             for alpha in powerlaw_alphas:
                 for k in range(2, k_max + 1):
+                    if not _budget_ok("D"):
+                        break
                     tp = pattern_D_powerlaw(g_total, k, g_min, alpha, rho, feasible_gpu_counts)
                     if tp is not None:
                         add(tp)
-        if generate_stochastic:
+
+        if generate_stochastic and _budget_ok("E"):
+            cap = (
+                family_budgets["E"] - family_counts["E"]
+                if family_budgets is not None else n_stochastic_patterns
+            )
+            cap = max(0, min(cap, n_stochastic_patterns))
             for tp in pattern_E_stochastic_tier_batch(
                 g_total, k_max, g_min, stochastic_tier_config,
-                feasible_gpu_counts, n_stochastic_patterns, rng, utilization=rho,
+                feasible_gpu_counts, cap, rng, utilization=rho,
             ):
                 add(tp)
+
     return patterns
 
 
@@ -683,19 +797,60 @@ def build_experiment_set(
     strategies: list[Strategy], n_per_bin: int,
     delta1_frac: float, delta2_frac: float,
     enum_threshold: int, rng: random.Random,
+    # ── early-exit cap ──────────────────────────────────────────────────────
+    max_experiments: Optional[int] = None,
 ) -> list[Experiment]:
+    """
+    Build the flat experiment set with budget-aware early stopping.
+
+    When max_experiments is set, a per-bin quota is derived from the real
+    pattern count and distributed equitably across patterns (round-robin by
+    pattern order, which already varies by family due to build_pattern_set).
+    Each entropy bin is filled independently so low/medium/high are all
+    represented before any single bin is over-filled.
+    """
+    effective_n_per_bin = _compute_per_pattern_bin_quota(
+        max_experiments=max_experiments,
+        n_active_patterns=len(patterns),
+        n_samples_per_bin=n_per_bin,
+        use_topology=cfg.use_topology,
+        n_placement_samples_per_bin=cfg.n_placement_samples_per_bin,
+        n_seeds_per_vector=cfg.n_placement_seeds_per_vector,
+    )
+
+    if max_experiments is not None:
+        if cfg.use_topology:
+            hier_per_flat = cfg.n_placement_samples_per_bin * 3 * cfg.n_placement_seeds_per_vector
+            flat_cap = max(1, max_experiments // max(1, hier_per_flat))
+        else:
+            flat_cap = max_experiments
+        global_bin_cap = max(1, flat_cap // 3)
+    else:
+        global_bin_cap = None
+
+    global_bin_counts: dict[str, int] = {b: 0 for b in ENTROPY_BIN_NAMES}
+
     experiments: list[Experiment] = []
     for pattern in patterns:
+        if global_bin_cap is not None and all(
+            global_bin_counts[b] >= global_bin_cap for b in ENTROPY_BIN_NAMES
+        ):
+            break
+
         sampled = sample_labellings_stratified(
-            pattern, strategies, n_per_bin, delta1_frac, delta2_frac,
-            enum_threshold, rng
+            pattern, strategies, effective_n_per_bin,
+            delta1_frac, delta2_frac, enum_threshold, rng,
         )
         for labelling, bin_label in sampled:
+            if global_bin_cap is not None and global_bin_counts[bin_label] >= global_bin_cap:
+                continue
             runs = [SingleRun(s, g) for s, g in zip(labelling, pattern.slots)]
             experiments.append(Experiment(
                 pattern=pattern, labelling=labelling,
                 entropy_bin=bin_label, config=Config(runs, cfg),
             ))
+            global_bin_counts[bin_label] += 1
+
     return experiments
 
 
@@ -711,20 +866,14 @@ class PlacementClass:
       intra-L1    -> score 1  (all GPUs within one L1-switch / rack domain)
       intra-group -> score 2  (spans multiple L1 domains within one group)
       inter-group -> score 3  (spans multiple group domains)
-
-    A placement-class vector κ = (κ_1, …, κ_k) is scored by
-      mean_score(κ) = (sum_j score(κ_j)) / k
-    which lies in [1, 3] when intra-node is excluded.
-    The score partitions κ into low / medium / high locality bins.
     """
     INTRA_NODE  = "intra-node"
     INTRA_L1    = "intra-L1"
     INTRA_GROUP = "intra-group"
     INTER_GROUP = "inter-group"
 
-    # Short names used in experiment output JSONs consumed by expand_experiments.py
     SHORT_NAME: dict[str, str] = {
-        "intra-node":  "intra-node",  # excluded by default
+        "intra-node":  "intra-node",
         "intra-L1":    "intra-L1",
         "intra-group": "intra-group",
         "inter-group": "inter-group",
@@ -742,27 +891,12 @@ PlacementClassVector = tuple[str, ...]
 
 
 def placement_vector_score(kappa: PlacementClassVector) -> float:
-    """
-    mean_score(κ) = (Σ_j score(κ_j)) / k.
-
-    With scores intra-L1→1, intra-group→2, inter-group→3 the result lies
-    in [1, 3] for vectors that exclude intra-node.
-
-    Example: κ = (intra-L1 ×2, intra-group ×4, inter-group ×10)
-      → mean_score = (2·1 + 4·2 + 10·3) / 16 = 2.5  →  high bin.
-    """
     if not kappa:
         return 0.0
     return sum(PlacementClass.SCORE.get(c, 0.0) for c in kappa) / len(kappa)
 
 
 def placement_bin(score: float, lo_hi: float, med_hi: float) -> str:
-    """
-    Assign a mean placement score to a locality bin.
-      low    [1.00, lo_hi)  – mostly intra-L1
-      medium [lo_hi, med_hi)
-      high   [med_hi, 3.00] – mostly inter-group
-    """
     if score < lo_hi:
         return "low"
     elif score < med_hi:
@@ -774,7 +908,6 @@ def _placement_classes_in_scope(
     gpu_count: int, g_total: int,
     oracle: "TopologyOracle", include_intra_node: bool,
 ) -> list[str]:
-    """Feasible placement classes for a job of gpu_count GPUs."""
     q1 = oracle.topology_params["q1"]
     q2 = oracle.topology_params["q2"]
     q3 = oracle.topology_params["q3"]
@@ -796,32 +929,6 @@ def _placement_classes_in_scope(
 class TopologyOracle:
     """
     Thin wrapper around the external topology analysis program.
-
-    Minimal external interface (two commands only)
-    ----------------------------------------------
-    The oracle communicates over stdin/stdout with newline-delimited JSON.
-
-    1. find_placement
-       Input:  { "command": "find_placement",
-                 "jobs": [ { "job_id": <int>,
-                             "gpu_count": <int>,
-                             "placement_class": <str> }, … ] }
-       Output: { "feasible": <bool>,
-                 "assignments": [ { "job_id": <int>,
-                                    "nodes": [ <str>, … ] }, … ] }
-
-    2. shuffle_within_class
-       Input:  { "command": "shuffle_within_class",
-                 "jobs": [ { "job_id": <int>,
-                             "gpu_count": <int>,
-                             "placement_class": <str> }, … ],
-                 "n_shuffles": <int> }
-       Output: { "shuffles": [ [ { "job_id": <int>,
-                                   "nodes": [ <str>, … ] }, … ], … ] }
-
-    The topology structure (q1, q2, q3) is passed to the constructor and
-    described statically – no topology-describe command is ever issued to
-    the external program, keeping the required interface minimal.
     """
 
     def __init__(
@@ -897,14 +1004,6 @@ class TopologyOracle:
 class HierarchicalExperiment:
     """
     X = (P, φ, κ, seed) – one element of E_hier.
-
-    Nodelists are NOT stored at design time.  Only the placement-class vector κ
-    and a reproducibility seed are recorded.  The concrete node assignments are
-    resolved later by expand_experiments.py using the topology oracle.
-
-    placement_class_vector: one PlacementClass entry per job in the config.
-    placement_seed: integer seed forwarded to the oracle's shuffle_within_class
-        command to produce a deterministic nodelist for this (experiment, κ) pair.
     """
     base: Experiment
     placement_class_vector: PlacementClassVector
@@ -933,6 +1032,7 @@ def _all_placement_class_vectors(
     ]
     return [tuple(combo) for combo in itertools.product(*per_job_classes)]
 
+
 def _sample_placement_vectors(
     vectors: list[PlacementClassVector],
     n_per_bin: int, lo_hi: float, med_hi: float,
@@ -940,11 +1040,6 @@ def _sample_placement_vectors(
 ) -> list[tuple[PlacementClassVector, str]]:
     """
     Stratified sampling of placement-class vectors by locality bin.
-
-    Each vector κ is scored by mean_score(κ) = (Σ score(κ_j)) / k and placed
-    into a low / medium / high bin.  Up to n_per_bin vectors are drawn
-    uniformly at random from each non-empty bin, ensuring variety across the
-    full locality spectrum.
     """
     BIN_NAMES = ("low", "medium", "high")
     bins: dict[str, list[PlacementClassVector]] = {b: [] for b in BIN_NAMES}
@@ -970,31 +1065,51 @@ def build_hierarchical_experiment_set(
     rng: random.Random,
     base_seed: int = 10_000,
     n_seeds_per_vector: int = 1,
+    # ── early-exit cap ──────────────────────────────────────────────────────
+    max_experiments: Optional[int] = None,
 ) -> list[HierarchicalExperiment]:
     """
-    Build E_hier: for every flat experiment, sample placement-class vectors
-    from each locality bin, then assign deterministic seeds.
+    Build E_hier with budget-aware early stopping.
 
-    No oracle calls are made here.  Concrete node assignments are deferred to
-    expand_experiments.py, which uses (placement_class_vector, placement_seed)
-    to request nodelists from the topology oracle at experiment launch time.
-
-    n_seeds_per_vector: how many independent seeds (and therefore independent
-        nodelist realisations) to record per (experiment, κ) pair.
+    When max_experiments is set, a per-bin quota is derived from the real
+    flat-experiment count.  Global placement-bin counters stop each bin from
+    being over-filled; the three bins are iterated in round-robin so all three
+    locality levels are represented before any one dominates.
     """
+    effective_n_per_bin = _compute_per_experiment_placement_bin_quota(
+        max_experiments=max_experiments,
+        n_flat_experiments=len(flat_experiments),
+        n_placement_samples_per_bin=n_placement_samples_per_bin,
+        n_seeds_per_vector=n_seeds_per_vector,
+    )
+
+    if max_experiments is not None:
+        global_pbin_cap = max(1, max_experiments // (3 * max(1, n_seeds_per_vector)))
+    else:
+        global_pbin_cap = None
+
+    global_pbin_counts: dict[str, int] = {b: 0 for b in PLACEMENT_BIN_NAMES}
+
     hier_experiments: list[HierarchicalExperiment] = []
     seed_ctr = base_seed
 
     for exp in flat_experiments:
+        if global_pbin_cap is not None and all(
+            global_pbin_counts[b] >= global_pbin_cap for b in PLACEMENT_BIN_NAMES
+        ):
+            break
+
         all_vectors = _all_placement_class_vectors(
             exp.config, oracle, include_intra_node, g_total
         )
         sampled = _sample_placement_vectors(
-            all_vectors, n_placement_samples_per_bin,
+            all_vectors, effective_n_per_bin,
             placement_bin_lo_hi, placement_bin_med_hi, rng,
         )
 
         for kappa, p_bin in sampled:
+            if global_pbin_cap is not None and global_pbin_counts[p_bin] >= global_pbin_cap:
+                continue
             score = placement_vector_score(kappa)
             for _ in range(n_seeds_per_vector):
                 hier_experiments.append(HierarchicalExperiment(
@@ -1005,99 +1120,13 @@ def build_hierarchical_experiment_set(
                     placement_seed=seed_ctr,
                 ))
                 seed_ctr += 1
+            global_pbin_counts[p_bin] += 1
 
     return hier_experiments
 
 
 # ===========================================================================
-# SECTION 9 – Size-bounded trimming
-# ===========================================================================
-
-def _diversity_key_flat(exp: "Experiment") -> tuple:
-    """Diversity key for flat experiments: (pattern_family, entropy_bin)."""
-    return (exp.pattern.family, exp.entropy_bin)
-
-
-def _diversity_key_hier(he: "HierarchicalExperiment") -> tuple:
-    """Diversity key for hierarchical experiments: (family, entropy_bin, placement_bin)."""
-    return (he.base.pattern.family, he.base.entropy_bin, he.placement_bin_label)
-
-
-def _trim_to_max(items: list, max_count: int, key_fn, rng: random.Random) -> list:
-    """
-    Trim *items* to at most *max_count* while maximising variety.
-
-    Buckets items by diversity key, shuffles within each bucket, then
-    round-robins across buckets so that every (pattern_family × entropy_bin ×
-    placement_bin) combination is represented before any single combination is
-    over-represented.
-    """
-    if len(items) <= max_count:
-        return items
-    buckets: dict[tuple, list] = {}
-    for item in items:
-        k = key_fn(item)
-        buckets.setdefault(k, []).append(item)
-    for bucket in buckets.values():
-        rng.shuffle(bucket)
-    keys = sorted(buckets.keys())
-    result: list = []
-    indices = {k: 0 for k in keys}
-    while len(result) < max_count:
-        progressed = False
-        for k in keys:
-            if len(result) >= max_count:
-                break
-            if indices[k] < len(buckets[k]):
-                result.append(buckets[k][indices[k]])
-                indices[k] += 1
-                progressed = True
-        if not progressed:
-            break
-    return result
-
-
-def apply_size_bounds(
-    experiments: list["Experiment"],
-    hier_experiments: Optional[list["HierarchicalExperiment"]],
-    min_count: int,
-    max_count: Optional[int],
-    rng: random.Random,
-) -> tuple[list["Experiment"], Optional[list["HierarchicalExperiment"]]]:
-    """
-    Enforce --min-experiments / --max-experiments.
-
-    When topology is enabled, bounds apply to |E_hier|.  After trimming E_hier,
-    the flat set E is filtered to only patterns still referenced, keeping the
-    JSON consistent.  Without topology, bounds apply directly to |E|.
-    """
-    primary = hier_experiments if hier_experiments is not None else experiments
-    primary_name = "hierarchical" if hier_experiments is not None else "flat"
-
-    if min_count > 0 and len(primary) < min_count:
-        raise ValueError(
-            f"Generated {primary_name} experiment set has {len(primary)} entries, "
-            f"below --min-experiments={min_count}.  "
-            "Raise --n-samples-per-bin / --n-stochastic-patterns, or lower the bound."
-        )
-
-    if max_count is not None and len(primary) > max_count:
-        if hier_experiments is not None:
-            hier_experiments = _trim_to_max(
-                hier_experiments, max_count, _diversity_key_hier, rng
-            )
-            used_ids = {id(he.base) for he in hier_experiments}
-            experiments = [e for e in experiments if id(e) in used_ids]
-        else:
-            experiments = _trim_to_max(
-                experiments, max_count, _diversity_key_flat, rng
-            )
-
-    return experiments, hier_experiments
-
-
-# ===========================================================================
-# SECTION 10 – Utilities
+# SECTION 9 – Utilities
 # ===========================================================================
 
 PRINTS_SEP_WIDTH = 140
@@ -1232,7 +1261,6 @@ def _experiment_to_dict(exp: Experiment) -> dict:
 
 def _hier_experiment_to_dict(he: HierarchicalExperiment) -> dict:
     d = _experiment_to_dict(he.base)
-    # Emit short names (class1/class2/class3) for downstream consumers
     d["placement_class_vector"] = [
         PlacementClass.SHORT_NAME.get(c, c) for c in he.placement_class_vector
     ]
@@ -1347,6 +1375,27 @@ def main(cfg: argparse.Namespace) -> None:
     feasible_gpu_counts = compute_feasible_gpu_counts(strategies, cfg.G)
     utilizations = _utilization_grid(cfg.util_min, cfg.util_max, cfg.util_steps)
 
+    # ── Compute per-family pattern budgets before generation ─────────────────
+    gen_flags = {
+        "A": not cfg.use_topology,
+        "B": False,
+        "C": False,
+        "D": cfg.use_topology,
+        "E": True,
+    }
+    active_families = [f for f, active in gen_flags.items() if active]
+
+    family_budgets = _compute_family_budgets(
+        max_experiments=cfg.max_experiments,
+        active_families=active_families,
+        n_samples_per_bin=cfg.n_samples_per_bin,
+        use_topology=cfg.use_topology,
+        n_placement_samples_per_bin=cfg.n_placement_samples_per_bin,
+        n_seeds_per_vector=cfg.n_placement_seeds_per_vector,
+    )
+    if family_budgets:
+        print(f"\n[budget] Per-family pattern caps: {family_budgets}")
+
     patterns = build_pattern_set(
         g_total=cfg.G, k_max=cfg.k_max, g_min=cfg.g_min, beta=cfg.beta,
         hierarchical_defs=HIERARCHICAL_PATTERNS, powerlaw_alphas=cfg.powerlaw_alphas,
@@ -1354,11 +1403,12 @@ def main(cfg: argparse.Namespace) -> None:
         stochastic_tier_config=STOCHASTIC_TIER_CONFIG,
         n_stochastic_patterns=cfg.n_stochastic_patterns,
         feasible_gpu_counts=feasible_gpu_counts, rng=rng,
-        generate_equal_splits=not cfg.use_topology,
-        generate_geometric=False,
-        generate_hierarchical=False,
-        generate_powerlaw=cfg.use_topology,
-        generate_stochastic=True,
+        generate_equal_splits=gen_flags["A"],
+        generate_geometric=gen_flags["B"],
+        generate_hierarchical=gen_flags["C"],
+        generate_powerlaw=gen_flags["D"],
+        generate_stochastic=gen_flags["E"],
+        family_budgets=family_budgets,
     )
     print_patterns(cfg, patterns)
 
@@ -1367,6 +1417,7 @@ def main(cfg: argparse.Namespace) -> None:
         n_per_bin=cfg.n_samples_per_bin,
         delta1_frac=cfg.entropy_delta_1, delta2_frac=cfg.entropy_delta_2,
         enum_threshold=cfg.enum_threshold, rng=rng,
+        max_experiments=cfg.max_experiments,
     )
     print_experiment_set(cfg, experiments)
 
@@ -1397,21 +1448,19 @@ def main(cfg: argparse.Namespace) -> None:
             include_intra_node=cfg.include_intra_node,
             g_total=cfg.G, rng=rng,
             n_seeds_per_vector=cfg.n_placement_seeds_per_vector,
+            max_experiments=cfg.max_experiments,
         )
         print_hierarchical_experiment_set(cfg, hier_experiments)
 
-    # ── Size bounds: trim and/or validate ────────────────────────────────────
-    experiments, hier_experiments = apply_size_bounds(
-        experiments=experiments,
-        hier_experiments=hier_experiments,
-        min_count=cfg.min_experiments,
-        max_count=cfg.max_experiments,
-        rng=rng,
-    )
-    if cfg.max_experiments is not None:
-        active = hier_experiments if hier_experiments is not None else experiments
-        print(f"\n[bounds] After trimming: {len(active)} experiments "
-              f"(max={cfg.max_experiments})")
+    # ── Validate lower bound (upper bound already met during generation) ─────
+    primary = hier_experiments if hier_experiments is not None else experiments
+    primary_name = "hierarchical" if hier_experiments is not None else "flat"
+    if cfg.min_experiments > 0 and len(primary) < cfg.min_experiments:
+        raise ValueError(
+            f"Generated {primary_name} experiment set has {len(primary)} entries, "
+            f"below --min-experiments={cfg.min_experiments}.  "
+            "Raise --n-samples-per-bin / --n-stochastic-patterns, or lower the bound."
+        )
 
     print_summary(cfg.G, strategies, baseline, patterns, experiments,
                   hier_experiments, baseline_topo,
@@ -1512,7 +1561,6 @@ examples:
     eg.add_argument("--enum-threshold", type=int, default=ENUM_THRESHOLD, metavar="N",
                     help=f"Max |Φ(P)| for exact enumeration (default: {ENUM_THRESHOLD:,}).")
 
-    # ── size bounds ──────────────────────────────────────────────────────────
     sg = parser.add_argument_group("experiment list size bounds")
     sg.add_argument("--min-experiments", type=int, default=MIN_EXPERIMENTS, metavar="N",
                     help=(
@@ -1522,8 +1570,8 @@ examples:
     sg.add_argument("--max-experiments", type=int, default=MAX_EXPERIMENTS, metavar="N",
                     help=(
                         "Maximum experiments to keep (default: unlimited). "
-                        "Excess entries are trimmed by round-robin across pattern families, "
-                        "entropy bins, and placement bins to maximise variety."
+                        "Budget is distributed across families/bins before generation; "
+                        "sampling stops early rather than trimming afterward."
                     ))
 
     parser.add_argument("--seed", type=int, default=RANDOM_SEED, metavar="S",
