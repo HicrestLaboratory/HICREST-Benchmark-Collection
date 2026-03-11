@@ -89,7 +89,7 @@ def main(args: argparse.Namespace) -> None:
             print(f"        waiting for job_id={previous_job_id}")
 
         job = sbm.launch_job(
-            config_name      = args.config_name,
+            config_name      = "baseline_" + args.config_name + f"_{num_gpus}gpus",
             command          = command,
             tag              = f"baseline_{strategy}_{num_gpus}gpus",
             previous_job_id  = previous_job_id,
