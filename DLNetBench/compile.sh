@@ -4,7 +4,7 @@ set -e
 
 source ../common/compile/utils.sh
 
-SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps")
+SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps" "isarco")
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <system>"
@@ -15,7 +15,7 @@ system="$1"
 validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
 
 # Setup JobPlacer
-. ../common/compile/setup_job_placer.sh
+#. ../common/compile/setup_job_placer.sh
 
 check_ccutils_installation
 

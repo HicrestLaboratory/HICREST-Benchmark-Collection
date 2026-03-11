@@ -148,6 +148,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+from command_map import get_command
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +473,7 @@ def build_experiment_json(
     rec: dict,
     exp_index: int,
     gpus_per_node: int,
+    comm_lib: str,
     n_total_nodes: int,
     placement_mode: str,           # device|random|linear|runtime|hardcoded
     oracle: Optional[PlacementOracle],
@@ -527,6 +529,7 @@ def build_experiment_json(
         # Base fields — always present
         entry: dict = {
             "strategy": run["strategy"],
+            "command":  get_command(run["strategy"], gpus, comm_lib),
             "nodes":    nodes,
             "gpus":     gpus,
         }
@@ -719,6 +722,7 @@ def main(args: argparse.Namespace) -> None:
         exp_doc = build_experiment_json(
             rec=rec,
             exp_index=idx,
+            comm_lib=args.comm_lib,
             gpus_per_node=args.gpus_per_node,
             n_total_nodes=args.n_total_nodes,
             placement_mode=placement_mode,
@@ -785,6 +789,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "input_json", metavar="EXPERIMENTS_JSON",
         help="Master JSON produced by experiment_design.py.",
+    )
+
+    p.add_argument(
+        "--comm_lib", type=str, required=True, metavar="COMM_LIB", 
+        help="Communication library to use", choices=["nccl", "rccl", "oneccl"]
     )
 
     # Required

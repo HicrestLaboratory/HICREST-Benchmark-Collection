@@ -34,16 +34,14 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from command_map import get_command
+from typing import Union
+
 # ---------------------------------------------------------------------------
 # CONFIGURATION — edit application paths to match your environment
 # ---------------------------------------------------------------------------
 
-APPS: dict = {
-    "FSDP": "$HOME/CRAB/benchmarks/blink/bin/a2a_comm_only -msgsize 512 -iter 1000",
-    "DP+PP": "$HOME/CRAB/benchmarks/blink/bin/a2a_comm_only -msgsize 512 -iter 1000",
-    "DP": "$HOME/CRAB/benchmarks/blink/bin/a2a_comm_only -msgsize 512 -iter 1000",
-    "DP+PP+TP": "$HOME/CRAB/benchmarks/blink/bin/a2a_comm_only -msgsize 262144 -iter 10000"
-}
+#
 
 
 # Node layout
@@ -63,7 +61,7 @@ POLL_INTERVAL       = 2       # seconds between polls
 def ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def log(msg: str, log_path: Path | None = None) -> None:
+def log(msg: str, log_path: Union[Path, None] = None) -> None:
     """Print msg to stdout. If log_path is given, also append to that file."""
     line = f"[{ts()}] {msg}"
     print(line, flush=True)
@@ -105,41 +103,45 @@ def job_output_path(out_dir: Path, uid: str) -> Path:
 # Job launch
 # ---------------------------------------------------------------------------
 
-def launch(job_type: str, nodes: list[str], extra_flags: list[str],
-           out_dir: Path, log_path: Path | None, task_id: int) -> subprocess.Popen:
+def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str], 
+           out_dir: Path, log_path: Union[Path, None], task_id: int, launch_direct: bool, gpus:int = None) -> subprocess.Popen:
     """Launch one srun job and return its Popen handle."""
-    uid      = f"{job_type}_{task_id}"
-    app      = APPS[job_type] #!RANDOM.CHOICE(list(APPS.keys()))] se voglio farlo randomicos
-    app_argv = expand_app(app)
+    uid      = f"{command}_{task_id}"
+    #app_argv = expand_app(command)
     nodelist = ",".join(nodes)
     job_out  = job_output_path(out_dir, uid)
-
-    cmd = [
-        "srun",
-        "--export=ALL",
-        f"--nodelist={nodelist}",
-        f"--cpu-bind=socket",
-        f"--ntasks-per-node={TASKS_PER_NODE}",
-        f"--cpus-per-task={CPUS_PER_TASK}",
-        f"--job-name={uid}",
-        *extra_flags,
-        *app_argv,
-    ]
+    cmd = []
+    if launch_direct:
+        cmd += ["mpirun", "-np", f"{gpus}", *extra_flags]#, *app_argv]
+    else:
+        cmd += [
+            "srun",
+            "--export=ALL",
+            f"--nodelist={nodelist}",
+            f"--cpu-bind=socket",
+            f"--ntasks-per-node={TASKS_PER_NODE}",
+            f"--cpus-per-task={CPUS_PER_TASK}",
+            f"--job-name={uid}",
+            *extra_flags,
+            #*app_argv,
+        ]
 
     # ------- LOGGING & METADATA -------
     header = (
         f"TASK     : {uid}\n"
-        f"TYPE     : {job_type}\n"
+        f"TYPE     : {strategy}\n"
         f"NODES    : {nodelist}\n"
-        f"APP      : {app}\n"
+        f"APP      : {command}\n"
         f"CMD      : {' '.join(cmd)}\n"
         f"STARTED  : {ts()}\n"
         f"{'=' * 72}\n"
     )
-    with open(job_out, "w") as f:
-        f.write(header)
+    # with open(job_out, "w") as f:
+    #     f.write(header)
 
-    log(f"START [{uid}]  nodes={nodelist}  app={app}  out={job_out.name}", log_path)
+    print(header)
+
+    log(f"START [{uid}]  nodes={nodelist}  app={command}  out={job_out.name}", log_path)
     # ------- LOGGING & METADATA -------
 
     proc = subprocess.Popen(
@@ -152,9 +154,9 @@ def launch(job_type: str, nodes: list[str], extra_flags: list[str],
 
     # Attach metadata directly to the Popen object for convenience
     proc.uid      = uid       # type: ignore[attr-defined]
-    proc.job_type = job_type  # type: ignore[attr-defined]
+    proc.job_type = strategy  # type: ignore[attr-defined]
     proc.nodes    = nodes     # type: ignore[attr-defined]
-    proc.app      = app       # type: ignore[attr-defined]
+    proc.app      = command   # type: ignore[attr-defined]
     proc.job_out  = job_out   # type: ignore[attr-defined]
     return proc
 
@@ -200,8 +202,8 @@ def drain_live(proc: subprocess.Popen) -> None:
 # ---------------------------------------------------------------------------
 
 def run_scheduler(jobs: dict, out_dir: Path,
-                  extra_flags: list[str], walltime: int,
-                  log_path: Path | None = None) -> None:
+                  extra_flags: list[str], walltime: int, launch_direct: bool,
+                  log_path: Union[Path, None] = None) -> None:
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -224,12 +226,13 @@ def run_scheduler(jobs: dict, out_dir: Path,
     running: list[subprocess.Popen] = []
     larges: list[subprocess.Popen] = []
     for job_name, job in jobs["small"].items():
-        proc  = launch(job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id)
+        proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
         running.append(proc)
         task_id += 1
 
     for job_name, job in jobs["large"].items():
-        proc  = launch(job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id)
+        print(job)
+        proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
         larges.append(proc)
         task_id += 1
 
@@ -356,8 +359,12 @@ def parse_args() -> argparse.Namespace:
         metavar="FILE",
         help="Path to the pattern JSON file. Uses built-in default if omitted.",
     )
-    parser.add_argument("--nodelist", required=True, metavar="NODELIST",
+    parser.add_argument("--nodelist", required=False, default=None, metavar="NODELIST",
                         help="Nodes in bracket format: name[node01,node02,...].")
+    parser.add_argument("--launch-direct", required=False,
+                        help="If False launch using mpirun else use srun", action="store_true")
+    parser.add_argument("--device_upperbound", required=False, default=None, metavar="DEVICE",
+                        help="Device upperbound (8 --> device IDs considered 0..7)", type=int)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, metavar="DIR",
                         help=f"Directory for all output files (default: {DEFAULT_OUTPUT_DIR}).")
     parser.add_argument("--srun-extra", default="", metavar="FLAGS",
@@ -372,7 +379,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def assign_nodes(config_path: str, available_nodes: list) -> dict:
+def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
     with open(config_path) as f:          # ← read the file first
         config = json.load(f)             # ← use json.load(), not json.loads()
     available = available_nodes.copy()
@@ -382,24 +389,23 @@ def assign_nodes(config_path: str, available_nodes: list) -> dict:
     }
 
     for pattern_name, pattern in config.items():
-
-        pattern.get("n_total_small_nodes", -1)
-
         n_total_small = pattern.get("n_total_small_nodes", -1)
         n_total_large = pattern.get("n_total_large_nodes", -1)
 
-        if n_total_small + n_total_large != len(available):
-            raise ValueError(
-                f"Total nodes in config ({n_total_small} + {n_total_large}) does not match the number of available nodes ({len(available)})."
-            )
+        if not device:
+            if n_total_small + n_total_large != len(available):
+                raise ValueError(
+                    f"Total nodes in config ({n_total_small} + {n_total_large}) does not match the number of available nodes ({len(available)})."
+                )
 
         group_small = available[:n_total_large]
         group_big = available[n_total_large:]
 
-        if len(group_small) + len(group_big) != len(available):
-            raise ValueError(
-                f"Node split in config does not match the number of available nodes ({len(available)})."
-            )
+        if not device:
+            if len(group_small) + len(group_big) != len(available):
+                raise ValueError(
+                    f"Node split in config does not match the number of available nodes ({len(available)})."
+                )
         
 
         jobs = pattern.get("large_jobs", {})
@@ -415,7 +421,9 @@ def assign_nodes(config_path: str, available_nodes: list) -> dict:
 
             result["large"][f"large_jobs_{job_id}"] = {
                 "strategy": job_info["strategy"],
-                "nodelist": assigned
+                "nodelist": assigned,
+                "command": job_info["command"],
+                "gpus": job_info.get("gpus")
             }
 
 
@@ -432,26 +440,34 @@ def assign_nodes(config_path: str, available_nodes: list) -> dict:
 
             result["small"][f"small_jobs_{job_id}"] = {
                 "strategy": job_info["strategy"],
-                "nodelist": assigned
+                "nodelist": assigned,
+                "command": job_info["command"],
+                "gpus": job_info.get("gpus")
             }
 
     return result
 
 def main() -> None:
     args = parse_args()
-
-    nodes = args.nodelist.strip().split(",")
-    if not nodes:
-        print(f"ERROR: No nodes parsed from '{args.nodelist}'", file=sys.stderr)
+    
+    if (not args.nodelist) and (not args.device_upperbound):
+        print(f"{args.nodelist} or {args.device_upperbound} must be set!", file=sys.stderr)
+        sys.exit(1)
+    
+    if args.nodelist and args.device_upperbound:
+        print(f"You can't set both {args.nodelist} and {args.device_upperbound}")
         sys.exit(1)
 
-    jobs = assign_nodes(args.pattern, available_nodes=nodes)
+    nodes = args.nodelist.strip().split(",") if args.nodelist else [str(i) for i in range(args.device_upperbound)]
+    device = bool(args.device_upperbound)
+
+    jobs = assign_nodes(args.pattern, available_nodes=nodes, device=device)
 
     out_dir     = Path(args.output_dir)
     extra_flags = args.srun_extra.split() if args.srun_extra.strip() else []
     log_path    = Path(args.output_log) if args.output_log else None
 
-    run_scheduler(jobs, out_dir, extra_flags, args.walltime, log_path)
+    run_scheduler(jobs, out_dir, extra_flags, args.walltime, args.launch_direct, log_path)
 
 
 if __name__ == "__main__":

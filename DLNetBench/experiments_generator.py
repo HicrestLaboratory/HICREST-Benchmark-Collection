@@ -51,7 +51,7 @@ G: int = 72                # Total number of GPUs in the cluster
 # ── Strategies ──────────────────────────────────────────────────────────────
 STRATEGY_DEFS: list[tuple[str, list[int]]] = [
     ("DP",           [2, 4, 8, 16]),
-    ("FSDP",         [4, 8, 16, 32]),
+    ("FSDP",         [2, 4, 8, 16, 32]),
     ("DP+PP",        [4, 8, 16, 32, 64]),
     ("DP+PP+Expert", [64, 128, 192, 256, 320, 384, 448, 512]),
     ("DP+PP+TP",     [320, 640, 960]),
