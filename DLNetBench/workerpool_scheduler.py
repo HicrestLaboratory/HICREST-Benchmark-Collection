@@ -12,14 +12,14 @@ The main loop polls all running processes. When one finishes, its nodelist is
 reused to immediately launch a replacement of the same type.
 
 Each job writes its stdout to its own file inside workerpool_out/.
-Scheduler debug logs go to workerpool_out/scheduler.log.
+Scheduler debug logs go to stdout by default, or to a file if --output-log is given.
 
 Usage:
-    python slurm_scheduler.py <N> --nodelist [node01,node02,...] [--output-dir DIR] [--srun-extra "..."]
+    python slurm_scheduler.py <N> --nodelist [node01,node02,...] [--output-dir DIR] [--srun-extra "..."] [--output-log FILE]
 
 Examples:
     python slurm_scheduler.py 10 --nodelist [node01,node02,node03,node04,node05,node06,node07,node08]
-    python slurm_scheduler.py 20 --nodelist [node01,node02,node03,node04] --output-dir my_out
+    python slurm_scheduler.py 20 --nodelist [node01,node02,node03,node04] --output-dir my_out --output-log scheduler.log
 """
 
 import argparse
@@ -63,11 +63,13 @@ POLL_INTERVAL       = 2       # seconds between polls
 def ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def log(msg: str, log_path: Path) -> None:
+def log(msg: str, log_path: Path | None = None) -> None:
+    """Print msg to stdout. If log_path is given, also append to that file."""
     line = f"[{ts()}] {msg}"
     print(line, flush=True)
-    with open(log_path, "a") as f:
-        f.write(line + "\n")
+    if log_path is not None:
+        with open(log_path, "a") as f:
+            f.write(line + "\n")
 
 def compute_split(n: int) -> tuple[int, int]:
     """Return (n_micro, n_medium) summing to n with an ~80/20 split."""
@@ -104,7 +106,7 @@ def job_output_path(out_dir: Path, uid: str) -> Path:
 # ---------------------------------------------------------------------------
 
 def launch(job_type: str, nodes: list[str], extra_flags: list[str],
-           out_dir: Path, log_path: Path, task_id: int) -> subprocess.Popen:
+           out_dir: Path, log_path: Path | None, task_id: int) -> subprocess.Popen:
     """Launch one srun job and return its Popen handle."""
     uid      = f"{job_type}_{task_id}"
     app      = APPS[job_type] #!RANDOM.CHOICE(list(APPS.keys()))] se voglio farlo randomicos
@@ -198,19 +200,23 @@ def drain_live(proc: subprocess.Popen) -> None:
 # ---------------------------------------------------------------------------
 
 def run_scheduler(jobs: dict, out_dir: Path,
-                  extra_flags: list[str], walltime: int) -> None:
+                  extra_flags: list[str], walltime: int,
+                  log_path: Path | None = None) -> None:
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    log_path = out_dir / SCHEDULER_LOG_NAME
 
     # Write scheduler log header
-    with open(log_path, "w") as f:
-        f.write(
-            f"SLURM srun Scheduler Log\n"
-            f"Started  : {ts()}\n"
-            f"Output   : {out_dir.resolve()}/\n"
-            f"{'=' * 72}\n"
-        )
+    header = (
+        f"SLURM srun Scheduler Log\n"
+        f"Started  : {ts()}\n"
+        f"Output   : {out_dir.resolve()}/\n"
+        f"{'=' * 72}\n"
+    )
+    if log_path is not None:
+        with open(log_path, "w") as f:
+            f.write(header)
+    else:
+        print(header, flush=True)
 
     task_id = 0
 
@@ -358,6 +364,11 @@ def parse_args() -> argparse.Namespace:
                         help='Extra srun flags for every launch, e.g. "--mem=4G".')
     parser.add_argument("--walltime", default=120, type=int, metavar="SECONDS",
                         help="Walltime limit for each job in seconds.")
+    parser.add_argument("--output-log", default=None, metavar="FILE",
+                        help=(
+                            "File to redirect scheduler logs to. "
+                            "If omitted, logs are printed to stdout (default)."
+                        ))
     return parser.parse_args()
 
 
@@ -438,8 +449,9 @@ def main() -> None:
 
     out_dir     = Path(args.output_dir)
     extra_flags = args.srun_extra.split() if args.srun_extra.strip() else []
+    log_path    = Path(args.output_log) if args.output_log else None
 
-    run_scheduler(jobs, out_dir, extra_flags, args.walltime)
+    run_scheduler(jobs, out_dir, extra_flags, args.walltime, log_path)
 
 
 if __name__ == "__main__":
