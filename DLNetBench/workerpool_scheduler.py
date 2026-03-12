@@ -15,11 +15,7 @@ Each job writes its stdout to its own file inside workerpool_out_{pid}/.
 Scheduler debug logs go to stdout by default, or to a file if --output-log is given.
 
 Usage:
-    python slurm_scheduler.py <N> --nodelist [node01,node02,...] [--output-dir DIR] [--srun-extra "..."] [--output-log FILE]
-
-Examples:
-    python slurm_scheduler.py 10 --nodelist [node01,node02,node03,node04,node05,node06,node07,node08]
-    python slurm_scheduler.py 20 --nodelist [node01,node02,node03,node04] --output-dir my_out --output-log scheduler.log
+    python slurm_scheduler.py -p pattern.json --nodelist [node01,node02,...] [--output-dir DIR] [--srun-extra "..."] [--output-log FILE]
 """
 
 import argparse
@@ -36,7 +32,10 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from typing import Union
+# Assuming parse_results is a custom module you have locally
+from parse_results import *
+
+from typing import Union, Optional
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION — edit application paths to match your environment
@@ -73,7 +72,6 @@ def compute_split(n: int) -> tuple[int, int]:
     n_micro  = n - n_medium
     return n_micro, n_medium
 
-
 def pick_nodes(all_nodes: list[str], job_type: str) -> list[str]:
     """Sample nodes without replacement for one job."""
     if job_type == "micro":
@@ -92,7 +90,6 @@ def expand_app(app_str: str) -> list[str]:
     expanded = os.path.expandvars(os.path.expanduser(app_str))
     return shlex.split(expanded)
 
-
 def job_output_paths(out_dir: Path, uid: str) -> tuple[Path, Path]:
     """Return the (stdout_path, stderr_path) for a given job uid."""
     return out_dir / f"{uid}.stdout", out_dir / f"{uid}.stderr"
@@ -110,7 +107,7 @@ def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str]
 
     cmd = []
     if launch_direct:
-        cmd += ["mpirun", "-np", f"{gpus}", *extra_flags, *command.split()] # FIXME , '-d', nodelist]
+        cmd += ["mpirun", "-np", f"{gpus}", *extra_flags, *command.split(),'-d', nodelist]
     else:
         cmd += [
             "srun",
@@ -124,6 +121,7 @@ def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str]
             *command.split()
         ]
 
+    print(f"Launching job [{uid}] with command: {' '.join(cmd)}", flush=True)
     # ------- LOGGING & METADATA -------
     header = (
         f"{'=' * 72}\n"
@@ -170,16 +168,6 @@ def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> 
     """
     Close the live file handles, then print the contents of the job's stdout
     and stderr files to the workerpool stdout in a parsable block format.
-
-    Parsable format
-    ---------------
-    <<<JOB_OUTPUT_START uid=<uid> stream=stdout>>>
-    <raw lines>
-    <<<JOB_OUTPUT_END uid=<uid> stream=stdout>>>
-
-    <<<JOB_OUTPUT_START uid=<uid> stream=stderr>>>
-    <raw lines>
-    <<<JOB_OUTPUT_END uid=<uid> stream=stderr>>>
     """
     uid = proc.uid  # type: ignore[attr-defined]
 
@@ -197,8 +185,8 @@ def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> 
         if path is None:
             continue
 
-        start_marker = f"<<<JOB_OUTPUT_START uid={uid} stream={stream}>>>"
-        end_marker   = f"<<<JOB_OUTPUT_END   uid={uid} stream={stream}>>>"
+        start_marker = f"<<<JOB_START uid={uid} stream={stream}>>>"
+        end_marker   = f"<<<JOB_END   uid={uid} stream={stream}>>>"
 
         print(start_marker, flush=True)
         if log_path:
@@ -208,6 +196,7 @@ def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> 
         try:
             content = path.read_text(errors="replace")
             print(content, end="", flush=True)
+            stdout_to_csv(content)  # Assuming stdout_to_csv is from parse_results
             if log_path:
                 with open(log_path, "a") as lf:
                     lf.write(content)
@@ -223,7 +212,6 @@ def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> 
             with open(log_path, "a") as lf:
                 lf.write(end_marker + "\n")
 
-
 def cleanup_output_dir(out_dir: Union[Path, None], log_path: Union[Path, None] = None) -> None:
     """Remove the per-run output directory once all output has been drained."""
     if out_dir is None:
@@ -234,8 +222,9 @@ def cleanup_output_dir(out_dir: Union[Path, None], log_path: Union[Path, None] =
     except Exception as exc:
         log(f"WARNING: could not remove output directory {out_dir}: {exc}", log_path)
 
-
-
+# ---------------------------------------------------------------------------
+# Scheduler Loop
+# ---------------------------------------------------------------------------
 
 def run_scheduler(jobs: dict, out_dir: Union[Path, None],
                   extra_flags: list[str], walltime: int, launch_direct: bool,
@@ -257,6 +246,7 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
     # Launch initial batch
     running: list[subprocess.Popen] = []
     larges: list[subprocess.Popen] = []
+    
     for job in jobs["small"].values():
         proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
         running.append(proc)
@@ -272,6 +262,7 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
 
     WALLTIME_SECONDS = walltime 
     deadline = time.time() + WALLTIME_SECONDS
+    
     while running:
 
         #! --> Walltime Check
@@ -283,6 +274,7 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
                 drain_output(r, log_path)
             cleanup_output_dir(out_dir, log_path)
             return
+            
         time.sleep(POLL_INTERVAL)
 
         #! --> Large Jobs Handler
@@ -290,7 +282,6 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
         for large in larges:
             ret = large.poll()
             if ret is None:
-                # drain_live(large)
                 still_large.append(large)
             else:
                 drain_output(large, log_path)
@@ -323,7 +314,6 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
         for proc in running:
             ret = proc.poll()
             if ret is None:
-                # drain_live(proc)
                 still_running.append(proc)
             else:
                 # Finished — drain remaining output and write footer to scheduler log
@@ -343,11 +333,12 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
 
                 # Launch replacement of the same type reusing the same nodelist
                 replacement = launch(
-                    proc.job_type, proc.nodes,                   # type: ignore[attr-defined]
-                    extra_flags, out_dir, log_path, task_id,
+                    proc.app, proc.job_type, proc.nodes,                        # type: ignore[attr-defined]
+                    extra_flags, out_dir, log_path, task_id, launch_direct
                 )
                 still_running.append(replacement)
                 task_id += 1
+                
         running = still_running
 
     # Normal exit: while-loop exhausted because all small jobs finished naturally
@@ -355,8 +346,40 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
 
 
 # ---------------------------------------------------------------------------
-# NODELISTS PARSING (Now only random)
+# NODELISTS PARSING AND PLACEMENT
 # ---------------------------------------------------------------------------
+
+class PlacementOracle:
+    """
+    Template for your external placement oracle.
+    """
+    def __init__(self, system: str = ""):
+        self.system = system
+        # Initialize your external binaries or checks here.
+        self._available = True 
+
+    def find_placement(self, jobs: list[dict], available_nodes: list[str]) -> dict[str, list[str]]:
+        """
+        Takes a list of job requests and available nodes.
+        Returns a dictionary mapping job_ids to a list of assigned nodes.
+        """
+        if not self._available:
+            print("Oracle unavailable, falling back...", file=sys.stderr)
+            pass # Handle fallback
+
+        # --- REPLACE WITH YOUR ACTUAL ORACLE SUBPROCESS LOGIC ---
+        # For now, this is a stub that assigns nodes sequentially just so the script runs
+        assignments = {}
+        avail_copy = available_nodes.copy()
+        
+        for job in jobs:
+            job_id = job["job_id"]
+            req = job["req"]
+            if len(avail_copy) < req:
+                raise ValueError(f"Oracle: Not enough nodes for {job_id}")
+            assignments[job_id] = [avail_copy.pop(0) for _ in range(req)]
+            
+        return assignments
 
 def load_node_list(path: str) -> list[str]:
     """Accept a plain text file (one node per line) or a JSON list."""
@@ -370,14 +393,81 @@ def load_node_list(path: str) -> list[str]:
     except json.JSONDecodeError:
         return [line.strip() for line in content.splitlines() if line.strip()]
 
+def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
+    with open(config_path) as f:
+        pattern = json.load(f)
+        
+    available = available_nodes.copy()
+    placement_strategy = pattern.get("placement", "sequential").lower()
 
-def collect_jobs(pattern: dict) -> list[tuple[str, str, dict]]:
-    """Return a flat list of (group, job_id, job_spec) tuples."""
-    jobs = []
-    for group in ("small_jobs", "large_jobs"):
-        for job_id, spec in pattern.get(group, {}).items():
-            jobs.append((group, job_id, spec))
-    return jobs
+    result = {
+        "small": {},
+        "large": {}
+    }
+
+    small_jobs = pattern.get("small_jobs", {})
+    large_jobs = pattern.get("large_jobs", {})
+
+    # 1. Derive required resources directly from the jobs (ignore metadata)
+    total_needed = 0
+    oracle_jobs_payload = []
+
+    def parse_requirements(job_dict, group_prefix):
+        nonlocal total_needed
+        for job_id, job_info in job_dict.items():
+            req = job_info.get("gpus" if device else "nodes", 1)
+            total_needed += req
+            oracle_jobs_payload.append({
+                "job_id": f"{group_prefix}_{job_id}",
+                "req": req,
+                "strategy": job_info.get("strategy", "unknown")
+            })
+
+    parse_requirements(small_jobs, "small")
+    parse_requirements(large_jobs, "large")
+
+    if total_needed > len(available):
+        raise ValueError(
+            f"Jobs require {total_needed} resources, but only {len(available)} are available."
+        )
+
+    # 2. Handle Placement Strategies
+    runtime_assignments = {}
+    
+    if placement_strategy == "random":
+        random.shuffle(available)
+        
+    elif placement_strategy == "runtime":
+        oracle = PlacementOracle(system="my_system")
+        # Ask the oracle for assignments
+        runtime_assignments = oracle.find_placement(oracle_jobs_payload, available)
+
+    # 3. Assign nodes to the result dictionary
+    def populate_results(job_dict, group_prefix, result_group):
+        for job_id, job_info in job_dict.items():
+            req = job_info.get("gpus" if device else "nodes", 1)
+            full_job_id = f"{group_prefix}_{job_id}"
+
+            if placement_strategy == "runtime":
+                # Fetch assignment from Oracle's response
+                assigned = runtime_assignments.get(full_job_id, [])
+                if len(assigned) != req:
+                    raise ValueError(f"Oracle failed to assign {req} nodes for {full_job_id}")
+            else:
+                # Pop sequentially (list is already shuffled if strategy was 'random')
+                assigned = [available.pop(0) for _ in range(req)]
+
+            result[result_group][full_job_id] = {
+                "strategy": job_info["strategy"],
+                "nodelist": assigned,
+                "command": job_info["command"],
+                "gpus": job_info.get("gpus")
+            }
+
+    populate_results(small_jobs, "small", "small")
+    populate_results(large_jobs, "large", "large")
+
+    return result
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -394,7 +484,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--pattern", "-p", required=True,
         metavar="FILE",
-        help="Path to the pattern JSON file. Uses built-in default if omitted.",
+        help="Path to the pattern JSON file.",
     )
     parser.add_argument("--nodelist", required=False, default=None, metavar="NODELIST",
                         help="Nodes in bracket format: name[node01,node02,...].")
@@ -420,74 +510,6 @@ def parse_args() -> argparse.Namespace:
                             "or integers. Default: SIGTERM."
                         ))
     return parser.parse_args()
-
-
-def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
-    with open(config_path) as f:          # ← read the file first
-        pattern = json.load(f)             # ← use json.load(), not json.loads()
-    available = available_nodes.copy()
-    result = {
-        "small": {},
-        "large": {}
-    }
-
-    n_total_small = pattern.get("n_total_small_nodes", -1)
-    n_total_large = pattern.get("n_total_large_nodes", -1)
-
-    if not device:
-        if n_total_small + n_total_large != len(available):
-            raise ValueError(
-                f"Total nodes in config ({n_total_small} + {n_total_large}) does not match the number of available nodes ({len(available)})."
-            )
-
-    group_small = available[:n_total_large]
-    group_big = available[n_total_large:]
-
-    if not device:
-        if len(group_small) + len(group_big) != len(available):
-            raise ValueError(
-                f"Node split in config does not match the number of available nodes ({len(available)})."
-            )
-    
-
-    jobs = pattern.get("large_jobs", {})
-    for job_id, job_info in jobs.items():
-        nodes_needed = job_info["nodes"]
-
-        if len(group_big) < nodes_needed:
-            raise ValueError(
-                f"needs {nodes_needed}, only {len(group_big)} left."
-            )
-
-        assigned = [group_big.pop(0) for _ in range(nodes_needed)]
-
-        result["large"][f"large_jobs_{job_id}"] = {
-            "strategy": job_info["strategy"],
-            "nodelist": assigned,
-            "command": job_info["command"],
-            "gpus": job_info.get("gpus")
-        }
-
-
-    jobs = pattern.get("small_jobs", {})
-    for job_id, job_info in jobs.items():
-        nodes_needed = job_info["nodes"]
-
-        if len(group_small) < nodes_needed:
-            raise ValueError(
-                f"needs {nodes_needed}, only {len(group_small)} left."
-            )
-
-        assigned = [group_small.pop(0) for _ in range(nodes_needed)]
-
-        result["small"][f"small_jobs_{job_id}"] = {
-            "strategy": job_info["strategy"],
-            "nodelist": assigned,
-            "command": job_info["command"],
-            "gpus": job_info.get("gpus")
-        }
-
-    return result
 
 def main() -> None:
     args = parse_args()
@@ -525,7 +547,6 @@ def main() -> None:
         sys.exit(1)
 
     run_scheduler(jobs, out_dir, extra_flags, args.walltime, args.launch_direct, kill_signal, log_path)
-
 
 if __name__ == "__main__":
     main()

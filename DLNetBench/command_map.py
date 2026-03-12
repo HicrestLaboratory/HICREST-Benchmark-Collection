@@ -29,7 +29,6 @@ _PARAMS: dict[str, callable] = {
 
 
 def get_command(strategy: str, num_gpus: int, comm_lib: str) -> str:
-    return f"echo '{strategy} with {num_gpus} GPUs and {comm_lib} comm_lib'; sleep 3"
     if strategy not in _PARAMS:
         raise ValueError(f"Unknown strategy '{strategy}'. Valid: {sorted(_PARAMS)}")
     if num_gpus not in FEASIBLE_GPU_COUNTS[strategy]:

@@ -8,8 +8,9 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent.parent / "common" / "ccutils"))
-from parser.ccutils_parser import MPIOutputParser
+sys.path.append(str(Path(__file__).parent.parent / "common" / "ccutils" / "parser"))
+print(str(Path(__file__).parent.parent / "common" / "ccutils" / "parser"))
+from ccutils_parser import MPIOutputParser
 
 
 def stdout_to_csv(stdout_content):
@@ -45,6 +46,7 @@ def stdout_to_csv(stdout_content):
     
     # Auto-detect strategy (first non-empty section)
     if not parser_output:
+        print(parser_output)
         raise ValueError("No ccutils sections found in stdout")
     
     strategy_name = list(parser_output.keys())[0]
@@ -302,11 +304,11 @@ if __name__ == "__main__":
     stdout_file = sys.argv[1]
     
     # Read stdout file
-    with open(stdout_file, 'r') as f:
-        stdout_content = f.read()
+    # with open(stdout_file, 'r') as f:
+    #     stdout_content = f.read()
     
     # Convert to CSV format
-    csv_output = stdout_to_csv(stdout_content)
+    csv_output = stdout_to_csv(stdout_file)
     
     # Print to stdout
     print(csv_output)
