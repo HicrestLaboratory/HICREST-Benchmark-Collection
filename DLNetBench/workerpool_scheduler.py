@@ -106,13 +106,13 @@ def job_output_path(out_dir: Path, uid: str) -> Path:
 def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str], 
            out_dir: Path, log_path: Union[Path, None], task_id: int, launch_direct: bool, gpus:int = None) -> subprocess.Popen:
     """Launch one srun job and return its Popen handle."""
-    uid      = f"{command}_{task_id}"
+    uid      = f"{strategy}strategy_{gpus}gpus_{task_id}"
     #app_argv = expand_app(command)
     nodelist = ",".join(nodes)
     job_out  = job_output_path(out_dir, uid)
     cmd = []
     if launch_direct:
-        cmd += ["mpirun", "-np", f"{gpus}", *extra_flags]#, *app_argv]
+        cmd += ["mpirun", "-np", f"{gpus}", *extra_flags, *command.split()]
     else:
         cmd += [
             "srun",
@@ -123,7 +123,7 @@ def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str]
             f"--cpus-per-task={CPUS_PER_TASK}",
             f"--job-name={uid}",
             *extra_flags,
-            #*app_argv,
+            *command.split()
         ]
 
     # ------- LOGGING & METADATA -------
@@ -136,10 +136,8 @@ def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str]
         f"STARTED  : {ts()}\n"
         f"{'=' * 72}\n"
     )
-    # with open(job_out, "w") as f:
-    #     f.write(header)
-
-    print(header)
+    with open(job_out, "w") as f:
+        f.write(header)
 
     log(f"START [{uid}]  nodes={nodelist}  app={command}  out={job_out.name}", log_path)
     # ------- LOGGING & METADATA -------
@@ -166,6 +164,7 @@ def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str]
 
 def drain_output(proc: subprocess.Popen) -> None:
     """Read all remaining stdout from a finished process and append to its job file."""
+    print(f"porco giuda")
     if proc.stdout:
         with open(proc.job_out, "a") as f:          # type: ignore[attr-defined]
             for line in proc.stdout:
@@ -298,7 +297,7 @@ def run_scheduler(jobs: dict, out_dir: Path,
                     f"FINISHED : {ts()}  exit_code={ret}\n"
                 )
                 with open(proc.job_out, "a") as f:  # type: ignore[attr-defined]
-                    f.write(footer)
+                    f.write(footer)   
 
                 log(
                     f"FINISH [{proc.uid}]  exit_code={ret}"                 # type: ignore[attr-defined]

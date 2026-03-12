@@ -9,7 +9,7 @@ from __future__ import annotations
 
 FEASIBLE_GPU_COUNTS: dict[str, frozenset[int]] = {
     "DP":           frozenset([2, 4, 8, 16]),
-    "FSDP":         frozenset([4, 8, 16, 32]),
+    "FSDP":         frozenset([2, 4, 8, 16, 32]),
     "DP+PP":        frozenset([4, 8, 16, 32, 64]),
     "DP+PP+Expert": frozenset([64, 128, 192, 256, 320, 384, 448, 512]),
     "DP+PP+TP":     frozenset([320, 640, 960]),
@@ -33,6 +33,7 @@ _PARAMS: dict[str, callable] = {
 
 
 def get_command(strategy: str, num_gpus: int, comm_lib: str) -> str:
+    return f"echo '{strategy} with {num_gpus} GPUs and {comm_lib} comm_lib'"
     if strategy not in _PARAMS:
         raise ValueError(f"Unknown strategy '{strategy}'. Valid: {sorted(_PARAMS)}")
     if num_gpus not in FEASIBLE_GPU_COUNTS[strategy]:
