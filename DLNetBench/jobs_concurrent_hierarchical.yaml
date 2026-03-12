@@ -1,0 +1,11 @@
+sequential: true
+
+variables:
+  nodes: [4]
+  experiment: "experiments/"
+
+jobs:
+  - config: "nodes_{nodes}"
+    config_jobs:
+      - tag: "{experiment}"
+        command: "python workerpool_scheduler.py -p {experiment} --nodelist \"$SLURM_JOB_NODELIST\""

@@ -1,0 +1,11 @@
+sequential: true
+
+variables:
+  gpus: [4]
+  experiment: "experiments/"
+
+jobs:
+  - config: "gpus_{gpus}"
+    config_jobs:
+      - tag: "{experiment}"
+        command: "python workerpool_scheduler.py -p {experiment} --device-upperbound {gpus} --launch-direct"

@@ -81,23 +81,23 @@ STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
     },
     "medium": {
         "tier_weight": 0.20,
-        "sizes": [8, 16],
+        "sizes": [8, 16, 32],
         "sub_weights": {},
     },
     "large": {
         "tier_weight": 0.05,
-        "sizes": [32, 64],
+        "sizes": [640],
         "sub_weights": {},
     },
 }
 
-N_STOCHASTIC_PATTERNS: int = 5
+N_STOCHASTIC_PATTERNS: int = 3
 
 # ── Entropy-stratified sampling ──────────────────────────────────────────────
 ENTROPY_DELTA_1: float = 0.3
 ENTROPY_DELTA_2: float = 0.7
 N_SAMPLES_PER_BIN: int = 4
-ENUM_THRESHOLD: int = 50_000
+ENUM_THRESHOLD: int = 5_000
 RANDOM_SEED: Optional[int] = 42
 
 # ── Experiment list size bounds ───────────────────────────────────────────────
@@ -118,16 +118,17 @@ TOPOLOGY_PROGRAM: str = "topology_oracle"
 
 # Static topology parameters – describe the cluster hierarchy without any
 # external query.
-TOPO_Q1: int = 4    # GPUs per intra-node NVLink domain
-TOPO_Q2: int = 64   # GPUs per L1-switch / rack domain
-TOPO_Q3: int = G    # GPUs per group (set equal to G for single-group clusters)
+# Leonardo
+TOPO_Q1: int = 4             # GPUs per intra-node NVLink domain
+TOPO_Q2: int = 10  * TOPO_Q1 # GPUs per L1-switch
+TOPO_Q3: int = 180 * TOPO_Q1 # GPUs per group (set equal to G for single-group clusters)
 
 # Whether to include intra-node as a valid placement class.
 INCLUDE_INTRA_NODE: bool = False
 
 # Number of additional node-selection replicates per baseline run for
 # intra-group and inter-group placement classes.
-N_BASELINE_TOPO_REPS: int = 1
+N_BASELINE_TOPO_REPS: int = 0
 
 # Number of alternative node assignments to generate per (experiment, placement
 # class vector) pair.
@@ -138,7 +139,13 @@ PLACEMENT_BIN_LO_HI:  float = 1.67
 PLACEMENT_BIN_MED_HI: float = 2.33
 
 # Placement-class vectors to sample per locality bin per experiment.
-N_PLACEMENT_SAMPLES_PER_BIN: int = 2
+N_PLACEMENT_SAMPLES_PER_BIN: int = 1
+
+# Maximum placement-class vector space size below which exact enumeration is
+# used in _sample_placement_vectors_stratified.  Above this threshold the
+# function switches to DP-guided rejection sampling, which is O(k²) regardless
+# of the number of classes per slot.
+PLACEMENT_ENUM_THRESHOLD: int = 50_000
 
 # ── JSON output ──────────────────────────────────────────────────────────────
 DEFAULT_JSON_OUTPUT: str = "experiments.json"
@@ -885,6 +892,15 @@ class PlacementClass:
         "inter-group": 3.0,
     }
 
+    # Integer scores used by the DP-based placement sampler (same values,
+    # kept as int to avoid floating-point accumulation in DP tables).
+    INT_SCORE: dict[str, int] = {
+        "intra-node":  0,
+        "intra-L1":    1,
+        "intra-group": 2,
+        "inter-group": 3,
+    }
+
 
 PlacementClassVector = tuple[str, ...]
 
@@ -919,6 +935,154 @@ def _placement_classes_in_scope(
         feasible.append(PlacementClass.INTRA_GROUP)
     feasible.append(PlacementClass.INTER_GROUP)
     return feasible
+
+
+def _placement_score_distribution(per_slot_classes: list[list[str]]) -> dict[int, int]:
+    """
+    Compute the exact count of placement-class vectors that yield each
+    integer score-sum via dynamic programming.
+
+    Complexity: O(k * S_max) where S_max = 3*k (max score per slot is 3).
+    This is O(k²) — completely tractable for any realistic k, replacing the
+    O(n_classes^k) full enumeration that caused exponential blowup for large k.
+
+    Returns: {score_sum -> count_of_vectors_with_that_sum}
+    """
+    dp: dict[int, int] = {0: 1}
+    for classes in per_slot_classes:
+        new_dp: dict[int, int] = {}
+        for prev_sum, cnt in dp.items():
+            for c in classes:
+                s = prev_sum + PlacementClass.INT_SCORE[c]
+                new_dp[s] = new_dp.get(s, 0) + cnt
+        dp = new_dp
+    return dp
+
+
+def _sample_placement_vectors_stratified(
+    per_slot_classes: list[list[str]],
+    n_per_bin: int,
+    lo_hi: float,
+    med_hi: float,
+    rng: random.Random,
+    enum_threshold: int = PLACEMENT_ENUM_THRESHOLD,
+) -> list[tuple[PlacementClassVector, str]]:
+    """
+    Stratified placement-class vector sampler that scales to large k.
+
+    Two modes selected automatically:
+
+    Exact mode  (total vectors <= enum_threshold):
+      Enumerate all vectors via itertools.product, bin by score, then
+      reservoir-sample n_per_bin from each bin.  Identical to the previous
+      behaviour for small experiments.
+
+    DP-guided rejection mode  (total vectors > enum_threshold):
+      1. Run the O(k²) DP to find which score-sum values exist and how
+         many vectors map to each bin.  Bins with zero population are
+         skipped immediately — no wasted attempts.
+      2. Estimate the acceptance probability for the rarest needed bin.
+      3. Draw random vectors one slot at a time and accept into the
+         appropriate bin until each bin has n_per_bin samples or the
+         attempt budget is exhausted.
+
+    Variety guarantee: each accepted vector is checked against a `seen`
+    set, so all returned vectors are distinct within a single call.
+    Across multiple calls variety is maintained by the caller's RNG state.
+
+    Args:
+        per_slot_classes: list of length k; each element is the list of
+            placement-class strings available to that job slot.
+        n_per_bin: target number of vectors per locality bin.
+        lo_hi, med_hi: bin boundary thresholds (see placement_bin).
+        rng: caller-owned Random instance (preserves overall seed state).
+        enum_threshold: switch point between exact and DP-guided sampling.
+
+    Returns:
+        List of (PlacementClassVector, bin_label) pairs, at most
+        3 * n_per_bin entries (one group per bin, some bins may be empty).
+    """
+    k = len(per_slot_classes)
+    if k == 0:
+        return []
+
+    # Total vector space size — computed without enumerating the space.
+    total_vecs = 1
+    for classes in per_slot_classes:
+        total_vecs *= len(classes)
+        if total_vecs > enum_threshold:
+            break  # Early exit; exact value not needed beyond threshold.
+
+    # ── Exact mode ────────────────────────────────────────────────────────
+    if total_vecs <= enum_threshold:
+        bins: dict[str, list[PlacementClassVector]] = {"low": [], "medium": [], "high": []}
+        for kappa in itertools.product(*per_slot_classes):
+            b = placement_bin(placement_vector_score(kappa), lo_hi, med_hi)
+            bins[b].append(kappa)
+        result: list[tuple[PlacementClassVector, str]] = []
+        for bn in ("low", "medium", "high"):
+            for kappa in rng.sample(bins[bn], min(n_per_bin, len(bins[bn]))):
+                result.append((kappa, bn))
+        return result
+
+    # ── DP-guided rejection mode ──────────────────────────────────────────
+    # Step 1: score-sum distribution via O(k²) DP.
+    dp = _placement_score_distribution(per_slot_classes)
+
+    # Step 2: map score sums to bins, count population per bin.
+    bin_populations: dict[str, int] = {"low": 0, "medium": 0, "high": 0}
+    for score_sum, cnt in dp.items():
+        b = placement_bin(score_sum / k, lo_hi, med_hi)
+        bin_populations[b] += cnt
+
+    # Bins with zero population cannot yield any samples; skip them.
+    needed_bins = [b for b in ("low", "medium", "high")
+                   if bin_populations[b] > 0 and n_per_bin > 0]
+    if not needed_bins:
+        return []
+
+    # Step 3: compute a safe attempt budget.
+    # The rarest needed bin has probability p_min = bin_pop / total_vecs.
+    # Expected attempts to collect n_per_bin unique samples from it is
+    # approximately n_per_bin / p_min.  We add a 10× safety factor and
+    # cap at 500 000 to prevent runaway loops on degenerate inputs.
+    total_vecs_exact = sum(dp.values())  # exact count from DP
+    p_min = min(bin_populations[b] / total_vecs_exact for b in needed_bins)
+    safety_factor = 10
+    max_attempts = min(
+        int(math.ceil(n_per_bin / max(p_min, 1e-9))) * safety_factor,
+        500_000,
+    )
+
+    # Step 4: rejection sampling.
+    collected: dict[str, list[PlacementClassVector]] = {"low": [], "medium": [], "high": []}
+    seen: set[PlacementClassVector] = set()
+
+    for _ in range(max_attempts):
+        # Early exit once all reachable bins are satisfied.
+        if all(
+            len(collected[b]) >= n_per_bin or bin_populations[b] == 0
+            for b in ("low", "medium", "high")
+        ):
+            break
+
+        kappa: PlacementClassVector = tuple(
+            rng.choice(classes) for classes in per_slot_classes
+        )
+        if kappa in seen:
+            continue
+
+        score = sum(PlacementClass.INT_SCORE[c] for c in kappa) / k
+        b = placement_bin(score, lo_hi, med_hi)
+        if len(collected[b]) < n_per_bin:
+            collected[b].append(kappa)
+            seen.add(kappa)
+
+    result = []
+    for bn in ("low", "medium", "high"):
+        for kappa in collected[bn]:
+            result.append((kappa, bn))
+    return result
 
 
 # ===========================================================================
@@ -1021,38 +1185,6 @@ class HierarchicalExperiment:
         )
 
 
-def _all_placement_class_vectors(
-    config: Config, oracle: "TopologyOracle",
-    include_intra_node: bool, g_total: int,
-) -> list[PlacementClassVector]:
-    per_job_classes = [
-        _placement_classes_in_scope(run.gpus, g_total, oracle, include_intra_node)
-        for run in config.runs
-    ]
-    return [tuple(combo) for combo in itertools.product(*per_job_classes)]
-
-
-def _sample_placement_vectors(
-    vectors: list[PlacementClassVector],
-    n_per_bin: int, lo_hi: float, med_hi: float,
-    rng: random.Random,
-) -> list[tuple[PlacementClassVector, str]]:
-    """
-    Stratified sampling of placement-class vectors by locality bin.
-    """
-    BIN_NAMES = ("low", "medium", "high")
-    bins: dict[str, list[PlacementClassVector]] = {b: [] for b in BIN_NAMES}
-    for kappa in vectors:
-        score = placement_vector_score(kappa)
-        b = placement_bin(score, lo_hi, med_hi)
-        bins[b].append(kappa)
-    result: list[tuple[PlacementClassVector, str]] = []
-    for bn in BIN_NAMES:
-        for kappa in rng.sample(bins[bn], min(n_per_bin, len(bins[bn]))):
-            result.append((kappa, bn))
-    return result
-
-
 def build_hierarchical_experiment_set(
     flat_experiments: list[Experiment],
     oracle: "TopologyOracle",
@@ -1074,6 +1206,21 @@ def build_hierarchical_experiment_set(
     flat-experiment count.  Global placement-bin counters stop each bin from
     being over-filled; the three bins are iterated in round-robin so all three
     locality levels are represented before any one dominates.
+
+    Performance note
+    ----------------
+    The previous implementation called _all_placement_class_vectors(), which
+    used itertools.product to enumerate the *entire* placement-class vector
+    space before sampling from it.  For experiments with many small jobs (high
+    k) and multiple eligible placement classes per job, this space grows as
+    n_classes^k — e.g. k=16 with 3 classes/job gives 43 million vectors, and
+    k=24 gives 282 billion.
+
+    The new _sample_placement_vectors_stratified() replaces that with an
+    O(k²) DP that counts bin populations without enumeration, then uses
+    DP-guided rejection sampling to collect exactly the required vectors.
+    For small experiments (total vectors <= PLACEMENT_ENUM_THRESHOLD) the
+    original exact-enumeration path is retained unchanged.
     """
     effective_n_per_bin = _compute_per_experiment_placement_bin_quota(
         max_experiments=max_experiments,
@@ -1098,12 +1245,20 @@ def build_hierarchical_experiment_set(
         ):
             break
 
-        all_vectors = _all_placement_class_vectors(
-            exp.config, oracle, include_intra_node, g_total
-        )
-        sampled = _sample_placement_vectors(
-            all_vectors, effective_n_per_bin,
-            placement_bin_lo_hi, placement_bin_med_hi, rng,
+        # Build per-slot class lists once (replaces _all_placement_class_vectors).
+        per_slot_classes: list[list[str]] = [
+            _placement_classes_in_scope(run.gpus, g_total, oracle, include_intra_node)
+            for run in exp.config.runs
+        ]
+
+        # _sample_placement_vectors_stratified handles both the small (exact)
+        # and large (DP-guided) cases transparently.
+        sampled = _sample_placement_vectors_stratified(
+            per_slot_classes=per_slot_classes,
+            n_per_bin=effective_n_per_bin,
+            lo_hi=placement_bin_lo_hi,
+            med_hi=placement_bin_med_hi,
+            rng=rng,
         )
 
         for kappa, p_bin in sampled:
@@ -1379,7 +1534,7 @@ def main(cfg: argparse.Namespace) -> None:
         "A": not cfg.use_topology,
         "B": False,
         "C": False,
-        "D": cfg.use_topology,
+        "D": False, # cfg.use_topology,
         "E": True,
     }
     active_families = [f for f, active in gen_flags.items() if active]
