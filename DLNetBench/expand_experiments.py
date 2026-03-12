@@ -150,6 +150,8 @@ from pathlib import Path
 from typing import Optional
 from command_map import get_command
 
+sys.path.append(str(Path(__file__).parent.parent / "common" / "JobPlacer"))
+from cli_wrapper import JobPlacer, JobRequest, PlacementResult, TopologySource
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -173,7 +175,6 @@ VALID_PLACEMENTS: dict = {
 # Edit them here to permanently change the output format.
 #
 # Recognised placeholder strings (replaced at runtime):
-#   "__NUMNODES__"    → str(args.n_total_nodes)
 #   "__PPN__"         → str(args.gpus_per_node)
 #   "__EXPERIMENTS__" → auto-generated experiments dict (see build_global_config)
 #
@@ -268,14 +269,6 @@ def _build_hierarchical_apps(exp_filepath: str, results_dir: str) -> dict:
 # Placement Oracle  (hardcoded mode only)
 # ---------------------------------------------------------------------------
 
-@dataclass
-class OracleResult:
-    """Result of a single find_placement call."""
-    feasible: bool
-    assignments: dict = field(default_factory=dict)   # job_id → nodelist
-    reason: str = ""
-
-
 class PlacementOracle:
     """
     Thin wrapper around the external placement oracle program.
@@ -290,7 +283,13 @@ class PlacementOracle:
         system: str = "",
         reserved_nodes: Optional[list] = None,
     ) -> None:
-        self.program = program
+        self.oracle = JobPlacer(
+            system=system,
+            topology_file=f'../common/JobPlacer/{system}_topo.txt', # FIXME
+            sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt', # FIXME
+            all_nodes=True, # FIXME
+            binary='../common/JobPlacer/target/release/job_placer_placement_classes'
+        )
         self.system = system
         self.reserved_nodes: list = reserved_nodes or []
         self._available = self._probe()
@@ -303,45 +302,27 @@ class PlacementOracle:
 
     def _probe(self) -> bool:
         try:
-            r = subprocess.run([self.program, "--ping"],
+            r = subprocess.run([self.oracle._binary, "--help"],
                                capture_output=True, timeout=2)
             return r.returncode == 0
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
 
-    def find_placement(self, jobs: list) -> OracleResult:
-        """Query the oracle for one experiment's node assignments."""
-        payload = {
-            "command":        "find_placement",
-            "system":         self.system,
-            "reserved_nodes": self.reserved_nodes,
-            "jobs":           jobs,
-        }
-        if not self._available:
-            return OracleResult(feasible=False, reason="oracle unavailable (stub)")
-        try:
-            proc = subprocess.run(
-                [self.program],
-                input=json.dumps(payload),
-                capture_output=True, text=True, timeout=30,
+    def find_placement(self, jobs: list, seed=None, timeout=5.0) -> PlacementResult:
+        """Query the oracle for one experiment's node assignments."""        
+        oracle_jobs = {}
+        for j in jobs:
+            oracle_jobs[f'training_{j["job_id"]}'] = JobRequest(
+                num_nodes=j['node_count'],
+                job_kind='FIXME',
+                placement_class=str(j['placement_class']).lower()
             )
-            resp = json.loads(proc.stdout)
-        except subprocess.TimeoutExpired:
-            return OracleResult(feasible=False, reason="oracle timeout")
-        except Exception as exc:
-            return OracleResult(feasible=False, reason=f"oracle error: {exc}")
-
-        if not resp.get("feasible", False):
-            return OracleResult(
-                feasible=False,
-                reason=resp.get("reason", "oracle reported infeasible"),
-            )
-        assignments = {
-            e["job_id"]: e["nodelist"]
-            for e in resp.get("assignments", [])
-        }
-        return OracleResult(feasible=True, assignments=assignments)
-
+            
+        return self.oracle.place(
+            oracle_jobs,
+            seed=seed,
+            timeout=timeout,
+        )
 
 # ---------------------------------------------------------------------------
 # Placement summary  (hardcoded mode only)
@@ -356,12 +337,12 @@ class PlacementSummary:
     infeasible_reasons: Counter = field(default_factory=Counter)
     by_class: dict = field(default_factory=dict)   # dominant class → [ok, nok]
 
-    def record(self, result: OracleResult, placement_classes: list) -> None:
+    def record(self, result: PlacementResult, placement_classes: list) -> None:
         self.total += 1
         dominant = (Counter(placement_classes).most_common(1)[0][0]
                     if placement_classes else "unknown")
         self.by_class.setdefault(dominant, [0, 0])
-        if result.feasible:
+        if result.ok:
             self.feasible += 1
             self.by_class[dominant][0] += 1
         else:
@@ -409,14 +390,12 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def _fill_placeholders(obj, numnodes: int, ppn: int,
+def _fill_placeholders(obj, ppn: int,
                         experiments_block: dict):
     """Recursively substitute __PLACEHOLDER__ strings in a template."""
     if isinstance(obj, dict):
-        return {k: _fill_placeholders(v, numnodes, ppn, experiments_block)
+        return {k: _fill_placeholders(v, ppn, experiments_block)
                 for k, v in obj.items()}
-    if obj == "__NUMNODES__":
-        return str(numnodes)
     if obj == "__PPN__":
         return str(ppn)
     if obj == "__EXPERIMENTS__":
@@ -439,7 +418,7 @@ def _default_placement(interconnect: str) -> str:
 
 
 def _gpus_to_nodes(gpus: int, gpus_per_node: int) -> int:
-    return math.ceil(gpus / gpus_per_node)
+    return math.ceil(gpus / gpus_per_node) if gpus_per_node is not None else 1
 
 
 def _classify_jobs(
@@ -455,6 +434,7 @@ def _classify_jobs(
     small_threshold is None  → all jobs are small.
     small_threshold is int   → jobs with node_count > threshold are large.
     """
+    # FIXME ensure works for different
     node_counts = [_gpus_to_nodes(r["gpus"], gpus_per_node) for r in runs]
     if force_single_large:
         large_idx = node_counts.index(max(node_counts))
@@ -474,7 +454,6 @@ def build_experiment_json(
     exp_index: int,
     gpus_per_node: int,
     comm_lib: str,
-    n_total_nodes: int,
     placement_mode: str,           # device|random|linear|runtime|hardcoded
     oracle: Optional[PlacementOracle],
     placement_summary: Optional[PlacementSummary],
@@ -495,12 +474,13 @@ def build_experiment_json(
     """
     runs = rec["config"]["runs"]                  # [{strategy, gpus}, ...]
     pcv  = rec.get("placement_class_vector", [])  # per-job class (hierarchical)
+    seed = rec.get('placement_seed')
 
     classified = _classify_jobs(runs, gpus_per_node, small_threshold,
                                 force_single_large)
 
     # ── Oracle query (hardcoded mode) ────────────────────────────────────────
-    oracle_result: Optional[OracleResult] = None
+    oracle_result: Optional[PlacementResult] = None
     if placement_mode == "hardcoded":
         assert oracle is not None, "Oracle must be set for hardcoded mode"
         payload = [
@@ -511,7 +491,10 @@ def build_experiment_json(
             }
             for i, (run, _) in enumerate(classified)
         ]
-        oracle_result = oracle.find_placement(payload)
+        oracle_result = oracle.find_placement(payload, seed=seed)
+        print(oracle_result)
+        print()
+        print()
         if placement_summary is not None:
             classes = [pcv[i] if i < len(pcv) else "random"
                        for i in range(len(classified))]
@@ -528,10 +511,12 @@ def build_experiment_json(
 
         # Base fields — always present
         entry: dict = {
-            "strategy": run["strategy"],
-            "command":  get_command(run["strategy"], gpus, comm_lib),
-            "nodes":    nodes,
-            "gpus":     gpus,
+            "strategy":         run["strategy"],
+            "command":          get_command(run["strategy"], gpus, comm_lib),
+            "nodes":            nodes,
+            "gpus":             gpus,
+            "seed":             seed,
+            # "replicate_index":  run.get('replicate_index', 0),
         }
 
         # Placement-mode-specific fields
@@ -544,8 +529,8 @@ def build_experiment_json(
             entry["placement_class"] = pcv[i] if i < len(pcv) else "random"
 
         elif placement_mode == "hardcoded":
-            if oracle_result is not None and oracle_result.feasible:
-                nodelist = oracle_result.assignments.get(i)
+            if oracle_result is not None and oracle_result.ok and oracle_result.placements is not None:
+                nodelist = oracle_result.placements.get(f'training_{i}')
                 if nodelist:
                     entry["nodelist"] = nodelist
                 else:
@@ -565,7 +550,7 @@ def build_experiment_json(
     if placement_mode == "hardcoded":
         top_placement = (
             "hardcoded"
-            if oracle_result is not None and oracle_result.feasible
+            if oracle_result is not None and oracle_result.ok
             else "hardcoded_infeasible"
         )
     else:
@@ -577,28 +562,27 @@ def build_experiment_json(
 
     inner: dict = {
         "placement":     top_placement,
-        "gpus_per_node": gpus_per_node,
-        "n_total_nodes": n_total_nodes,
+        "gpus_per_node": gpus_per_node if gpus_per_node else total_gpus,
         "n_total_gpus":  total_gpus,
-        "n_total_jobs":  len(classified),
         "n_small_jobs":  len(small_jobs),
         "n_large_jobs":  len(large_jobs),
+        "n_total_jobs":  len(classified),
     }
     if small_jobs:
         inner["small_jobs"] = small_jobs
     if large_jobs:
         inner["large_jobs"] = large_jobs
     if include_design_meta:
-        inner["_design_meta"] = {
+        inner["_meta"] = {
             "pattern":         rec.get("pattern"),
             "pattern_family":  rec.get("pattern_family"),
             "entropy_bin":     rec.get("entropy_bin"),
             "placement_bin":   rec.get("placement_bin"),
             "placement_score": rec.get("placement_score"),
-            "placement_seed":  rec.get("placement_seed"),
+            "placement_seed":  seed,
         }
 
-    return {f"pattern_{exp_index}": inner}
+    return inner
 
 
 # ---------------------------------------------------------------------------
@@ -607,7 +591,6 @@ def build_experiment_json(
 
 def build_global_config(
     interconnect: str,
-    n_total_nodes: int,
     gpus_per_node: int,
     exp_filenames: list,          # ordered list of bare filenames
     exp_output_dir: str,          # folder where experiment files live
@@ -641,8 +624,7 @@ def build_global_config(
             "apps":        app_builder(exp_path, results_dir),
         }
 
-    return _fill_placeholders(base, n_total_nodes, gpus_per_node,
-                               experiments_block)
+    return _fill_placeholders(base, gpus_per_node, experiments_block)
 
 
 # ---------------------------------------------------------------------------
@@ -654,6 +636,9 @@ def main(args: argparse.Namespace) -> None:
         doc = json.load(fh)
 
     records, interconnect = _extract_records(doc)
+    # print(interconnect)
+    # print(records)
+    # exit()
     if not records:
         print("No experiments found in input JSON.", file=sys.stderr)
         sys.exit(1)
@@ -681,10 +666,11 @@ def main(args: argparse.Namespace) -> None:
         missing = sum(1 for r in records if "placement_class_vector" not in r)
         if missing:
             print(
-                f"Warning: {missing} record(s) lack placement_class_vector; "
+                f"Error: {missing} record(s) lack placement_class_vector; "
                 "those jobs will fall back to 'random'.",
                 file=sys.stderr,
             )
+            exit(1)
 
     # ── Oracle setup (hardcoded mode only) ───────────────────────────────────
     oracle: Optional[PlacementOracle] = None
@@ -703,6 +689,7 @@ def main(args: argparse.Namespace) -> None:
               f"Available: {oracle._available}")
 
     # ── User global-config template ──────────────────────────────────────────
+    # FIXME
     user_template: Optional[dict] = None
     if args.global_template:
         with open(args.global_template, encoding="utf-8") as fh:
@@ -724,7 +711,6 @@ def main(args: argparse.Namespace) -> None:
             exp_index=idx,
             comm_lib=args.comm_lib,
             gpus_per_node=args.gpus_per_node,
-            n_total_nodes=args.n_total_nodes,
             placement_mode=placement_mode,
             oracle=oracle,
             placement_summary=summary,
@@ -742,7 +728,6 @@ def main(args: argparse.Namespace) -> None:
     # ── Write global config ──────────────────────────────────────────────────
     global_cfg = build_global_config(
         interconnect=interconnect,
-        n_total_nodes=args.n_total_nodes,
         gpus_per_node=args.gpus_per_node,
         exp_filenames=exp_files,
         exp_output_dir=str(out_dir),
@@ -798,12 +783,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Required
     p.add_argument(
-        "--gpus-per-node", type=int, required=True, metavar="N",
+        "--gpus-per-node", type=int, required=False, metavar="N", default=None,
         help="GPUs per physical node on the target system.  REQUIRED.",
-    )
-    p.add_argument(
-        "--n-total-nodes", type=int, required=True, metavar="N",
-        help="Total node count of the target cluster.  REQUIRED.",
     )
 
     # Placement mode
@@ -896,16 +877,14 @@ def build_parser() -> argparse.ArgumentParser:
 def _validate(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if not os.path.isfile(args.input_json):
         parser.error(f"Input file not found: '{args.input_json}'.")
-    if args.gpus_per_node < 1:
-        parser.error("--gpus-per-node must be ≥ 1.")
-    if args.n_total_nodes < 1:
-        parser.error("--n-total-nodes must be ≥ 1.")
     if args.small_job_threshold is not None and args.small_job_threshold < 1:
         parser.error("--small-job-threshold must be ≥ 1.")
     if args.placement_mode == "hardcoded" and not args.system:
         parser.error("--placement-mode hardcoded requires --system NAME.")
     if args.global_template and not os.path.isfile(args.global_template):
         parser.error(f"--global-template file not found: '{args.global_template}'.")
+    if args.placement_mode != "device" and (args.gpus_per_node is None or args.gpus_per_node < 1):
+        parser.error("--gpus-per-node must be ≥ 1.")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ Maintains N concurrent srun jobs split as:
 The main loop polls all running processes. When one finishes, its nodelist is
 reused to immediately launch a replacement of the same type.
 
-Each job writes its stdout to its own file inside workerpool_out/.
+Each job writes its stdout to its own file inside workerpool_out_{pid}/.
 Scheduler debug logs go to stdout by default, or to a file if --output-log is given.
 
 Usage:
@@ -27,6 +27,8 @@ import math
 import os
 import random
 import shlex
+import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -34,15 +36,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from command_map import get_command
 from typing import Union
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION — edit application paths to match your environment
 # ---------------------------------------------------------------------------
-
-#
-
 
 # Node layout
 MICROJOB_NODE_COUNT = 2       # microjobs always use exactly 2 nodes
@@ -61,9 +59,9 @@ POLL_INTERVAL       = 2       # seconds between polls
 def ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def log(msg: str, log_path: Union[Path, None] = None) -> None:
+def log(msg: str, log_path: Union[Path, None] = None, with_ts=True) -> None:
     """Print msg to stdout. If log_path is given, also append to that file."""
-    line = f"[{ts()}] {msg}"
+    line = f"[{ts()}] {msg}" if with_ts else msg
     print(line, flush=True)
     if log_path is not None:
         with open(log_path, "a") as f:
@@ -95,24 +93,24 @@ def expand_app(app_str: str) -> list[str]:
     return shlex.split(expanded)
 
 
-def job_output_path(out_dir: Path, uid: str) -> Path:
-    """Return the per-job output file path."""
-    return out_dir / f"{uid}.out"
+def job_output_paths(out_dir: Path, uid: str) -> tuple[Path, Path]:
+    """Return the (stdout_path, stderr_path) for a given job uid."""
+    return out_dir / f"{uid}.stdout", out_dir / f"{uid}.stderr"
 
 # ---------------------------------------------------------------------------
 # Job launch
 # ---------------------------------------------------------------------------
 
 def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str], 
-           out_dir: Path, log_path: Union[Path, None], task_id: int, launch_direct: bool, gpus:int = None) -> subprocess.Popen:
+           out_dir: Union[Path, None], log_path: Union[Path, None], task_id: int, launch_direct: bool, gpus: Union[int, None] = None) -> subprocess.Popen:
     """Launch one srun job and return its Popen handle."""
     uid      = f"{strategy}strategy_{gpus}gpus_{task_id}"
-    #app_argv = expand_app(command)
     nodelist = ",".join(nodes)
-    job_out  = job_output_path(out_dir, uid)
+    job_stdout, job_stderr = job_output_paths(out_dir, uid) if out_dir else (None, None)
+
     cmd = []
     if launch_direct:
-        cmd += ["mpirun", "-np", f"{gpus}", *extra_flags, *command.split()]
+        cmd += ["mpirun", "-np", f"{gpus}", *extra_flags, *command.split()] # FIXME , '-d', nodelist]
     else:
         cmd += [
             "srun",
@@ -128,108 +126,143 @@ def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str]
 
     # ------- LOGGING & METADATA -------
     header = (
-        f"TASK     : {uid}\n"
-        f"TYPE     : {strategy}\n"
-        f"NODES    : {nodelist}\n"
-        f"APP      : {command}\n"
-        f"CMD      : {' '.join(cmd)}\n"
-        f"STARTED  : {ts()}\n"
+        f"{'=' * 72}\n"
+        f"TASK       : {uid}\n"
+        f"TYPE       : {strategy}\n"
+        f"NODES/GPUs : {nodelist}\n"
+        f"APP        : {command}\n"
+        f"CMD        : {' '.join(cmd)}\n"
+        f"STARTED    : {ts()}\n"
+        f"STDOUT     : {job_stdout}\n"
+        f"STDERR     : {job_stderr}\n"
         f"{'=' * 72}\n"
     )
-    with open(job_out, "w") as f:
-        f.write(header)
-
-    log(f"START [{uid}]  nodes={nodelist}  app={command}  out={job_out.name}", log_path)
+    log(f"START [{uid}]  nodes={nodelist}  app={command}  stdout={job_stdout}  stderr={job_stderr}", log_path)
     # ------- LOGGING & METADATA -------
 
+    stdout_fh = open(job_stdout, "w") if job_stdout else subprocess.PIPE
+    stderr_fh = open(job_stderr, "w") if job_stderr else subprocess.PIPE
+
     proc = subprocess.Popen(
-        cmd,             
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        cmd,
+        stdout=stdout_fh,
+        stderr=stderr_fh,
         text=True,
-        bufsize=1,
     )
 
     # Attach metadata directly to the Popen object for convenience
-    proc.uid      = uid       # type: ignore[attr-defined]
-    proc.job_type = strategy  # type: ignore[attr-defined]
-    proc.nodes    = nodes     # type: ignore[attr-defined]
-    proc.app      = command   # type: ignore[attr-defined]
-    proc.job_out  = job_out   # type: ignore[attr-defined]
+    proc.uid        = uid         # type: ignore[attr-defined]
+    proc.header     = header      # type: ignore[attr-defined]
+    proc.job_type   = strategy    # type: ignore[attr-defined]
+    proc.nodes      = nodes       # type: ignore[attr-defined]
+    proc.app        = command     # type: ignore[attr-defined]
+    proc.job_stdout = job_stdout  # type: ignore[attr-defined]
+    proc.job_stderr = job_stderr  # type: ignore[attr-defined]
+    proc._stdout_fh = stdout_fh   # type: ignore[attr-defined]  keep handle to close later
+    proc._stderr_fh = stderr_fh   # type: ignore[attr-defined]
     return proc
 
 # ---------------------------------------------------------------------------
 # Output draining
 # ---------------------------------------------------------------------------
 
-def drain_output(proc: subprocess.Popen) -> None:
-    """Read all remaining stdout from a finished process and append to its job file."""
-    print(f"porco giuda")
-    if proc.stdout:
-        with open(proc.job_out, "a") as f:          # type: ignore[attr-defined]
-            for line in proc.stdout:
-                f.write(line)
-    if proc.stderr:
-        with open(proc.job_out, "a") as f:          # type: ignore[attr-defined]
-            while True:
-                line = proc.stderr.readline()
-                if not line:
-                    break
-                f.write("[ERROR] " + line)
+def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> None:
+    """
+    Close the live file handles, then print the contents of the job's stdout
+    and stderr files to the workerpool stdout in a parsable block format.
 
-def drain_live(proc: subprocess.Popen) -> None:
-    """Non-blocking drain of any currently available lines to the job file."""
-    if proc.stdout:
-        with open(proc.job_out, "a") as f:          # type: ignore[attr-defined]
-            while True:
-                line = proc.stdout.readline()
-                if not line:
-                    break
-                f.write(line)
+    Parsable format
+    ---------------
+    <<<JOB_OUTPUT_START uid=<uid> stream=stdout>>>
+    <raw lines>
+    <<<JOB_OUTPUT_END uid=<uid> stream=stdout>>>
 
-    if proc.stderr:
-        with open(proc.job_out, "a") as f:          # type: ignore[attr-defined]
-            while True:
-                line = proc.stderr.readline()
-                if not line:
-                    break
-                f.write("[ERROR] " + line)
+    <<<JOB_OUTPUT_START uid=<uid> stream=stderr>>>
+    <raw lines>
+    <<<JOB_OUTPUT_END uid=<uid> stream=stderr>>>
+    """
+    uid = proc.uid  # type: ignore[attr-defined]
+
+    # Close the file handles that were passed to Popen so all data is flushed
+    for attr in ("_stdout_fh", "_stderr_fh"):
+        fh = getattr(proc, attr, None)
+        if fh and fh not in (subprocess.PIPE, subprocess.DEVNULL):
+            try:
+                fh.close()
+            except Exception:
+                pass
+
+    for stream, path_attr in (("stdout", "job_stdout"), ("stderr", "job_stderr")):
+        path: Union[Path, None] = getattr(proc, path_attr, None)
+        if path is None:
+            continue
+
+        start_marker = f"<<<JOB_OUTPUT_START uid={uid} stream={stream}>>>"
+        end_marker   = f"<<<JOB_OUTPUT_END   uid={uid} stream={stream}>>>"
+
+        print(start_marker, flush=True)
+        if log_path:
+            with open(log_path, "a") as lf:
+                lf.write(start_marker + "\n")
+
+        try:
+            content = path.read_text(errors="replace")
+            print(content, end="", flush=True)
+            if log_path:
+                with open(log_path, "a") as lf:
+                    lf.write(content)
+        except FileNotFoundError:
+            msg = f"  <output file not found: {path}>\n"
+            print(msg, end="", flush=True)
+            if log_path:
+                with open(log_path, "a") as lf:
+                    lf.write(msg)
+
+        print(end_marker, flush=True)
+        if log_path:
+            with open(log_path, "a") as lf:
+                lf.write(end_marker + "\n")
 
 
-# ---------------------------------------------------------------------------
-# Main scheduler loop
-# ---------------------------------------------------------------------------
+def cleanup_output_dir(out_dir: Union[Path, None], log_path: Union[Path, None] = None) -> None:
+    """Remove the per-run output directory once all output has been drained."""
+    if out_dir is None:
+        return
+    try:
+        shutil.rmtree(out_dir)
+        log(f"Removed output directory: {out_dir}", log_path)
+    except Exception as exc:
+        log(f"WARNING: could not remove output directory {out_dir}: {exc}", log_path)
 
-def run_scheduler(jobs: dict, out_dir: Path,
+
+
+
+def run_scheduler(jobs: dict, out_dir: Union[Path, None],
                   extra_flags: list[str], walltime: int, launch_direct: bool,
+                  kill_signal: signal.Signals = signal.SIGTERM,
                   log_path: Union[Path, None] = None) -> None:
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
 
     # Write scheduler log header
     header = (
-        f"SLURM srun Scheduler Log\n"
         f"Started  : {ts()}\n"
-        f"Output   : {out_dir.resolve()}/\n"
-        f"{'=' * 72}\n"
+        f"Output   : {out_dir.resolve() if out_dir else 'stdout'}\n\n"
     )
-    if log_path is not None:
-        with open(log_path, "w") as f:
-            f.write(header)
-    else:
-        print(header, flush=True)
+    log(header, log_path, with_ts=False)
 
     task_id = 0
 
     # Launch initial batch
     running: list[subprocess.Popen] = []
     larges: list[subprocess.Popen] = []
-    for job_name, job in jobs["small"].items():
+    for job in jobs["small"].values():
         proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
         running.append(proc)
         task_id += 1
 
-    for job_name, job in jobs["large"].items():
+    for job in jobs["large"].values():
         print(job)
         proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
         larges.append(proc)
@@ -243,11 +276,12 @@ def run_scheduler(jobs: dict, out_dir: Path,
 
         #! --> Walltime Check
         if time.time() > deadline:
-            log(f"WALLTIME of {WALLTIME_SECONDS}s exceeded. Terminating all jobs.", log_path)
-            for r in running:
-                r.terminate()
-            for large in larges:
-                large.terminate()
+            log(f"WALLTIME of {WALLTIME_SECONDS}s exceeded. Terminating all jobs with {kill_signal.name}.", log_path)
+            for r in running + larges:
+                r.send_signal(kill_signal)
+                r.wait()
+                drain_output(r, log_path)
+            cleanup_output_dir(out_dir, log_path)
             return
         time.sleep(POLL_INTERVAL)
 
@@ -259,27 +293,29 @@ def run_scheduler(jobs: dict, out_dir: Path,
                 # drain_live(large)
                 still_large.append(large)
             else:
-                drain_output(large)
+                drain_output(large, log_path)
                 footer = (
                     f"{'=' * 72}\n"
                     f"FINISHED : {ts()}  exit_code={ret}\n"
                 )
-                with open(large.job_out, "a") as f:  # type: ignore[attr-defined]
-                    f.write(footer)
+                log(footer, log_path, with_ts=False)
                 log(
-                    f"FINISH [{large.uid}]  exit_code={ret}"       # type: ignore[attr-defined]
-                    f"  nodes={','.join(large.nodes)}"             # type: ignore[attr-defined]
-                    f"  out={large.job_out.name}",                 # type: ignore[attr-defined]
+                    f"FINISH [{large.uid}]  exit_code={ret}"                        # type: ignore[attr-defined]
+                    f"  nodes={','.join(large.nodes)}"                              # type: ignore[attr-defined]
+                    f"  stdout={large.job_stdout}  stderr={large.job_stderr}",      # type: ignore[attr-defined]
                     log_path,
                 )
 
         larges = still_large
     
-        #! --> Large Jobs Handler
+        #! --> Early Exit Check: all large jobs finished, terminate remaining small jobs
         if not larges:
             for r in running:
-                r.terminate()
+                r.send_signal(kill_signal)
+                r.wait()
+                drain_output(r, log_path)
             log("Terminated all remaining micro jobs — all large jobs finished.", log_path)
+            cleanup_output_dir(out_dir, log_path)
             return
 
         #! --> Small Jobs Handler
@@ -290,19 +326,18 @@ def run_scheduler(jobs: dict, out_dir: Path,
                 # drain_live(proc)
                 still_running.append(proc)
             else:
-                # Finished — drain remaining output and write footer to job file
-                drain_output(proc)
+                # Finished — drain remaining output and write footer to scheduler log
+                drain_output(proc, log_path)
                 footer = (
                     f"{'=' * 72}\n"
                     f"FINISHED : {ts()}  exit_code={ret}\n"
                 )
-                with open(proc.job_out, "a") as f:  # type: ignore[attr-defined]
-                    f.write(footer)   
+                log(footer, log_path, with_ts=False)
 
                 log(
-                    f"FINISH [{proc.uid}]  exit_code={ret}"                 # type: ignore[attr-defined]
-                    f"  nodes={','.join(proc.nodes)}"                        # type: ignore[attr-defined]
-                    f"  out={proc.job_out.name}",                            # type: ignore[attr-defined]
+                    f"FINISH [{proc.uid}]  exit_code={ret}"                     # type: ignore[attr-defined]
+                    f"  nodes={','.join(proc.nodes)}"                           # type: ignore[attr-defined]
+                    f"  stdout={proc.job_stdout}  stderr={proc.job_stderr}",    # type: ignore[attr-defined]
                     log_path,
                 )
 
@@ -314,6 +349,9 @@ def run_scheduler(jobs: dict, out_dir: Path,
                 still_running.append(replacement)
                 task_id += 1
         running = still_running
+
+    # Normal exit: while-loop exhausted because all small jobs finished naturally
+    cleanup_output_dir(out_dir, log_path)
 
 
 # ---------------------------------------------------------------------------
@@ -362,10 +400,10 @@ def parse_args() -> argparse.Namespace:
                         help="Nodes in bracket format: name[node01,node02,...].")
     parser.add_argument("--launch-direct", required=False,
                         help="If False launch using mpirun else use srun", action="store_true")
-    parser.add_argument("--device_upperbound", required=False, default=None, metavar="DEVICE",
+    parser.add_argument("--device-upperbound", required=False, default=None, metavar="DEVICE",
                         help="Device upperbound (8 --> device IDs considered 0..7)", type=int)
-    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, metavar="DIR",
-                        help=f"Directory for all output files (default: {DEFAULT_OUTPUT_DIR}).")
+    parser.add_argument("--output-dir", default=None, metavar="DIR",
+                        help=f"Directory for all output files.")
     parser.add_argument("--srun-extra", default="", metavar="FLAGS",
                         help='Extra srun flags for every launch, e.g. "--mem=4G".')
     parser.add_argument("--walltime", default=120, type=int, metavar="SECONDS",
@@ -375,74 +413,79 @@ def parse_args() -> argparse.Namespace:
                             "File to redirect scheduler logs to. "
                             "If omitted, logs are printed to stdout (default)."
                         ))
+    parser.add_argument("--kill-signal", default="SIGTERM", metavar="SIGNAL",
+                        help=(
+                            "Signal sent to force-terminate jobs (walltime exceeded or "
+                            "early exit). Accepts signal names (e.g. SIGTERM, SIGINT, SIGKILL) "
+                            "or integers. Default: SIGTERM."
+                        ))
     return parser.parse_args()
 
 
 def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
     with open(config_path) as f:          # ← read the file first
-        config = json.load(f)             # ← use json.load(), not json.loads()
+        pattern = json.load(f)             # ← use json.load(), not json.loads()
     available = available_nodes.copy()
     result = {
         "small": {},
         "large": {}
     }
 
-    for pattern_name, pattern in config.items():
-        n_total_small = pattern.get("n_total_small_nodes", -1)
-        n_total_large = pattern.get("n_total_large_nodes", -1)
+    n_total_small = pattern.get("n_total_small_nodes", -1)
+    n_total_large = pattern.get("n_total_large_nodes", -1)
 
-        if not device:
-            if n_total_small + n_total_large != len(available):
-                raise ValueError(
-                    f"Total nodes in config ({n_total_small} + {n_total_large}) does not match the number of available nodes ({len(available)})."
-                )
+    if not device:
+        if n_total_small + n_total_large != len(available):
+            raise ValueError(
+                f"Total nodes in config ({n_total_small} + {n_total_large}) does not match the number of available nodes ({len(available)})."
+            )
 
-        group_small = available[:n_total_large]
-        group_big = available[n_total_large:]
+    group_small = available[:n_total_large]
+    group_big = available[n_total_large:]
 
-        if not device:
-            if len(group_small) + len(group_big) != len(available):
-                raise ValueError(
-                    f"Node split in config does not match the number of available nodes ({len(available)})."
-                )
-        
+    if not device:
+        if len(group_small) + len(group_big) != len(available):
+            raise ValueError(
+                f"Node split in config does not match the number of available nodes ({len(available)})."
+            )
+    
 
-        jobs = pattern.get("large_jobs", {})
-        for job_id, job_info in jobs.items():
-            nodes_needed = job_info["nodes"]
+    jobs = pattern.get("large_jobs", {})
+    for job_id, job_info in jobs.items():
+        nodes_needed = job_info["nodes"]
 
-            if len(group_big) < nodes_needed:
-                raise ValueError(
-                    f"needs {nodes_needed}, only {len(group_big)} left."
-                )
+        if len(group_big) < nodes_needed:
+            raise ValueError(
+                f"needs {nodes_needed}, only {len(group_big)} left."
+            )
 
-            assigned = [group_big.pop(0) for _ in range(nodes_needed)]
+        assigned = [group_big.pop(0) for _ in range(nodes_needed)]
 
-            result["large"][f"large_jobs_{job_id}"] = {
-                "strategy": job_info["strategy"],
-                "nodelist": assigned,
-                "command": job_info["command"],
-                "gpus": job_info.get("gpus")
-            }
+        result["large"][f"large_jobs_{job_id}"] = {
+            "strategy": job_info["strategy"],
+            "nodelist": assigned,
+            "command": job_info["command"],
+            "gpus": job_info.get("gpus")
+        }
 
 
-        jobs = pattern.get("small_jobs", {})
-        for job_id, job_info in jobs.items():
-            nodes_needed = job_info["nodes"]
+    jobs = pattern.get("small_jobs", {})
+    for job_id, job_info in jobs.items():
+        nodes_needed = job_info["nodes"]
 
-            if len(group_small) < nodes_needed:
-                raise ValueError(
-                    f"needs {nodes_needed}, only {len(group_small)} left."
-                )
+        if len(group_small) < nodes_needed:
+            raise ValueError(
+                f"needs {nodes_needed}, only {len(group_small)} left."
+            )
 
-            assigned = [group_small.pop(0) for _ in range(nodes_needed)]
+        assigned = [group_small.pop(0) for _ in range(nodes_needed)]
 
-            result["small"][f"small_jobs_{job_id}"] = {
-                "strategy": job_info["strategy"],
-                "nodelist": assigned,
-                "command": job_info["command"],
-                "gpus": job_info.get("gpus")
-            }
+        result["small"][f"small_jobs_{job_id}"] = {
+            "strategy": job_info["strategy"],
+            "nodelist": assigned,
+            "command": job_info["command"],
+            "gpus": job_info.get("gpus")
+        }
 
     return result
 
@@ -450,7 +493,7 @@ def main() -> None:
     args = parse_args()
     
     if (not args.nodelist) and (not args.device_upperbound):
-        print(f"{args.nodelist} or {args.device_upperbound} must be set!", file=sys.stderr)
+        print(f"--nodelist or --device-upperbound must be set!", file=sys.stderr)
         sys.exit(1)
     
     if args.nodelist and args.device_upperbound:
@@ -462,11 +505,26 @@ def main() -> None:
 
     jobs = assign_nodes(args.pattern, available_nodes=nodes, device=device)
 
-    out_dir     = Path(args.output_dir)
+    # Output directory is namespaced by workerpool PID to avoid collisions
+    # across concurrent scheduler invocations.
+    workerpool_pid = os.getpid()
+    if args.output_dir:
+        out_dir = Path(args.output_dir)
+    else:
+        out_dir = Path(f"workerpool_out_{workerpool_pid}")
+
     extra_flags = args.srun_extra.split() if args.srun_extra.strip() else []
     log_path    = Path(args.output_log) if args.output_log else None
 
-    run_scheduler(jobs, out_dir, extra_flags, args.walltime, args.launch_direct, log_path)
+    # Resolve --kill-signal to a signal.Signals member (accepts names or integers)
+    raw_sig = args.kill_signal.strip()
+    try:
+        kill_signal = signal.Signals[raw_sig] if raw_sig.isidentifier() else signal.Signals(int(raw_sig))
+    except (KeyError, ValueError):
+        print(f"ERROR: unknown signal '{raw_sig}'. Use a name like SIGTERM or an integer.", file=sys.stderr)
+        sys.exit(1)
+
+    run_scheduler(jobs, out_dir, extra_flags, args.walltime, args.launch_direct, kill_signal, log_path)
 
 
 if __name__ == "__main__":

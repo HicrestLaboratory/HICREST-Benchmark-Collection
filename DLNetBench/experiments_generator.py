@@ -35,9 +35,8 @@ import math
 import random
 import subprocess
 import json
-import sys
-from dataclasses import dataclass, field
-from typing import Callable, Optional
+from dataclasses import dataclass
+from typing import Optional
 from datetime import datetime, timezone
 
 
@@ -51,7 +50,7 @@ G: int = 72                # Total number of GPUs in the cluster
 # ── Strategies ──────────────────────────────────────────────────────────────
 STRATEGY_DEFS: list[tuple[str, list[int]]] = [
     ("DP",           [2, 4, 8, 16]),
-    ("FSDP",         [2, 4, 8, 16, 32]),
+    ("FSDP",         [2, 4, 8, 16, 32]), # TODO remove 2
     ("DP+PP",        [4, 8, 16, 32, 64]),
     ("DP+PP+Expert", [64, 128, 192, 256, 320, 384, 448, 512]),
     ("DP+PP+TP",     [320, 640, 960]),
@@ -128,7 +127,7 @@ INCLUDE_INTRA_NODE: bool = False
 
 # Number of additional node-selection replicates per baseline run for
 # intra-group and inter-group placement classes.
-N_BASELINE_TOPO_REPS: int = 2
+N_BASELINE_TOPO_REPS: int = 1
 
 # Number of alternative node assignments to generate per (experiment, placement
 # class vector) pair.
