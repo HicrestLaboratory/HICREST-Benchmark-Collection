@@ -1,215 +1,280 @@
 #!/usr/bin/env python3
 """
-SLURM srun Job Scheduler
-=========================
-Must be launched INSIDE an existing salloc session.
+Job Scheduler
+=============
+Launches and manages concurrent jobs from a pattern JSON file.
 
-Maintains N concurrent srun jobs split as:
-  - 80% microjobs  : 2 nodes, 4 tasks/node, 1 cpu/task
-  - 20% medium jobs: 4 or 8 nodes (chosen randomly), 4 tasks/node, 1 cpu/task
+Two execution backends:
+  - mpirun : used when placement="device" (jobs are mapped to specific GPU device IDs)
+  - srun   : used for all other placement strategies (sequential, random, hardcoded, runtime)
 
-The main loop polls all running processes. When one finishes, its nodelist is
-reused to immediately launch a replacement of the same type.
+Placement strategies:
+  device    → mpirun; device IDs are integers (0..N-1), assigned linearly or from job spec
+  hardcoded → srun;   each job in the JSON must carry a "nodelist" attribute
+  linear    → srun;   nodes assigned in order from --nodelist
+  random    → srun;   nodes shuffled, then assigned linearly
+  runtime   → srun;   PlacementOracle assigns nodes
 
-Each job writes its stdout to its own file inside workerpool_out_{pid}/.
-Scheduler debug logs go to stdout by default, or to a file if --output-log is given.
+Behaviour:
+  - At least two small jobs are always present.
+  - Small jobs are continuously re-spawned until the scheduler exits.
+  - If large jobs exist: scheduler exits when the last large job finishes (small jobs are killed).
+  - If no large jobs: scheduler exits when --walltime seconds have elapsed (small jobs are killed).
+  - Killing is graceful: the process-group of each mpirun/srun is signalled so every
+    spawned child receives the signal and can clean up before the scheduler moves on.
+
+Output:
+  - Each job run writes stdout/stderr to separate files under --output-dir.
+  - When a job finishes (naturally or by signal) its files are printed to stdout
+    together with a metadata header describing what was run.
 
 Usage:
-    python slurm_scheduler.py -p pattern.json --nodelist [node01,node02,...] [--output-dir DIR] [--debug]
+    python slurm_scheduler.py -p pattern.json --nodelist node01,node02,... [options]
+    python slurm_scheduler.py -p pattern.json --device-upperbound 8 [options]
 """
 
 import argparse
-import math
+import json
 import os
 import random
-import shlex
 import shutil
 import signal
 import subprocess
 import sys
 import time
-import json
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
-# Assuming parse_results is a custom module you have locally
-from parse_results import *
-
-from typing import Union, Optional
+from parsers import stdout_to_csv  # your local module
 
 # ---------------------------------------------------------------------------
-# CONFIGURATION — edit application paths to match your environment
+# Tunables
 # ---------------------------------------------------------------------------
 
-# Node layout
-MICROJOB_NODE_COUNT = 2       # microjobs always use exactly 2 nodes
-MEDIUM_NODE_CHOICES = [4, 8]  # medium jobs randomly use 4 or 8 nodes
-TASKS_PER_NODE      = 4
-CPUS_PER_TASK       = 1
+TASKS_PER_NODE  = 4
+CPUS_PER_TASK   = 1
+POLL_INTERVAL   = 2   # seconds between status polls
 
-DEFAULT_OUTPUT_DIR  = "workerpool_out"
-SCHEDULER_LOG_NAME  = "scheduler.log"
-POLL_INTERVAL       = 2       # seconds between polls
-
-# Global debug toggle
-DEBUG_ENABLED       = False
+DEBUG_ENABLED   = False
 
 # ---------------------------------------------------------------------------
-# Utilities
+# Logging helpers
 # ---------------------------------------------------------------------------
 
 def ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def debug_log(msg: str) -> None:
-    """Print debug messages if the --debug flag is enabled."""
+def debug(msg: str) -> None:
     if DEBUG_ENABLED:
         print(f"[DEBUG {ts()}] {msg}", flush=True)
 
-def log(msg: str, log_path: Union[Path, None] = None, with_ts=True) -> None:
-    """Print msg to stdout. If log_path is given, also append to that file."""
-    line = f"[{ts()}] {msg}" if with_ts else msg
+def log(msg: str, log_path: Optional[Path] = None) -> None:
+    line = f"[{ts()}] {msg}"
     print(line, flush=True)
-    if log_path is not None:
+    if log_path:
         with open(log_path, "a") as f:
             f.write(line + "\n")
 
-def compute_split(n: int) -> tuple[int, int]:
-    """Return (n_micro, n_medium) summing to n with an ~80/20 split."""
-    n_medium = max(1, math.floor(n * 0.20))
-    n_micro  = n - n_medium
-    return n_micro, n_medium
-
-def pick_nodes(all_nodes: list[str], job_type: str) -> list[str]:
-    """Sample nodes without replacement for one job."""
-    if job_type == "micro":
-        count = MICROJOB_NODE_COUNT
-    else:
-        available = [c for c in MEDIUM_NODE_CHOICES if c <= len(all_nodes)]
-        count = random.choice(available if available else [min(MEDIUM_NODE_CHOICES)])
-        count = min(count, len(all_nodes))
-    return random.sample(all_nodes, count)
-
-def expand_app(app_str: str) -> list[str]:
-    """
-    Expand environment variables (e.g. $HOME) and split the app string into
-    a proper argv list so srun receives the executable and its flags separately.
-    """
-    expanded = os.path.expandvars(os.path.expanduser(app_str))
-    return shlex.split(expanded)
-
-def job_output_paths(out_dir: Path, uid: str) -> tuple[Path, Path]:
-    """Return the (stdout_path, stderr_path) for a given job uid."""
-    return out_dir / f"{uid}.stdout", out_dir / f"{uid}.stderr"
-
 # ---------------------------------------------------------------------------
-# Job launch
+# Process-group–aware launch
 # ---------------------------------------------------------------------------
 
-def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str], 
-           out_dir: Union[Path, None], log_path: Union[Path, None], task_id: int, launch_direct: bool, gpus: Union[int, None] = None) -> subprocess.Popen:
-    """Launch one srun job and return its Popen handle."""
-    uid      = f"{strategy}strategy_{gpus}gpus_{task_id}"
-    nodelist = ",".join(nodes)
-    job_stdout, job_stderr = job_output_paths(out_dir, uid) if out_dir else (None, None)
-
-    cmd = []
-    if launch_direct:
-        cmd += ["mpirun", "-np", f"{gpus}", *extra_flags, *command.split(),'-d', nodelist]
-    else:
-        cmd += [
-            "srun",
-            "--export=ALL",
-            f"--nodelist={nodelist}",
-            f"--cpu-bind=socket",
-            f"--ntasks-per-node={TASKS_PER_NODE}",
-            f"--cpus-per-task={CPUS_PER_TASK}",
-            f"--job-name={uid}",
-            *extra_flags,
-            *command.split()
-        ]
-
-    debug_log(f"Assembled launch command for {uid}: {' '.join(cmd)}")
-    print(f"Launching job [{uid}] with command: {' '.join(cmd)}", flush=True)
-    
-    # ------- LOGGING & METADATA -------
-    header = (
-        f"{'=' * 72}\n"
-        f"TASK       : {uid}\n"
-        f"TYPE       : {strategy}\n"
-        f"NODES/GPUs : {nodelist}\n"
-        f"APP        : {command}\n"
-        f"CMD        : {' '.join(cmd)}\n"
-        f"STARTED    : {ts()}\n"
-        f"STDOUT     : {job_stdout}\n"
-        f"STDERR     : {job_stderr}\n"
-        f"{'=' * 72}\n"
-    )
-    log(f"START [{uid}]  nodes={nodelist}  app={command}  stdout={job_stdout}  stderr={job_stderr}", log_path)
-    # ------- LOGGING & METADATA -------
-
-    stdout_fh = open(job_stdout, "w") if job_stdout else subprocess.PIPE
-    stderr_fh = open(job_stderr, "w") if job_stderr else subprocess.PIPE
-
+def _start_process(cmd: list[str], stdout_path: Path, stderr_path: Path) -> subprocess.Popen:
+    """
+    Launch cmd in its own process group so that sending a signal to the PGID
+    propagates to every process spawned by mpirun/srun (workers, PMI daemons, …).
+    """
+    stdout_fh = open(stdout_path, "w")
+    stderr_fh = open(stderr_path, "w")
     proc = subprocess.Popen(
         cmd,
         stdout=stdout_fh,
         stderr=stderr_fh,
         text=True,
+        start_new_session=True,   # creates a new process group (PGID == proc.pid)
     )
-
-    # Attach metadata directly to the Popen object for convenience
-    proc.uid        = uid         # type: ignore[attr-defined]
-    proc.header     = header      # type: ignore[attr-defined]
-    proc.job_type   = strategy    # type: ignore[attr-defined]
-    proc.nodes      = nodes       # type: ignore[attr-defined]
-    proc.app        = command     # type: ignore[attr-defined]
-    proc.job_stdout = job_stdout  # type: ignore[attr-defined]
-    proc.job_stderr = job_stderr  # type: ignore[attr-defined]
-    proc._stdout_fh = stdout_fh   # type: ignore[attr-defined]  keep handle to close later
+    proc._stdout_fh = stdout_fh   # type: ignore[attr-defined]
     proc._stderr_fh = stderr_fh   # type: ignore[attr-defined]
+    return proc
+
+def _graceful_kill(proc: subprocess.Popen, sig: signal.Signals, timeout: float = 10.0) -> None:
+    """
+    Send *sig* to the entire process group of proc, then wait up to *timeout*
+    seconds for it to exit; if it hasn't, send SIGKILL to the group.
+    """
+    pgid = os.getpgid(proc.pid)
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        pass  # already gone
+
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
+
+def _close_handles(proc: subprocess.Popen) -> None:
+    for attr in ("_stdout_fh", "_stderr_fh"):
+        fh = getattr(proc, attr, None)
+        if fh:
+            try:
+                fh.close()
+            except Exception:
+                pass
+
+# ---------------------------------------------------------------------------
+# Job launch
+# ---------------------------------------------------------------------------
+
+def launch_job(
+    job_name: str,
+    repetition: int,
+    command: str,
+    strategy: str,
+    assigned_resources: list,   # node names (srun) or device IDs as strings (mpirun)
+    use_mpirun: bool,
+    gpus_per_node: int,
+    extra_srun_flags: list[str],
+    out_dir: Path,
+    log_path: Optional[Path],
+) -> subprocess.Popen:
+    """
+    Build and launch one job. Returns the Popen handle with metadata attributes.
+
+    Metadata attributes attached to the proc object:
+      .uid          – unique run identifier  (job_name + repetition counter)
+      .job_name     – original job key from the JSON
+      .repetition   – how many times this job has been launched (0-indexed)
+      .strategy     – strategy string from the JSON
+      .resources    – list of assigned nodes or device IDs
+      .use_mpirun   – bool
+      .app          – command string
+      .stdout_path  – Path to stdout file
+      .stderr_path  – Path to stderr file
+      .start_ts     – launch timestamp string
+    """
+    uid = f"{job_name}_rep{repetition}"
+    stdout_path = out_dir / f"{uid}.stdout"
+    stderr_path = out_dir / f"{uid}.stderr"
+
+    if use_mpirun:
+        # resources are device IDs (integers stored as strings)
+        device_ids   = ",".join(str(d) for d in assigned_resources)
+        num_ranks    = len(assigned_resources)
+        cmd = [
+            "mpirun",
+            "-np", str(num_ranks),
+            "--map-by", "slot",
+            *extra_srun_flags,
+            *command.split(),
+            "-d", device_ids,
+        ]
+    else:
+        # resources are node hostnames
+        nodelist_str = ",".join(assigned_resources)
+        num_nodes    = len(assigned_resources)
+        cmd = [
+            "srun",
+            "--export=ALL",
+            f"--nodelist={nodelist_str}",
+            f"--nodes={num_nodes}",
+            f"--ntasks-per-node={TASKS_PER_NODE}",
+            f"--cpus-per-task={CPUS_PER_TASK}",
+            f"--job-name={uid}",
+            *extra_srun_flags,
+            *command.split(),
+        ]
+
+    start = ts()
+    debug(f"Launching [{uid}]: {' '.join(cmd)}")
+    log(f"START [{uid}]  strategy={strategy}  resources={assigned_resources}  cmd={' '.join(cmd)}", log_path)
+
+    proc = _start_process(cmd, stdout_path, stderr_path)
+
+    proc.uid         = uid           # type: ignore[attr-defined]
+    proc.job_name    = job_name      # type: ignore[attr-defined]
+    proc.repetition  = repetition    # type: ignore[attr-defined]
+    proc.strategy    = strategy      # type: ignore[attr-defined]
+    proc.resources   = assigned_resources  # type: ignore[attr-defined]
+    proc.use_mpirun  = use_mpirun    # type: ignore[attr-defined]
+    proc.app         = command       # type: ignore[attr-defined]
+    proc.stdout_path = stdout_path   # type: ignore[attr-defined]
+    proc.stderr_path = stderr_path   # type: ignore[attr-defined]
+    proc.start_ts    = start         # type: ignore[attr-defined]
+    proc.gpus_per_node = gpus_per_node  # type: ignore[attr-defined]
     return proc
 
 # ---------------------------------------------------------------------------
 # Output draining
 # ---------------------------------------------------------------------------
 
-def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> None:
-    """
-    Close the live file handles, then print the contents of the job's stdout
-    and stderr files to the workerpool stdout in a parsable block format.
-    """
-    uid = proc.uid  # type: ignore[attr-defined]
-    debug_log(f"Draining output for job {uid}")
+METADATA_FIELDS = [
+    "uid", "job_name", "repetition", "strategy",
+    "resources", "use_mpirun", "app", "start_ts",
+]
 
-    # Close the file handles that were passed to Popen so all data is flushed
-    for attr in ("_stdout_fh", "_stderr_fh"):
-        fh = getattr(proc, attr, None)
-        if fh and fh not in (subprocess.PIPE, subprocess.DEVNULL):
-            try:
-                fh.close()
-            except Exception:
-                pass
+def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
+                    log_path: Optional[Path]) -> None:
+    """
+    Flush file handles, then emit a self-contained block for each stream
+    (stdout + stderr) to the scheduler's stdout (and optionally log_path).
+    Each block is preceded by a metadata header.
+    """
+    _close_handles(proc)
 
-    for stream, path_attr in (("stdout", "job_stdout"), ("stderr", "job_stderr")):
-        path: Union[Path, None] = getattr(proc, path_attr, None)
+    end = ts()
+    meta_lines = [
+        f"  {k}: {getattr(proc, k, 'N/A')}"
+        for k in METADATA_FIELDS
+    ]
+    meta_lines.append(f"  exit_code: {exit_code}")
+    meta_lines.append(f"  finished_at: {end}")
+    meta_block = "\n".join(meta_lines)
+
+    for stream, path_attr, transform in (
+        ("stdout", "stdout_path", stdout_to_csv),
+        ("stderr", "stderr_path", None),
+    ):
+        path: Optional[Path] = getattr(proc, path_attr, None)
         if path is None:
             continue
-
-        start_marker = f"<<<JOB_START uid={uid} stream={stream}>>>"
-        end_marker   = f"<<<JOB_END   uid={uid} stream={stream}>>>"
-
-        print(start_marker, flush=True)
+ 
+        uid = proc.uid  # type: ignore[attr-defined]
+        sep = "=" * 72
+        header = (
+            f"\n{sep}\n"
+            f"JOB OUTPUT  uid={uid}  stream={stream}\n"
+            f"--- metadata ---\n{meta_block}\n"
+            f"--- content  ---"
+        )
+        footer = f"{sep}\n"
+ 
+        print(header, flush=True)
         if log_path:
             with open(log_path, "a") as lf:
-                lf.write(start_marker + "\n")
-
+                lf.write(header + "\n")
+ 
         try:
-            content = path.read_text(errors="replace")
-            if stream == 'stdout':
-                print(stdout_to_csv(content))  # Assuming stdout_to_csv is from parse_results
+            raw = path.read_text(errors="replace")
+            if transform and stream == "stdout":
+                if exit_code != 0:
+                    try:
+                        content = transform(raw)
+                    except Exception as exc:
+                        content = (
+                            f"  <stdout_to_csv failed with exit_code={exit_code}: {exc}>\n"
+                            f"  Raw output follows:\n{raw}"
+                        )
+                else:
+                    content = transform(raw)
             else:
-                print(content, end="", flush=True)
+                content = raw
+            print(content, flush=True)
             if log_path:
                 with open(log_path, "a") as lf:
                     lf.write(content)
@@ -219,391 +284,318 @@ def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> 
             if log_path:
                 with open(log_path, "a") as lf:
                     lf.write(msg)
-
-        print(end_marker, flush=True)
+ 
+        print(footer, flush=True)
         if log_path:
             with open(log_path, "a") as lf:
-                lf.write(end_marker + "\n")
-
-def cleanup_output_dir(out_dir: Union[Path, None], log_path: Union[Path, None] = None) -> None:
-    """Remove the per-run output directory once all output has been drained."""
-    if out_dir is None:
-        return
-    try:
-        debug_log(f"Attempting to remove output directory: {out_dir}")
-        shutil.rmtree(out_dir)
-        log(f"Removed output directory: {out_dir}", log_path)
-    except Exception as exc:
-        log(f"WARNING: could not remove output directory {out_dir}: {exc}", log_path)
+                lf.write(footer)
 
 # ---------------------------------------------------------------------------
-# Scheduler Loop
-# ---------------------------------------------------------------------------
-
-def run_scheduler(jobs: dict, out_dir: Union[Path, None],
-                  extra_flags: list[str], walltime: int, launch_direct: bool,
-                  kill_signal: signal.Signals = signal.SIGTERM,
-                  log_path: Union[Path, None] = None) -> None:
-
-    debug_log(f"Starting scheduler with max walltime={walltime}s")
-
-    if out_dir:
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Write scheduler log header
-    header = (
-        f"Started  : {ts()}\n"
-        f"Output   : {out_dir.resolve() if out_dir else 'stdout'}\n\n"
-    )
-    log(header, log_path, with_ts=False)
-
-    task_id = 0
-
-    # Launch initial batch
-    running: list[subprocess.Popen] = []
-    larges: list[subprocess.Popen] = []
-    
-    # Track if we actually started with any large jobs
-    had_large_jobs = len(jobs["large"]) > 0
-    debug_log(f"Initial setup: had_large_jobs = {had_large_jobs}")
-
-    debug_log("Launching initial batch of small jobs...")
-    for job in jobs["small"].values():
-        proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
-        running.append(proc)
-        task_id += 1
-
-    debug_log("Launching initial batch of large jobs...")
-    for job in jobs["large"].values():
-        proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
-        larges.append(proc)
-        task_id += 1
-
-    log(f"All {len(running)+len(larges)} jobs submitted. Monitoring for completions…", log_path)
-
-    WALLTIME_SECONDS = walltime 
-    deadline = time.time() + WALLTIME_SECONDS
-    
-    while running:
-
-        #! --> Walltime Check
-        if time.time() > deadline:
-            debug_log("Walltime deadline reached!")
-            log(f"WALLTIME of {WALLTIME_SECONDS}s exceeded. Terminating all jobs with {kill_signal.name}.", log_path)
-            for r in running + larges:
-                debug_log(f"Sending {kill_signal.name} to {r.uid}")
-                r.send_signal(kill_signal)
-                r.wait()
-                drain_output(r, log_path)
-            cleanup_output_dir(out_dir, log_path)
-            return
-            
-        time.sleep(POLL_INTERVAL)
-        debug_log(f"Polling jobs... Tracking {len(running)} small and {len(larges)} large jobs.")
-
-        #! --> Large Jobs Handler
-        still_large = []
-        for large in larges:
-            ret = large.poll()
-            if ret is None:
-                still_large.append(large)
-            else:
-                debug_log(f"Large job {large.uid} finished with code {ret}")
-                drain_output(large, log_path)
-                footer = (
-                    f"{'=' * 72}\n"
-                    f"FINISHED : {ts()}  exit_code={ret}\n"
-                )
-                log(footer, log_path, with_ts=False)
-                log(
-                    f"FINISH [{large.uid}]  exit_code={ret}"                        # type: ignore[attr-defined]
-                    f"  nodes={','.join(large.nodes)}"                              # type: ignore[attr-defined]
-                    f"  stdout={large.job_stdout}  stderr={large.job_stderr}",      # type: ignore[attr-defined]
-                    log_path,
-                )
-
-        larges = still_large
-    
-        #! --> Early Exit Check: only trigger if we actually started with large jobs
-        if had_large_jobs and not larges:
-            debug_log("All large jobs completed. Initiating early exit for remaining small jobs.")
-            for r in running:
-                debug_log(f"Terminating small job {r.uid} due to early exit.")
-                r.send_signal(kill_signal)
-                r.wait()
-                drain_output(r, log_path)
-            log("Terminated all remaining micro jobs — all large jobs finished.", log_path)
-            cleanup_output_dir(out_dir, log_path)
-            return
-
-        #! --> Small Jobs Handler
-        still_running = []
-        for proc in running:
-            ret = proc.poll()
-            if ret is None:
-                still_running.append(proc)
-            else:
-                # Finished — drain remaining output and write footer to scheduler log
-                debug_log(f"Small job {proc.uid} finished with code {ret}. Preparing replacement.")
-                drain_output(proc, log_path)
-                footer = (
-                    f"{'=' * 72}\n"
-                    f"FINISHED : {ts()}  exit_code={ret}\n"
-                )
-                log(footer, log_path, with_ts=False)
-
-                log(
-                    f"FINISH [{proc.uid}]  exit_code={ret}"                     # type: ignore[attr-defined]
-                    f"  nodes={','.join(proc.nodes)}"                           # type: ignore[attr-defined]
-                    f"  stdout={proc.job_stdout}  stderr={proc.job_stderr}",    # type: ignore[attr-defined]
-                    log_path,
-                )
-
-                # Launch replacement of the same type reusing the same nodelist
-                debug_log(f"Re-using nodes {proc.nodes} for replacement job.")
-                replacement = launch(
-                    proc.app, proc.job_type, proc.nodes,                        # type: ignore[attr-defined]
-                    extra_flags, out_dir, log_path, task_id, launch_direct
-                )
-                still_running.append(replacement)
-                task_id += 1
-                
-        running = still_running
-
-    # Normal exit: while-loop exhausted because all small jobs finished naturally
-    debug_log("All jobs finished naturally. Exiting scheduler loop.")
-    cleanup_output_dir(out_dir, log_path)
-
-
-# ---------------------------------------------------------------------------
-# NODELISTS PARSING AND PLACEMENT
+# Placement
 # ---------------------------------------------------------------------------
 
 class PlacementOracle:
-    """
-    Template for your external placement oracle.
-    """
+    """Stub — replace find_placement with your actual oracle logic."""
+
     def __init__(self, system: str = ""):
-        debug_log(f"Initializing PlacementOracle for system: '{system}'")
+        debug(f"PlacementOracle init for system='{system}'")
         self.system = system
-        # Initialize your external binaries or checks here.
-        self._available = True 
 
-    def find_placement(self, jobs: list[dict], available_nodes: list[str]) -> dict[str, list[str]]:
+    def find_placement(self, jobs: list[dict], available: list[str]) -> dict[str, list[str]]:
         """
-        Takes a list of job requests and available nodes.
-        Returns a dictionary mapping job_ids to a list of assigned nodes.
+        jobs: list of {"job_id": str, "req": int, "strategy": str}
+        Returns mapping job_id -> list of assigned node names.
         """
-        debug_log(f"Oracle requested to place {len(jobs)} jobs across {len(available_nodes)} available nodes.")
-        
-        if not self._available:
-            debug_log("Oracle marked as unavailable. Using sequential fallback.")
-            print("Oracle unavailable, falling back...", file=sys.stderr)
-            pass # Handle fallback
-
-        # --- REPLACE WITH YOUR ACTUAL ORACLE SUBPROCESS LOGIC ---
-        # For now, this is a stub that assigns nodes sequentially just so the script runs
+        debug(f"Oracle placing {len(jobs)} jobs on {len(available)} nodes")
+        pool = available.copy()
         assignments = {}
-        avail_copy = available_nodes.copy()
-        
         for job in jobs:
-            job_id = job["job_id"]
-            req = job["req"]
-            debug_log(f"Oracle processing job {job_id} (requires {req} nodes/gpus)")
-            if len(avail_copy) < req:
-                raise ValueError(f"Oracle: Not enough nodes for {job_id}")
-            assignments[job_id] = [avail_copy.pop(0) for _ in range(req)]
-            debug_log(f"Oracle assigned {assignments[job_id]} to {job_id}")
-            
+            jid, req = job["job_id"], job["req"]
+            if len(pool) < req:
+                raise ValueError(f"Oracle: not enough nodes for {jid} (need {req})")
+            assignments[jid] = [pool.pop(0) for _ in range(req)]
         return assignments
 
-def load_node_list(path: str) -> list[str]:
-    """Accept a plain text file (one node per line) or a JSON list."""
-    debug_log(f"Loading node list from {path}")
-    with open(path) as f:
-        content = f.read().strip()
-    try:
-        nodes = json.loads(content)
-        if not isinstance(nodes, list):
-            raise ValueError("JSON node file must contain a list.")
-        return [str(n) for n in nodes]
-    except json.JSONDecodeError:
-        return [line.strip() for line in content.splitlines() if line.strip()]
 
-def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
-    debug_log(f"Loading pattern config from: {config_path}")
-    with open(config_path) as f:
-        pattern = json.load(f)
-        
-    available = available_nodes.copy()
-    placement_strategy = pattern.get("placement", "sequential").lower()
-    debug_log(f"Detected placement strategy: {placement_strategy}")
+def assign_resources(pattern: dict, available_resources: list, use_devices: bool) -> dict:
+    """
+    Read the pattern JSON, apply the placement strategy, and return:
 
-    result = {
-        "small": {},
-        "large": {}
+    {
+      "small": { "job_key": {"strategy": ..., "resources": [...], "command": ..., "gpus": ...}, ... },
+      "large": { ... }
     }
 
-    small_jobs = pattern.get("small_jobs", {})
-    large_jobs = pattern.get("large_jobs", {})
+    When use_devices=True the resource key means GPU count (integers → device IDs).
+    When use_devices=False the resource key means node count (strings → hostnames).
+    """
+    placement = pattern.get("placement", "linear").lower()
+    gpus_per_node = pattern.get("gpus_per_node", 1)
 
-    # 1. Derive required resources directly from the jobs (ignore metadata)
-    total_needed = 0
-    oracle_jobs_payload = []
+    debug(f"Placement strategy: {placement}, use_devices={use_devices}")
 
-    def parse_requirements(job_dict, group_prefix):
-        nonlocal total_needed
-        for job_id, job_info in job_dict.items():
-            req = job_info.get("gpus" if device else "nodes", 1)
-            total_needed += req
-            oracle_jobs_payload.append({
-                "job_id": f"{group_prefix}_{job_id}",
+    pool = available_resources.copy()
+
+    # ---- collect all jobs and their resource requirements ----
+    all_groups = [
+        ("small", pattern.get("small_jobs", {})),
+        ("large", pattern.get("large_jobs", {})),
+    ]
+
+    # For oracle / random we need the full list upfront
+    oracle_payload = []
+    for group_label, jobs_dict in all_groups:
+        for job_key, job_info in jobs_dict.items():
+            req = job_info.get("gpus" if use_devices else "nodes", 1)
+            oracle_payload.append({
+                "job_id": f"{group_label}/{job_key}",
                 "req": req,
-                "strategy": job_info.get("strategy", "unknown")
+                "strategy": job_info.get("strategy", ""),
             })
 
-    parse_requirements(small_jobs, "small")
-    parse_requirements(large_jobs, "large")
-
-    debug_log(f"Total resources dynamically calculated as needed: {total_needed} (Available: {len(available)})")
-
-    if total_needed > len(available):
+    total_needed = sum(j["req"] for j in oracle_payload)
+    if total_needed > len(pool):
         raise ValueError(
-            f"Jobs require {total_needed} resources, but only {len(available)} are available."
+            f"Jobs require {total_needed} resources but only {len(pool)} are available."
         )
 
-    # 2. Handle Placement Strategies
-    runtime_assignments = {}
-    
-    if placement_strategy == "random":
-        debug_log("Placement is random. Shuffling available nodes array.")
-        random.shuffle(available)
-        
-    elif placement_strategy == "runtime":
-        debug_log("Placement is runtime. Instantiating Oracle.")
-        oracle = PlacementOracle(system="my_system")
-        runtime_assignments = oracle.find_placement(oracle_jobs_payload, available)
+    # ---- resolve assignments ----
+    if placement == "device":
+        # same as linear but with integer IDs
+        assignments = {}
+        for item in oracle_payload:
+            assignments[item["job_id"]] = [pool.pop(0) for _ in range(item["req"])]
 
-    # 3. Assign nodes to the result dictionary
-    def populate_results(job_dict, group_prefix, result_group):
-        for job_id, job_info in job_dict.items():
-            req = job_info.get("gpus" if device else "nodes", 1)
-            full_job_id = f"{group_prefix}_{job_id}"
+    elif placement == "hardcoded":
+        assignments = {}
+        for group_label, jobs_dict in all_groups:
+            for job_key, job_info in jobs_dict.items():
+                full_id = f"{group_label}/{job_key}"
+                if "nodelist" not in job_info:
+                    raise ValueError(f"placement=hardcoded but job '{job_key}' has no 'nodelist'.")
+                assignments[full_id] = job_info["nodelist"]
 
-            if placement_strategy == "runtime":
-                # Fetch assignment from Oracle's response
-                assigned = runtime_assignments.get(full_job_id, [])
-                if len(assigned) != req:
-                    raise ValueError(f"Oracle failed to assign {req} nodes for {full_job_id}")
-            else:
-                # Pop sequentially (list is already shuffled if strategy was 'random')
-                assigned = [available.pop(0) for _ in range(req)]
+    elif placement == "random":
+        random.shuffle(pool)
+        assignments = {}
+        for item in oracle_payload:
+            assignments[item["job_id"]] = [pool.pop(0) for _ in range(item["req"])]
 
-            debug_log(f"Job {full_job_id} successfully mapped to nodes/devices: {assigned}")
+    elif placement == "linear":
+        assignments = {}
+        for item in oracle_payload:
+            assignments[item["job_id"]] = [pool.pop(0) for _ in range(item["req"])]
 
-            result[result_group][full_job_id] = {
-                "strategy": job_info["strategy"],
-                "nodelist": assigned,
+    elif placement == "runtime":
+        oracle = PlacementOracle(system="")
+        assignments = oracle.find_placement(oracle_payload, pool)
+
+    else:
+        raise ValueError(f"Unknown placement strategy: '{placement}'")
+
+    # ---- build result dict ----
+    result = {"small": {}, "large": {}}
+    for group_label, jobs_dict in all_groups:
+        for job_key, job_info in jobs_dict.items():
+            full_id = f"{group_label}/{job_key}"
+            result[group_label][job_key] = {
+                "strategy": job_info.get("strategy", ""),
+                "resources": assignments[full_id],
                 "command": job_info["command"],
-                "gpus": job_info.get("gpus")
+                "gpus": job_info.get("gpus"),
             }
-
-    populate_results(small_jobs, "small", "small")
-    populate_results(large_jobs, "large", "large")
+            debug(f"Assigned {full_id} → {assignments[full_id]}")
 
     return result
+
+# ---------------------------------------------------------------------------
+# Scheduler
+# ---------------------------------------------------------------------------
+
+def run_scheduler(
+    jobs: dict,
+    out_dir: Path,
+    extra_flags: list[str],
+    walltime: int,
+    use_mpirun: bool,
+    gpus_per_node: int,
+    kill_signal: signal.Signals,
+    log_path: Optional[Path],
+) -> None:
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # repetition counters per job name
+    rep_counter: dict[str, int] = {}
+
+    def _launch(job_key: str, group: str) -> subprocess.Popen:
+        info = jobs[group][job_key]
+        rep  = rep_counter.get(job_key, 0)
+        rep_counter[job_key] = rep + 1
+        return launch_job(
+            job_name         = job_key,
+            repetition       = rep,
+            command          = info["command"],
+            strategy         = info["strategy"],
+            assigned_resources = info["resources"],
+            use_mpirun       = use_mpirun,
+            gpus_per_node    = gpus_per_node,
+            extra_srun_flags = extra_flags,
+            out_dir          = out_dir,
+            log_path         = log_path,
+        )
+
+    have_large_jobs = bool(jobs["large"])
+
+    # Launch everything
+    small_procs: list[subprocess.Popen] = [_launch(k, "small") for k in jobs["small"]]
+    large_procs: list[subprocess.Popen] = [_launch(k, "large") for k in jobs["large"]]
+
+    log(f"Launched {len(small_procs)} small + {len(large_procs)} large jobs.", log_path)
+
+    deadline = time.time() + walltime
+
+    # ---- main poll loop ----
+    while True:
+
+        time.sleep(POLL_INTERVAL)
+
+        # -- check walltime (only relevant when there are no large jobs) --
+        if not have_large_jobs and time.time() > deadline:
+            log(f"Walltime of {walltime}s reached. Terminating all jobs.", log_path)
+            for p in small_procs:
+                _graceful_kill(p, kill_signal)
+                drain_and_print(p, p.returncode, log_path)
+            break
+
+        # -- poll large jobs --
+        still_large = []
+        for p in large_procs:
+            rc = p.poll()
+            if rc is None:
+                still_large.append(p)
+            else:
+                log(f"FINISH (large) [{p.uid}]  exit_code={rc}", log_path)
+                drain_and_print(p, rc, log_path)
+        large_procs = still_large
+
+        # -- early-exit when all large jobs are done --
+        if have_large_jobs and not large_procs:
+            log("All large jobs finished. Terminating remaining small jobs.", log_path)
+            for p in small_procs:
+                _graceful_kill(p, kill_signal)
+                drain_and_print(p, p.returncode, log_path)
+            break
+
+        # -- poll small jobs and respawn finished ones --
+        still_small = []
+        for p in small_procs:
+            rc = p.poll()
+            if rc is None:
+                still_small.append(p)
+            else:
+                log(f"FINISH (small) [{p.uid}]  exit_code={rc}", log_path)
+                drain_and_print(p, rc, log_path)
+                # Respawn: same job key, reusing the same resource assignment
+                still_small.append(_launch(p.job_name, "small"))  # type: ignore[attr-defined]
+        small_procs = still_small
+
+    # cleanup
+    try:
+        shutil.rmtree(out_dir)
+        log(f"Removed temporary output directory: {out_dir}", log_path)
+    except Exception as exc:
+        log(f"WARNING: could not remove {out_dir}: {exc}", log_path)
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "SLURM srun scheduler — maintains N concurrent jobs (80%% micro / 20%% medium).\n"
-            f"  micro  : {MICROJOB_NODE_COUNT} nodes, {TASKS_PER_NODE} tasks/node, {CPUS_PER_TASK} cpu/task\n"
-            f"  medium : {MEDIUM_NODE_CHOICES} nodes (random), {TASKS_PER_NODE} tasks/node, {CPUS_PER_TASK} cpu/task"
-        ),
+    p = argparse.ArgumentParser(
+        description="Job scheduler for congestion experiments (mpirun / srun backend).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--pattern", "-p", required=True,
-        metavar="FILE",
-        help="Path to the pattern JSON file.",
-    )
-    parser.add_argument("--nodelist", required=False, default=None, metavar="NODELIST",
-                        help="Nodes in bracket format: name[node01,node02,...].")
-    parser.add_argument("--launch-direct", required=False,
-                        help="If False launch using mpirun else use srun", action="store_true")
-    parser.add_argument("--device-upperbound", required=False, default=None, metavar="DEVICE",
-                        help="Device upperbound (8 --> device IDs considered 0..7)", type=int)
-    parser.add_argument("--output-dir", default=None, metavar="DIR",
-                        help=f"Directory for all output files.")
-    parser.add_argument("--srun-extra", default="", metavar="FLAGS",
-                        help='Extra srun flags for every launch, e.g. "--mem=4G".')
-    parser.add_argument("--walltime", default=120, type=int, metavar="SECONDS",
-                        help="Walltime limit for each job in seconds.")
-    parser.add_argument("--output-log", default=None, metavar="FILE",
-                        help=(
-                            "File to redirect scheduler logs to. "
-                            "If omitted, logs are printed to stdout (default)."
-                        ))
-    parser.add_argument("--kill-signal", default="SIGTERM", metavar="SIGNAL",
-                        help=(
-                            "Signal sent to force-terminate jobs (walltime exceeded or "
-                            "early exit). Accepts signal names (e.g. SIGTERM, SIGINT, SIGKILL) "
-                            "or integers. Default: SIGTERM."
-                        ))
-    parser.add_argument("--debug", action="store_true",
-                        help="Enable verbose debug printing to trace script execution.")
-    return parser.parse_args()
+    p.add_argument("-p", "--pattern", required=True, metavar="FILE",
+                   help="Path to the pattern JSON file.")
+
+    resource_group = p.add_mutually_exclusive_group(required=True)
+    resource_group.add_argument("--nodelist", metavar="NODES",
+                                help="Comma-separated list of node hostnames (for srun-based placements).")
+    resource_group.add_argument("--device-upperbound", type=int, metavar="N",
+                                help="Number of GPU devices available (device IDs will be 0..N-1).")
+
+    p.add_argument("--output-dir", default=None, metavar="DIR",
+                   help="Directory for per-job stdout/stderr files (cleaned up on exit).")
+    p.add_argument("--srun-extra", default="", metavar="FLAGS",
+                   help='Extra flags appended to every srun/mpirun invocation, e.g. "--mem=4G".')
+    p.add_argument("--walltime", type=int, default=120, metavar="SECONDS",
+                   help="Max run time in seconds (used when there are no large jobs). Default: 120.")
+    p.add_argument("--output-log", default=None, metavar="FILE",
+                   help="File to mirror scheduler log lines into (in addition to stdout).")
+    p.add_argument("--kill-signal", default="SIGTERM", metavar="SIGNAL",
+                   help="Signal used to terminate jobs gracefully. Default: SIGTERM.")
+    p.add_argument("--debug", action="store_true",
+                   help="Enable verbose debug output.")
+    return p.parse_args()
+
 
 def main() -> None:
     args = parse_args()
-    
-    # Toggle global debug state based on args
+
     global DEBUG_ENABLED
-    if args.debug:
-        DEBUG_ENABLED = True
-        debug_log("Debug mode enabled.")
-    
-    if (not args.nodelist) and (not args.device_upperbound):
-        print(f"--nodelist or --device-upperbound must be set!", file=sys.stderr)
-        sys.exit(1)
-    
-    if args.nodelist and args.device_upperbound:
-        print(f"You can't set both {args.nodelist} and {args.device_upperbound}")
-        sys.exit(1)
+    DEBUG_ENABLED = args.debug
 
-    nodes = args.nodelist.strip().split(",") if args.nodelist else [str(i) for i in range(args.device_upperbound)]
-    device = bool(args.device_upperbound)
+    with open(args.pattern) as f:
+        pattern = json.load(f)
 
-    debug_log(f"Initial available nodes/devices list: {nodes}")
+    placement = pattern.get("placement", "linear").lower()
+    use_mpirun = (placement == "device")
+    gpus_per_node = pattern.get("gpus_per_node", 1)
 
-    jobs = assign_nodes(args.pattern, available_nodes=nodes, device=device)
-
-    # Output directory is namespaced by workerpool PID to avoid collisions
-    # across concurrent scheduler invocations.
-    workerpool_pid = os.getpid()
-    if args.output_dir:
-        out_dir = Path(args.output_dir)
+    if use_mpirun:
+        if args.nodelist:
+            # Interpret nodelist as comma-separated device IDs or just use device-upperbound
+            # User probably passed --device-upperbound; nodelist path means device IDs
+            available = args.nodelist.strip().split(",")
+        else:
+            available = [str(i) for i in range(args.device_upperbound)]
     else:
-        out_dir = Path(f"workerpool_out_{workerpool_pid}")
+        if args.device_upperbound is not None:
+            print("ERROR: --device-upperbound is only valid for placement=device.", file=sys.stderr)
+            sys.exit(1)
+        available = args.nodelist.strip().split(",")
 
-    debug_log(f"Configured output directory: {out_dir}")
+    debug(f"Available resources: {available}")
+
+    jobs = assign_resources(pattern, available, use_devices=use_mpirun)
+
+    pid = os.getpid()
+    out_dir = Path(args.output_dir) if args.output_dir else Path(f"workerpool_out_{pid}")
 
     extra_flags = args.srun_extra.split() if args.srun_extra.strip() else []
     log_path    = Path(args.output_log) if args.output_log else None
 
-    # Resolve --kill-signal to a signal.Signals member (accepts names or integers)
     raw_sig = args.kill_signal.strip()
     try:
-        kill_signal = signal.Signals[raw_sig] if raw_sig.isidentifier() else signal.Signals(int(raw_sig))
-        debug_log(f"Resolved kill signal: {kill_signal.name}")
+        kill_signal = (
+            signal.Signals[raw_sig] if raw_sig.isidentifier() else signal.Signals(int(raw_sig))
+        )
     except (KeyError, ValueError):
-        print(f"ERROR: unknown signal '{raw_sig}'. Use a name like SIGTERM or an integer.", file=sys.stderr)
+        print(f"ERROR: unknown signal '{raw_sig}'.", file=sys.stderr)
         sys.exit(1)
 
-    run_scheduler(jobs, out_dir, extra_flags, args.walltime, args.launch_direct, kill_signal, log_path)
+    run_scheduler(
+        jobs         = jobs,
+        out_dir      = out_dir,
+        extra_flags  = extra_flags,
+        walltime     = args.walltime,
+        use_mpirun   = use_mpirun,
+        gpus_per_node= gpus_per_node,
+        kill_signal  = kill_signal,
+        log_path     = log_path,
+    )
+
 
 if __name__ == "__main__":
     main()

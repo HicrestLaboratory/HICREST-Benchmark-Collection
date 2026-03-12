@@ -511,7 +511,6 @@ def build_experiment_json(
 
         # Base fields — always present
         entry: dict = {
-            "strategy":         run["strategy"],
             "command":          get_command(run["strategy"], gpus, comm_lib),
             "nodes":            nodes,
             "gpus":             gpus,
@@ -542,9 +541,9 @@ def build_experiment_json(
                     entry["infeasible_reason"] = oracle_result.reason
 
         if is_large:
-            large_jobs[f"job_{lc}"] = entry; lc += 1
+            large_jobs[f"{run['strategy']}_g{gpus}_n{nodes}_{lc}"] = entry; lc += 1
         else:
-            small_jobs[f"job_{sc}"] = entry; sc += 1
+            small_jobs[f"{run['strategy']}_g{gpus}_n{nodes}_{sc}"] = entry; sc += 1
 
     # ── Top-level placement ──────────────────────────────────────────────────
     if placement_mode == "hardcoded":
@@ -563,10 +562,10 @@ def build_experiment_json(
     inner: dict = {
         "placement":     top_placement,
         "gpus_per_node": gpus_per_node if gpus_per_node else total_gpus,
-        "n_total_gpus":  total_gpus,
-        "n_small_jobs":  len(small_jobs),
-        "n_large_jobs":  len(large_jobs),
-        "n_total_jobs":  len(classified),
+        # "n_total_gpus":  total_gpus,
+        # "n_small_jobs":  len(small_jobs),
+        # "n_large_jobs":  len(large_jobs),
+        # "n_total_jobs":  len(classified),
     }
     if small_jobs:
         inner["small_jobs"] = small_jobs
