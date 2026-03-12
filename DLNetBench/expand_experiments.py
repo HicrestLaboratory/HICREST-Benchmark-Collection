@@ -726,17 +726,17 @@ def main(args: argparse.Namespace) -> None:
         written.append(fpath)
 
     # ── Write global config ──────────────────────────────────────────────────
-    global_cfg = build_global_config(
-        interconnect=interconnect,
-        gpus_per_node=args.gpus_per_node,
-        exp_filenames=exp_files,
-        exp_output_dir=str(out_dir),
-        results_dir=args.results_dir,
-        user_template=user_template,
-    )
-    global_path = out_dir / GLOBAL_CONFIG_FILENAME
-    with open(global_path, "w", encoding="utf-8") as fh:
-        json.dump(global_cfg, fh, indent=2, ensure_ascii=False)
+    # global_cfg = build_global_config(
+    #     interconnect=interconnect,
+    #     gpus_per_node=args.gpus_per_node,
+    #     exp_filenames=exp_files,
+    #     exp_output_dir=str(out_dir),
+    #     results_dir=args.results_dir,
+    #     user_template=user_template,
+    # )
+    # global_path = out_dir / GLOBAL_CONFIG_FILENAME
+    # with open(global_path, "w", encoding="utf-8") as fh:
+    #     json.dump(global_cfg, fh, indent=2, ensure_ascii=False)
 
     # ── Summary ──────────────────────────────────────────────────────────────
     print(f"\n\033[32m[expand] Wrote {len(written)} experiment files "
@@ -744,7 +744,7 @@ def main(args: argparse.Namespace) -> None:
     if written:
         print(f"  First : {written[0].name}")
         print(f"  Last  : {written[-1].name}")
-    print(f"\033[32m[expand] Wrote global config → {global_path}\033[0m")
+    # print(f"\033[32m[expand] Wrote global config → {global_path}\033[0m")
     print(f"  Interconnect  : {interconnect}")
     print(f"  Placement     : {placement_mode}")
 

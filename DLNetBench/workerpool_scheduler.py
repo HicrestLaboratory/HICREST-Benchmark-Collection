@@ -15,7 +15,7 @@ Each job writes its stdout to its own file inside workerpool_out_{pid}/.
 Scheduler debug logs go to stdout by default, or to a file if --output-log is given.
 
 Usage:
-    python slurm_scheduler.py -p pattern.json --nodelist [node01,node02,...] [--output-dir DIR] [--srun-extra "..."] [--output-log FILE]
+    python slurm_scheduler.py -p pattern.json --nodelist [node01,node02,...] [--output-dir DIR] [--debug]
 """
 
 import argparse
@@ -51,12 +51,20 @@ DEFAULT_OUTPUT_DIR  = "workerpool_out"
 SCHEDULER_LOG_NAME  = "scheduler.log"
 POLL_INTERVAL       = 2       # seconds between polls
 
+# Global debug toggle
+DEBUG_ENABLED       = False
+
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
 
 def ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def debug_log(msg: str) -> None:
+    """Print debug messages if the --debug flag is enabled."""
+    if DEBUG_ENABLED:
+        print(f"[DEBUG {ts()}] {msg}", flush=True)
 
 def log(msg: str, log_path: Union[Path, None] = None, with_ts=True) -> None:
     """Print msg to stdout. If log_path is given, also append to that file."""
@@ -121,7 +129,9 @@ def launch(command: str, strategy: str, nodes: list[str], extra_flags: list[str]
             *command.split()
         ]
 
+    debug_log(f"Assembled launch command for {uid}: {' '.join(cmd)}")
     print(f"Launching job [{uid}] with command: {' '.join(cmd)}", flush=True)
+    
     # ------- LOGGING & METADATA -------
     header = (
         f"{'=' * 72}\n"
@@ -170,6 +180,7 @@ def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> 
     and stderr files to the workerpool stdout in a parsable block format.
     """
     uid = proc.uid  # type: ignore[attr-defined]
+    debug_log(f"Draining output for job {uid}")
 
     # Close the file handles that were passed to Popen so all data is flushed
     for attr in ("_stdout_fh", "_stderr_fh"):
@@ -195,8 +206,10 @@ def drain_output(proc: subprocess.Popen, log_path: Union[Path, None] = None) -> 
 
         try:
             content = path.read_text(errors="replace")
-            print(content, end="", flush=True)
-            stdout_to_csv(content)  # Assuming stdout_to_csv is from parse_results
+            if stream == 'stdout':
+                print(stdout_to_csv(content))  # Assuming stdout_to_csv is from parse_results
+            else:
+                print(content, end="", flush=True)
             if log_path:
                 with open(log_path, "a") as lf:
                     lf.write(content)
@@ -217,6 +230,7 @@ def cleanup_output_dir(out_dir: Union[Path, None], log_path: Union[Path, None] =
     if out_dir is None:
         return
     try:
+        debug_log(f"Attempting to remove output directory: {out_dir}")
         shutil.rmtree(out_dir)
         log(f"Removed output directory: {out_dir}", log_path)
     except Exception as exc:
@@ -230,6 +244,8 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
                   extra_flags: list[str], walltime: int, launch_direct: bool,
                   kill_signal: signal.Signals = signal.SIGTERM,
                   log_path: Union[Path, None] = None) -> None:
+
+    debug_log(f"Starting scheduler with max walltime={walltime}s")
 
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -247,13 +263,18 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
     running: list[subprocess.Popen] = []
     larges: list[subprocess.Popen] = []
     
+    # Track if we actually started with any large jobs
+    had_large_jobs = len(jobs["large"]) > 0
+    debug_log(f"Initial setup: had_large_jobs = {had_large_jobs}")
+
+    debug_log("Launching initial batch of small jobs...")
     for job in jobs["small"].values():
         proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
         running.append(proc)
         task_id += 1
 
+    debug_log("Launching initial batch of large jobs...")
     for job in jobs["large"].values():
-        print(job)
         proc  = launch(job["command"], job["strategy"], job["nodelist"], extra_flags, out_dir, log_path, task_id, launch_direct, job.get("gpus"))
         larges.append(proc)
         task_id += 1
@@ -267,8 +288,10 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
 
         #! --> Walltime Check
         if time.time() > deadline:
+            debug_log("Walltime deadline reached!")
             log(f"WALLTIME of {WALLTIME_SECONDS}s exceeded. Terminating all jobs with {kill_signal.name}.", log_path)
             for r in running + larges:
+                debug_log(f"Sending {kill_signal.name} to {r.uid}")
                 r.send_signal(kill_signal)
                 r.wait()
                 drain_output(r, log_path)
@@ -276,6 +299,7 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
             return
             
         time.sleep(POLL_INTERVAL)
+        debug_log(f"Polling jobs... Tracking {len(running)} small and {len(larges)} large jobs.")
 
         #! --> Large Jobs Handler
         still_large = []
@@ -284,6 +308,7 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
             if ret is None:
                 still_large.append(large)
             else:
+                debug_log(f"Large job {large.uid} finished with code {ret}")
                 drain_output(large, log_path)
                 footer = (
                     f"{'=' * 72}\n"
@@ -299,9 +324,11 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
 
         larges = still_large
     
-        #! --> Early Exit Check: all large jobs finished, terminate remaining small jobs
-        if not larges:
+        #! --> Early Exit Check: only trigger if we actually started with large jobs
+        if had_large_jobs and not larges:
+            debug_log("All large jobs completed. Initiating early exit for remaining small jobs.")
             for r in running:
+                debug_log(f"Terminating small job {r.uid} due to early exit.")
                 r.send_signal(kill_signal)
                 r.wait()
                 drain_output(r, log_path)
@@ -317,6 +344,7 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
                 still_running.append(proc)
             else:
                 # Finished — drain remaining output and write footer to scheduler log
+                debug_log(f"Small job {proc.uid} finished with code {ret}. Preparing replacement.")
                 drain_output(proc, log_path)
                 footer = (
                     f"{'=' * 72}\n"
@@ -332,6 +360,7 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
                 )
 
                 # Launch replacement of the same type reusing the same nodelist
+                debug_log(f"Re-using nodes {proc.nodes} for replacement job.")
                 replacement = launch(
                     proc.app, proc.job_type, proc.nodes,                        # type: ignore[attr-defined]
                     extra_flags, out_dir, log_path, task_id, launch_direct
@@ -342,6 +371,7 @@ def run_scheduler(jobs: dict, out_dir: Union[Path, None],
         running = still_running
 
     # Normal exit: while-loop exhausted because all small jobs finished naturally
+    debug_log("All jobs finished naturally. Exiting scheduler loop.")
     cleanup_output_dir(out_dir, log_path)
 
 
@@ -354,6 +384,7 @@ class PlacementOracle:
     Template for your external placement oracle.
     """
     def __init__(self, system: str = ""):
+        debug_log(f"Initializing PlacementOracle for system: '{system}'")
         self.system = system
         # Initialize your external binaries or checks here.
         self._available = True 
@@ -363,7 +394,10 @@ class PlacementOracle:
         Takes a list of job requests and available nodes.
         Returns a dictionary mapping job_ids to a list of assigned nodes.
         """
+        debug_log(f"Oracle requested to place {len(jobs)} jobs across {len(available_nodes)} available nodes.")
+        
         if not self._available:
+            debug_log("Oracle marked as unavailable. Using sequential fallback.")
             print("Oracle unavailable, falling back...", file=sys.stderr)
             pass # Handle fallback
 
@@ -375,14 +409,17 @@ class PlacementOracle:
         for job in jobs:
             job_id = job["job_id"]
             req = job["req"]
+            debug_log(f"Oracle processing job {job_id} (requires {req} nodes/gpus)")
             if len(avail_copy) < req:
                 raise ValueError(f"Oracle: Not enough nodes for {job_id}")
             assignments[job_id] = [avail_copy.pop(0) for _ in range(req)]
+            debug_log(f"Oracle assigned {assignments[job_id]} to {job_id}")
             
         return assignments
 
 def load_node_list(path: str) -> list[str]:
     """Accept a plain text file (one node per line) or a JSON list."""
+    debug_log(f"Loading node list from {path}")
     with open(path) as f:
         content = f.read().strip()
     try:
@@ -394,11 +431,13 @@ def load_node_list(path: str) -> list[str]:
         return [line.strip() for line in content.splitlines() if line.strip()]
 
 def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
+    debug_log(f"Loading pattern config from: {config_path}")
     with open(config_path) as f:
         pattern = json.load(f)
         
     available = available_nodes.copy()
     placement_strategy = pattern.get("placement", "sequential").lower()
+    debug_log(f"Detected placement strategy: {placement_strategy}")
 
     result = {
         "small": {},
@@ -426,6 +465,8 @@ def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
     parse_requirements(small_jobs, "small")
     parse_requirements(large_jobs, "large")
 
+    debug_log(f"Total resources dynamically calculated as needed: {total_needed} (Available: {len(available)})")
+
     if total_needed > len(available):
         raise ValueError(
             f"Jobs require {total_needed} resources, but only {len(available)} are available."
@@ -435,11 +476,12 @@ def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
     runtime_assignments = {}
     
     if placement_strategy == "random":
+        debug_log("Placement is random. Shuffling available nodes array.")
         random.shuffle(available)
         
     elif placement_strategy == "runtime":
+        debug_log("Placement is runtime. Instantiating Oracle.")
         oracle = PlacementOracle(system="my_system")
-        # Ask the oracle for assignments
         runtime_assignments = oracle.find_placement(oracle_jobs_payload, available)
 
     # 3. Assign nodes to the result dictionary
@@ -456,6 +498,8 @@ def assign_nodes(config_path: str, available_nodes: list, device: bool) -> dict:
             else:
                 # Pop sequentially (list is already shuffled if strategy was 'random')
                 assigned = [available.pop(0) for _ in range(req)]
+
+            debug_log(f"Job {full_job_id} successfully mapped to nodes/devices: {assigned}")
 
             result[result_group][full_job_id] = {
                 "strategy": job_info["strategy"],
@@ -509,10 +553,18 @@ def parse_args() -> argparse.Namespace:
                             "early exit). Accepts signal names (e.g. SIGTERM, SIGINT, SIGKILL) "
                             "or integers. Default: SIGTERM."
                         ))
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable verbose debug printing to trace script execution.")
     return parser.parse_args()
 
 def main() -> None:
     args = parse_args()
+    
+    # Toggle global debug state based on args
+    global DEBUG_ENABLED
+    if args.debug:
+        DEBUG_ENABLED = True
+        debug_log("Debug mode enabled.")
     
     if (not args.nodelist) and (not args.device_upperbound):
         print(f"--nodelist or --device-upperbound must be set!", file=sys.stderr)
@@ -525,6 +577,8 @@ def main() -> None:
     nodes = args.nodelist.strip().split(",") if args.nodelist else [str(i) for i in range(args.device_upperbound)]
     device = bool(args.device_upperbound)
 
+    debug_log(f"Initial available nodes/devices list: {nodes}")
+
     jobs = assign_nodes(args.pattern, available_nodes=nodes, device=device)
 
     # Output directory is namespaced by workerpool PID to avoid collisions
@@ -535,6 +589,8 @@ def main() -> None:
     else:
         out_dir = Path(f"workerpool_out_{workerpool_pid}")
 
+    debug_log(f"Configured output directory: {out_dir}")
+
     extra_flags = args.srun_extra.split() if args.srun_extra.strip() else []
     log_path    = Path(args.output_log) if args.output_log else None
 
@@ -542,6 +598,7 @@ def main() -> None:
     raw_sig = args.kill_signal.strip()
     try:
         kill_signal = signal.Signals[raw_sig] if raw_sig.isidentifier() else signal.Signals(int(raw_sig))
+        debug_log(f"Resolved kill signal: {kill_signal.name}")
     except (KeyError, ValueError):
         print(f"ERROR: unknown signal '{raw_sig}'. Use a name like SIGTERM or an integer.", file=sys.stderr)
         sys.exit(1)
