@@ -4,7 +4,7 @@ variables:
   gpus: [4]
   experiment: "experiments/"
 
-  walltime: [15]
+  walltime: [120]
 
 jobs:
   - config: "gpus_{gpus}"
