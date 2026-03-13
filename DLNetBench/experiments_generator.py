@@ -724,11 +724,31 @@ def _random_labelling(per_slot: list[list[Strategy]], rng: random.Random) -> lis
     return [rng.choice(opts) for opts in per_slot]
 
 
+def _labelling_canonical_key(lab: list, pattern: AllocationPattern) -> tuple:
+    """
+    Order-invariant key for a strategy labelling.
+
+    Two labellings that are permutations of each other map to the same key,
+    so experiments that differ only in which job slot gets which strategy are
+    treated as identical (they are expected to have the same performance).
+
+    The key is a sorted tuple of (strategy_name, gpu_count) pairs — using
+    gpu_count rather than just strategy_name handles the case where the same
+    strategy appears at multiple different slot sizes within one pattern.
+    """
+    return tuple(sorted(zip((s.name for s in lab), pattern)))
+
+
 def _sample_exact(per_slot, pattern, n_per_bin, m_feasible, k, d1, d2, rng):
     BIN_NAMES = ("low", "medium", "high")
     bins: dict[str, list] = {b: [] for b in BIN_NAMES}
+    seen: set[tuple] = set()
     for combo in itertools.product(*per_slot):
         lab = list(combo)
+        canon = _labelling_canonical_key(lab, pattern)
+        if canon in seen:
+            continue
+        seen.add(canon)
         b = entropy_bin(mixture_entropy(lab, pattern), m_feasible, k, d1, d2)
         bins[b].append(lab)
     result = []
@@ -741,19 +761,19 @@ def _sample_exact(per_slot, pattern, n_per_bin, m_feasible, k, d1, d2, rng):
 def _sample_rejection(per_slot, pattern, n_per_bin, m_feasible, k, d1, d2, rng):
     BIN_NAMES = ("low", "medium", "high")
     bins: dict[str, list] = {b: [] for b in BIN_NAMES}
-    seen: set[tuple[str, ...]] = set()
+    seen: set[tuple] = set()
     budget = n_per_bin * 200 * len(BIN_NAMES)
     for _ in range(budget):
         if all(len(bins[b]) >= n_per_bin for b in BIN_NAMES):
             break
         lab = _random_labelling(per_slot, rng)
-        key = tuple(s.name for s in lab)
+        key = _labelling_canonical_key(lab, pattern)
         if key in seen:
             continue
+        seen.add(key)
         b = entropy_bin(mixture_entropy(lab, pattern), m_feasible, k, d1, d2)
         if len(bins[b]) < n_per_bin:
             bins[b].append(lab)
-            seen.add(key)
     result = []
     for bn in BIN_NAMES:
         for lab in bins[bn]:

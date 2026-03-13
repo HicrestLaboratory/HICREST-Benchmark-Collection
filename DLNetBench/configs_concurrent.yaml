@@ -6,33 +6,59 @@ isarco:
   scheduler: local
 
   default_conf:
+    time: "00:30:00"
     modules: 
       - "nvhpc-hpcx-cuda13/26.1"
 
   configs:
     - name: "gpus_{gpus}"
 
-
-leonardo:
+nvl72:
   scheduler: slurm
 
   default_conf:
-    account: "IscrC_OMG-25"
-    cpus_per_task: 8
+    partition: "gamoraq"
+    time: "00:30:00"
+    # This converts to gres=gpu:4
     gpus: 4
-    time: "00:05:00"
-    partition: "boost_usr_prod"
-    qos: "normal"
-    modules: 
-      - "gcc/12.2.0"
-      - "openmpi/4.1.6--gcc--12.2.0-cuda-12.2"
-      - "nvhpc/24.5"
+
+    # SPECIFY IF NEEDED
+    # modules: 
+    #   - ""
+    # custom_headers:
+    # - "#SBATCH --ntasks-per-node=?"
 
   configs:
-    - name: "{nodes}_nodes"
-      nodes: "{nodes}"
-      custom_headers:
-        - "#SBATCH --ntasks-per-node=4"
-      env:
-        - "NCCL_IB_SL=1"
-        - "UCX_IB_SL=1"
+    - name: "gpus_8"
+      nodes: 2
+      # FIX if needed
+      ntasks: 1
+    
+    - name: "gpus_16"
+      nodes: 4
+      # FIX if needed
+      ntasks: 1
+
+# leonardo:
+#   scheduler: slurm
+
+#   default_conf:
+#     account: "IscrC_OMG-25"
+#     cpus_per_task: 8
+#     gpus: 4
+#     time: "00:05:00"
+#     partition: "boost_usr_prod"
+#     qos: "normal"
+#     modules: 
+#       - "gcc/12.2.0"
+#       - "openmpi/4.1.6--gcc--12.2.0-cuda-12.2"
+#       - "nvhpc/24.5"
+
+#   configs:
+#     - name: "{nodes}_nodes"
+#       nodes: "{nodes}"
+#       custom_headers:
+#         - "#SBATCH --ntasks-per-node=4"
+#       env:
+#         - "NCCL_IB_SL=1"
+#         - "UCX_IB_SL=1"

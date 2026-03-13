@@ -2,17 +2,12 @@ sequential: true
 
 variables:
   gpus: [4]
-  # FIXME SbatchMan experiment: "experiments/"
-  experiment:
-    - 'experiment_1.json'
-    - 'experiment_2.json'
-    - 'experiment_3.json'
-    - 'experiment_4.json'
+  experiment: "experiments/"
 
   walltime: [15]
 
 jobs:
   - config: "gpus_{gpus}"
     config_jobs:
-      - tag: "{experiment}"
-        command: "python workerpool_scheduler.py -p experiments/{experiment} --device-upperbound {gpus} --walltime {walltime}"
+      - tag: "{experiment_filename}"
+        command: "python workerpool_scheduler.py --device-upperbound {gpus} --walltime {walltime} -p {experiment}"

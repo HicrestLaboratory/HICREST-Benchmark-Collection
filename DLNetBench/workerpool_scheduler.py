@@ -46,7 +46,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from parsers import stdout_to_csv  # your local module
+from parsers import stdout_to_csv
 
 # ---------------------------------------------------------------------------
 # Tunables
@@ -98,25 +98,65 @@ def _start_process(cmd: list[str], stdout_path: Path, stderr_path: Path) -> subp
     proc._stderr_fh = stderr_fh   # type: ignore[attr-defined]
     return proc
 
-def _graceful_kill(proc: subprocess.Popen, sig: signal.Signals, timeout: float = 10.0) -> None:
+def _wait_for_pgroup(pgid: int, timeout: float) -> bool:
     """
-    Send *sig* to the entire process group of proc, then wait up to *timeout*
-    seconds for it to exit; if it hasn't, send SIGKILL to the group.
+    Poll /proc until no process in *pgid* remains, or *timeout* seconds elapse.
+    Returns True if the group is empty before the deadline, False otherwise.
+
+    We cannot use waitpid(-pgid, ...) because the workers are not children of
+    this process — they are grandchildren of mpirun/srun.  /proc is the only
+    portable way to observe them on Linux.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            # os.killpg with signal 0 checks existence without sending a signal
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return True   # group is gone
+        except PermissionError:
+            return True   # group exists but we can't signal it — treat as gone
+        time.sleep(0.1)
+    return False   # still running after timeout
+
+
+def _graceful_kill(proc: subprocess.Popen, sig: signal.Signals, timeout: float = 30.0) -> None:
+    """
+    Send *sig* to the entire process group of *proc*, wait for every process in
+    the group to exit (not just the mpirun/srun parent), then fall back to
+    SIGKILL if they haven't all gone within *timeout* seconds.
+
+    Why wait for the whole group and not just proc:
+      mpirun/srun may exit (making proc.wait() return) while worker ranks are
+      still running their signal handler and writing final output.  Reading the
+      output files before those writes complete produces truncated or empty data.
     """
     pgid = os.getpgid(proc.pid)
+
     try:
         os.killpg(pgid, sig)
     except ProcessLookupError:
         pass  # already gone
 
+    # Wait for mpirun/srun itself first (updates proc.returncode)
     try:
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
+        pass
+
+    # Now wait for every worker in the process group to finish writing and exit
+    if not _wait_for_pgroup(pgid, timeout=timeout):
+        # Workers are still alive after the full timeout — escalate to SIGKILL
+        log(f"WARNING: process group {pgid} did not exit within {timeout}s after "
+            f"{sig.name}; sending SIGKILL.")
         try:
             os.killpg(pgid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        proc.wait()
+        _wait_for_pgroup(pgid, timeout=5.0)
+
+    # Ensure proc.returncode is populated even if wait() timed out earlier
+    proc.poll()
 
 def _close_handles(proc: subprocess.Popen) -> None:
     for attr in ("_stdout_fh", "_stderr_fh"):
@@ -243,7 +283,7 @@ def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
         path: Optional[Path] = getattr(proc, path_attr, None)
         if path is None:
             continue
- 
+
         uid = proc.uid  # type: ignore[attr-defined]
         sep = "=" * 72
         header = (
@@ -253,12 +293,12 @@ def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
             f"--- content  ---"
         )
         footer = f"{sep}\n"
- 
+
         print(header, flush=True)
         if log_path:
             with open(log_path, "a") as lf:
                 lf.write(header + "\n")
- 
+
         try:
             raw = path.read_text(errors="replace")
             if transform and stream == "stdout":
@@ -284,7 +324,7 @@ def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
             if log_path:
                 with open(log_path, "a") as lf:
                     lf.write(msg)
- 
+
         print(footer, flush=True)
         if log_path:
             with open(log_path, "a") as lf:
