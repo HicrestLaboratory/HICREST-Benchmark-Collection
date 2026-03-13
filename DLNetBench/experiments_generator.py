@@ -49,15 +49,15 @@ G: int = 72                # Total number of GPUs in the cluster
 
 # ── Strategies ──────────────────────────────────────────────────────────────
 STRATEGY_DEFS: list[tuple[str, list[int]]] = [
-    ("DP",           [2, 4, 8, 16]),
-    ("FSDP",         [2, 4, 8, 16, 32]), # TODO remove 2
-    ("DP+PP",        [4, 8, 16, 32, 64]),
-    ("DP+PP+Expert", [64, 128, 192, 256, 320, 384, 448, 512]),
-    ("DP+PP+TP",     [320, 640, 960]),
+    ("DP",           [8, 16]),
+    ("FSDP",         [8, 16, 32]),
+    ("DP+PP",        [8, 16, 32, 64]),
+    ("DP+PP+Expert", [128, 192, 256, 320, 384, 448, 512]),
+    ("DP+PP+TP",     [640, 960]),
 ]
 
 # ── Pattern generation ───────────────────────────────────────────────────────
-G_MIN: int = 2
+G_MIN: int = 8
 K_MAX: int = math.floor(G / G_MIN)
 GEOMETRIC_BETA: float = 0.5
 
