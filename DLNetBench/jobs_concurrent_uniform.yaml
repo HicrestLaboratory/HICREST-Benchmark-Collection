@@ -1,0 +1,13 @@
+sequential: true
+
+variables:
+  gpus: [4]
+  experiment: "experiments/"
+
+  walltime: [120]
+
+jobs:
+  - config: "gpus_{gpus}"
+    config_jobs:
+      - tag: "{experiment_filename}"
+        command: "python workerpool_scheduler.py --device-upperbound {gpus} --walltime {walltime} -p {experiment}"
