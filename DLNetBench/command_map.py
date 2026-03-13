@@ -28,13 +28,13 @@ _PARAMS: dict[str, callable] = {
 }
 
 
-def get_command(strategy: str, num_gpus: int, comm_lib: str) -> str:
+def get_command(strategy: str, num_gpus: int, comm_lib: str, warmups:int=4, runs:int=4) -> str:
     if strategy not in _PARAMS:
         raise ValueError(f"Unknown strategy '{strategy}'. Valid: {sorted(_PARAMS)}")
     if num_gpus not in FEASIBLE_GPU_COUNTS[strategy]:
         raise ValueError(f"num_gpus={num_gpus} not feasible for '{strategy}'. "
                          f"Valid: {sorted(FEASIBLE_GPU_COUNTS[strategy])}")
-    return f"./DLNetBench/bin/{comm_lib}/{_EXECUTABLES[strategy]} {_PARAMS[strategy](num_gpus)}"
+    return f"./DLNetBench/bin/{comm_lib}/{_EXECUTABLES[strategy]} {_PARAMS[strategy](num_gpus)} -w {warmups} -r {runs}"
 
 
 if __name__ == "__main__":
