@@ -130,6 +130,7 @@ def main() -> None:
 
     for sbm_job in jobs:
         raw_stdout = sbm_job.get_stdout()
+        print(f'Job tag={sbm_job.tag}  runtime={sbm_job.get_run_time()}')
 
         try:
             runs, log_lines = parse_scheduler_output(raw_stdout)

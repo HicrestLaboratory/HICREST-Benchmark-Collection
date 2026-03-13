@@ -2,14 +2,16 @@ sequential: true
 
 variables:
   nodes: [8]
+  system: ['leonardo']
   # experiment: "experiments/"
-  experiment: ["test_8_nodes.json"]
+  # experiment: ["test_8_nodes.json"]
+  experiment: ["test_8_nodes_topo.json"]
 
-  walltime: [35]
+  walltime: [45]
 
 jobs:
   - config: "{nodes}_nodes"
     config_jobs:
       - tag: "{experiment}"
         preprocess: "echo \"Allocated nodes: $SLURM_JOB_NODELIST\""
-        command: "python workerpool_scheduler.py --walltime {walltime} --nodelist \"$SLURM_JOB_NODELIST\" --debug -p {experiment}"
+        command: "python workerpool_scheduler.py --walltime {walltime} --nodelist \"$SLURM_JOB_NODELIST\" --system {system} --debug -p {experiment}"

@@ -44,17 +44,21 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from parsers import stdout_to_csv
+
+sys.path.append(str(Path(__file__).parent.parent / "common"))
+from utils.slurm import expand_slurm_nodelist
+from JobPlacer.cli_wrapper import JobPlacer, JobRequest, PlacementResult
 
 # ---------------------------------------------------------------------------
 # Tunables
 # ---------------------------------------------------------------------------
 
-TASKS_PER_NODE  = 4
-CPUS_PER_TASK   = 1
-POLL_INTERVAL   = 2   # seconds between status polls
+TASKS_PER_NODE  = 4   # For almost any system
+CPUS_PER_TASK   = 8   # For Leonardo
+POLL_INTERVAL   = 1   # seconds between status polls
 
 DEBUG_ENABLED   = False
 
@@ -220,12 +224,16 @@ def launch_job(
         num_nodes    = len(assigned_resources)
         cmd = [
             "srun",
+            "--exact",
             "--export=ALL",
             f"--nodelist={nodelist_str}",
             f"--nodes={num_nodes}",
+            f"--ntasks={num_nodes*TASKS_PER_NODE}",
             f"--ntasks-per-node={TASKS_PER_NODE}",
+            f"--gres=gpu:{TASKS_PER_NODE}",
             f"--cpus-per-task={CPUS_PER_TASK}",
             f"--job-name={uid}",
+            # f"--gpu-bind=closest",
             *extra_srun_flags,
             *command.split(),
         ]
@@ -329,29 +337,68 @@ def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
 # ---------------------------------------------------------------------------
 
 class PlacementOracle:
-    """Stub — replace find_placement with your actual oracle logic."""
+    """
+    Thin wrapper around the external placement oracle program.
 
-    def __init__(self, system: str = ""):
+    Queried once per experiment in hardcoded mode.  If unreachable, a stub is
+    used that always returns infeasible so every experiment file is still written.
+    """
+
+    def __init__(
+        self,
+        system: str,
+        reserved_nodes: list,
+    ) -> None:
         debug(f"PlacementOracle init for system='{system}'")
+        self.program = '../common/JobPlacer/target/release/job_placer_placement_classes'
+        self.oracle = JobPlacer(
+            system=system,
+            topology_file=f'../common/JobPlacer/{system}_topo.txt', # FIXME
+            sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt', # FIXME
+            nodelist=reserved_nodes,
+            binary=self.program
+        )
         self.system = system
+        self.reserved_nodes: list = reserved_nodes or []
+        self._available = self._probe()
+        if not self._available:
+            print(
+                f"[PlacementOracle] '{self.program}' not found / not responding. "
+                "Using stub (all placements infeasible).",
+                file=sys.stderr,
+            )
 
-    def find_placement(self, jobs: list[dict], available: list[str]) -> dict[str, list[str]]:
-        """
-        jobs: list of {"job_id": str, "req": int, "strategy": str}
-        Returns mapping job_id -> list of assigned node names.
-        """
-        debug(f"Oracle placing {len(jobs)} jobs on {len(available)} nodes")
-        pool = available.copy()
-        assignments = {}
-        for job in jobs:
-            jid, req = job["job_id"], job["req"]
-            if len(pool) < req:
-                raise ValueError(f"Oracle: not enough nodes for {jid} (need {req})")
-            assignments[jid] = [pool.pop(0) for _ in range(req)]
-        return assignments
+    def _probe(self) -> bool:
+        try:
+            r = subprocess.run([self.oracle._binary, "--help"],
+                               capture_output=True, timeout=2)
+            return r.returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
+    def find_placement(self, jobs: list[dict]) -> PlacementResult:
+        oracle_jobs = {}
+        for j in jobs:
+            oracle_jobs[j['job_id']] = JobRequest(
+                num_nodes=j['req'],
+                job_kind=j['job_id'],
+                placement_class=str(j['placement_class']).lower()
+            )
+        res = self.oracle.place(
+            oracle_jobs,
+            seed=jobs[0]['seed'],
+            timeout=5.0,
+        )
+        if not res.ok:
+            print("Placement could not be satisfied", file=sys.stderr)
+            print("Available nodes:", file=sys.stderr)
+            print(self.reserved_nodes, file=sys.stderr)
+            print("Request:", file=sys.stderr)
+            print(oracle_jobs, file=sys.stderr)
+        return res
 
 
-def assign_resources(pattern: dict, available_resources: list, use_devices: bool) -> dict:
+def assign_resources(pattern: dict, available_resources: list, use_devices: bool, system: Union[str, None] = None) -> dict:
     """
     Read the pattern JSON, apply the placement strategy, and return:
 
@@ -364,7 +411,6 @@ def assign_resources(pattern: dict, available_resources: list, use_devices: bool
     When use_devices=False the resource key means node count (strings → hostnames).
     """
     placement = pattern.get("placement", "linear").lower()
-    gpus_per_node = pattern.get("gpus_per_node", 1)
 
     debug(f"Placement strategy: {placement}, use_devices={use_devices}")
 
@@ -384,7 +430,8 @@ def assign_resources(pattern: dict, available_resources: list, use_devices: bool
             oracle_payload.append({
                 "job_id": f"{group_label}/{job_key}",
                 "req": req,
-                "strategy": job_info.get("strategy", ""),
+                "placement_class": job_info.get('placement_class'),
+                "seed": job_info.get('seed', 0),
             })
 
     total_needed = sum(j["req"] for j in oracle_payload)
@@ -421,8 +468,11 @@ def assign_resources(pattern: dict, available_resources: list, use_devices: bool
             assignments[item["job_id"]] = [pool.pop(0) for _ in range(item["req"])]
 
     elif placement == "runtime":
-        oracle = PlacementOracle(system="")
-        assignments = oracle.find_placement(oracle_payload, pool)
+        oracle = PlacementOracle(system=system, reserved_nodes=available_resources)
+        assignments = oracle.find_placement(oracle_payload)
+        if not assignments.ok:
+            sys.exit(100)
+        assignments = assignments.placements
 
     else:
         raise ValueError(f"Unknown placement strategy: '{placement}'")
@@ -569,6 +619,8 @@ def parse_args() -> argparse.Namespace:
                    help="File to mirror scheduler log lines into (in addition to stdout).")
     p.add_argument("--kill-signal", default="SIGTERM", metavar="SIGNAL",
                    help="Signal used to terminate jobs gracefully. Default: SIGTERM.")
+    p.add_argument("--system", type=str, default=None,
+                   help="The system topology to query. Required if placement=runtime")
     p.add_argument("--debug", action="store_true",
                    help="Enable verbose debug output.")
     return p.parse_args()
@@ -586,23 +638,25 @@ def main() -> None:
     placement = pattern.get("placement", "linear").lower()
     use_mpirun = (placement == "device")
     gpus_per_node = pattern.get("gpus_per_node", 1)
+    
+    if placement == 'runtime' and args.system is None:
+        print("If placement == 'runtime', --system must be set")
+        sys.exit(1)
 
     if use_mpirun:
         if args.nodelist:
-            # Interpret nodelist as comma-separated device IDs or just use device-upperbound
-            # User probably passed --device-upperbound; nodelist path means device IDs
-            available = args.nodelist.strip().split(",")
+            available = expand_slurm_nodelist(args.nodelist)
         else:
             available = [str(i) for i in range(args.device_upperbound)]
     else:
         if args.device_upperbound is not None:
             print("ERROR: --device-upperbound is only valid for placement=device.", file=sys.stderr)
             sys.exit(1)
-        available = args.nodelist.strip().split(",")
+        available = expand_slurm_nodelist(args.nodelist)
 
     debug(f"Available resources: {available}")
 
-    jobs = assign_resources(pattern, available, use_devices=use_mpirun)
+    jobs = assign_resources(pattern, available, use_devices=use_mpirun, system=args.system)
 
     pid = os.getpid()
     out_dir = Path(args.output_dir) if args.output_dir else Path(f"workerpool_out_{pid}")
