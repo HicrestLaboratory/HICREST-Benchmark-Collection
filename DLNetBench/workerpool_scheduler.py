@@ -261,74 +261,68 @@ METADATA_FIELDS = [
 def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
                     log_path: Optional[Path]) -> None:
     """
-    Flush file handles, then emit a self-contained block for each stream
-    (stdout + stderr) to the scheduler's stdout (and optionally log_path).
-    Each block is preceded by a metadata header.
+    Flush file handles, then emit a single self-contained block to stdout
+    (and optionally log_path) with the following structure:
+
+        ========================================================================
+        JOB OUTPUT  uid=<uid>
+        --- metadata ---
+          key: value
+          ...
+        --- stdout ---
+        <transformed stdout content>
+        --- stderr ---
+        <stderr content>
+        ========================================================================
     """
     _close_handles(proc)
 
+    uid = proc.uid  # type: ignore[attr-defined]
     end = ts()
-    meta_lines = [
-        f"  {k}: {getattr(proc, k, 'N/A')}"
-        for k in METADATA_FIELDS
-    ]
+
+    meta_lines = [f"  {k}: {getattr(proc, k, 'N/A')}" for k in METADATA_FIELDS]
     meta_lines.append(f"  exit_code: {exit_code}")
     meta_lines.append(f"  finished_at: {end}")
     meta_block = "\n".join(meta_lines)
 
-    for stream, path_attr, transform in (
-        ("stdout", "stdout_path", stdout_to_csv),
-        ("stderr", "stderr_path", None),
-    ):
-        path: Optional[Path] = getattr(proc, path_attr, None)
-        if path is None:
-            continue
+    sep = "=" * 72
 
-        uid = proc.uid  # type: ignore[attr-defined]
-        sep = "=" * 72
-        header = (
-            f"\n{sep}\n"
-            f"JOB OUTPUT  uid={uid}  stream={stream}\n"
-            f"--- metadata ---\n{meta_block}\n"
-            f"--- content  ---"
-        )
-        footer = f"{sep}\n"
-
-        print(header, flush=True)
-        if log_path:
-            with open(log_path, "a") as lf:
-                lf.write(header + "\n")
-
+    def _read_stream(path_attr: str, transform) -> str:
+        fpath: Optional[Path] = getattr(proc, path_attr, None)
+        if fpath is None:
+            return "  <no output file>\n"
         try:
-            raw = path.read_text(errors="replace")
-            if transform and stream == "stdout":
-                if exit_code != 0:
-                    try:
-                        content = transform(raw)
-                    except Exception as exc:
-                        content = (
-                            f"  <stdout_to_csv failed with exit_code={exit_code}: {exc}>\n"
-                            f"  Raw output follows:\n{raw}"
-                        )
-                else:
-                    content = transform(raw)
-            else:
-                content = raw
-            print(content, flush=True)
-            if log_path:
-                with open(log_path, "a") as lf:
-                    lf.write(content)
+            raw = fpath.read_text(errors="replace")
         except FileNotFoundError:
-            msg = f"  <output file not found: {path}>\n"
-            print(msg, end="", flush=True)
-            if log_path:
-                with open(log_path, "a") as lf:
-                    lf.write(msg)
+            return f"  <output file not found: {fpath}>\n"
+        if transform:
+            if exit_code != 0:
+                try:
+                    return transform(raw)
+                except Exception as exc:
+                    return (
+                        f"  <stdout_to_csv failed with exit_code={exit_code}: {exc}>\n"
+                        f"  Raw output follows:\n{raw}"
+                    )
+            return transform(raw)
+        return raw
 
-        print(footer, flush=True)
-        if log_path:
-            with open(log_path, "a") as lf:
-                lf.write(footer)
+    stdout_content = _read_stream("stdout_path", stdout_to_csv)
+    stderr_content = _read_stream("stderr_path", None)
+
+    block = (
+        f"\n{sep}\n"
+        f"JOB OUTPUT  uid={uid}\n"
+        f"--- metadata ---\n{meta_block}\n"
+        f"--- stdout ---\n{stdout_content}\n"
+        f"--- stderr ---\n{stderr_content}"
+        f"{sep}\n"
+    )
+
+    print(block, flush=True)
+    if log_path:
+        with open(log_path, "a") as lf:
+            lf.write(block)
 
 # ---------------------------------------------------------------------------
 # Placement
