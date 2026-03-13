@@ -83,13 +83,15 @@ def main(args: argparse.Namespace) -> None:
 
         command = get_command(strategy, num_gpus, args.comm_lib)
 
+        command = f"mpirun -np {num_gpus} {command}"
+
         print(f"[{i:02d}/{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
         print(f"        command: {command}")
         if previous_job_id is not None:
             print(f"        waiting for job_id={previous_job_id}")
 
         job = sbm.launch_job(
-            config_name      = "baseline_" + args.config_name + f"_{num_gpus}gpus",
+            config_name      = f"baseline_gpus{num_gpus}",
             command          = command,
             tag              = f"baseline_{strategy}_{num_gpus}gpus",
             previous_job_id  = previous_job_id,
