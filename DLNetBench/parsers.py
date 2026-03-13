@@ -93,7 +93,7 @@ def stdout_to_csv(stdout_content):
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
                 throughput = throughputs[run_idx]
-                barrier = barrier_times[run_idx]
+                barrier = barrier_times[run_idx] if run_idx < len(barrier_times) else 0.0
                 allgather = allgather_times[run_idx]
                 
                 # Sum allgather operations for this run
@@ -289,27 +289,6 @@ def stdout_to_csv(stdout_content):
         csv_lines.append(f"{runtime},{commtime},{throughput}")
     
     return "\n".join(csv_lines)
-
-
-# # Example usage
-# if __name__ == "__main__":
-#     import sys
-    
-#     if len(sys.argv) != 2:
-#         print("Usage: python ccutils_to_csv_simple.py <stdout_file>")
-#         sys.exit(1)
-    
-#     stdout_file = sys.argv[1]
-    
-#     # Read stdout file
-#     # with open(stdout_file, 'r') as f:
-#     #     stdout_content = f.read()
-    
-#     # Convert to CSV format
-#     csv_output = stdout_to_csv(stdout_file)
-    
-#     # Print to stdout
-#     print(csv_output)
     
 # TODO test me
 
@@ -567,27 +546,47 @@ def runs_by_job(runs: list[dict]) -> dict[str, list[dict]]:
 # CLI — quick sanity check
 # ---------------------------------------------------------------------------
 
+# if __name__ == "__main__":
+#     import json
+
+#     src = sys.argv[1] if len(sys.argv) > 1 else None
+#     text = Path(src).read_text(errors="replace") if src else sys.stdin.read()
+
+#     runs, log_lines = parse_scheduler_output(text)
+
+#     print(f"Parsed {len(runs)} job run(s).\n")
+
+#     for run in runs:
+#         status = "OK" if run["success"] else f"FAILED (exit={run['exit_code']})"
+#         print(
+#             f"  {run['uid']:<30}  {status:<20}"
+#             f"  stdout={len(run['stdout'])} chars"
+#             f"  stderr={len(run['stderr'])} chars"
+#         )
+
+#     if log_lines:
+#         print(f"\n{len(log_lines)} scheduler log line(s):")
+#         for ll in log_lines[:10]:
+#             print(f"  {ll}")
+#         if len(log_lines) > 10:
+#             print(f"  … ({len(log_lines) - 10} more)")
+
+# Example usage
 if __name__ == "__main__":
-    import json
-
-    src = sys.argv[1] if len(sys.argv) > 1 else None
-    text = Path(src).read_text(errors="replace") if src else sys.stdin.read()
-
-    runs, log_lines = parse_scheduler_output(text)
-
-    print(f"Parsed {len(runs)} job run(s).\n")
-
-    for run in runs:
-        status = "OK" if run["success"] else f"FAILED (exit={run['exit_code']})"
-        print(
-            f"  {run['uid']:<30}  {status:<20}"
-            f"  stdout={len(run['stdout'])} chars"
-            f"  stderr={len(run['stderr'])} chars"
-        )
-
-    if log_lines:
-        print(f"\n{len(log_lines)} scheduler log line(s):")
-        for ll in log_lines[:10]:
-            print(f"  {ll}")
-        if len(log_lines) > 10:
-            print(f"  … ({len(log_lines) - 10} more)")
+    import sys
+    
+    if len(sys.argv) != 2:
+        print("Usage: python ccutils_to_csv_simple.py <stdout_file>")
+        sys.exit(1)
+    
+    stdout_file = sys.argv[1]
+    
+    # Read stdout file
+    with open(stdout_file, 'r') as f:
+        stdout_content = f.read()
+    
+    # Convert to CSV format
+    csv_output = stdout_to_csv(stdout_content)
+    
+    # Print to stdout
+    print(csv_output)
