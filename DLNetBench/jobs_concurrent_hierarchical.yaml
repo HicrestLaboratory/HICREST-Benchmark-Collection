@@ -7,14 +7,12 @@ variables:
   # -- Change as needed --
   experiment: "experiments_test/"
   # experiment: "experiments/"
-  # experiment: ["test_8_nodes.json"]
-  # experiment: ["test_8_nodes_topo.json"]
 
-  walltime: [45]
+  walltime: [40]
 
 jobs:
   - config: "{nodes}_nodes"
     config_jobs:
-      - tag: "{experiment}"
+      - tag: "{experiment_filename}"
         preprocess: "echo \"Allocated nodes: $SLURM_JOB_NODELIST\""
         command: "python workerpool_scheduler.py --walltime {walltime} --nodelist \"$SLURM_JOB_NODELIST\" --system {system} --debug -p {experiment}"
