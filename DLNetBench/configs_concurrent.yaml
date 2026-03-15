@@ -13,6 +13,7 @@ isarco:
   configs:
     - name: "gpus_{gpus}"
 
+# TODO with nodes instead of gpus
 nvl72:
   scheduler: slurm
 

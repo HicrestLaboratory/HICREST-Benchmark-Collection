@@ -50,10 +50,10 @@ G: int = 72                # Total number of GPUs in the cluster
 # ── Strategies ──────────────────────────────────────────────────────────────
 STRATEGY_DEFS: list[tuple[str, list[int]]] = [
     ("DP",           [8, 16]),
-    ("FSDP",         [8, 16, 32]),
-    ("DP+PP",        [8, 16, 32, 64]),
-    ("DP+PP+Expert", [128, 192, 256, 320, 384, 448, 512]),
+    ("FSDP",         [16, 32]),
+    ("DP+PP",        [16, 32, 64]),
     ("DP+PP+TP",     [640, 960]),
+    ("DP+PP+Expert", [448, 512]), # 128, 192, 256, 320, 384,
 ]
 
 # ── Pattern generation ───────────────────────────────────────────────────────
@@ -76,17 +76,17 @@ UTIL_STEPS: int   = 1
 STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
     "small": {
         "tier_weight": 0.75,
-        "sizes": [2, 4],
-        "sub_weights": {},
+        "sizes": [4, 8],
+        "sub_weights": {4: 0.8},
     },
     "medium": {
         "tier_weight": 0.20,
-        "sizes": [8, 16, 32],
+        "sizes": [16, 32, 64],
         "sub_weights": {},
     },
     "large": {
         "tier_weight": 0.05,
-        "sizes": [640],
+        "sizes": [448, 512, 640, 960],
         "sub_weights": {},
     },
 }
