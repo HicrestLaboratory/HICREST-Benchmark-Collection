@@ -80,10 +80,11 @@ def main(args: argparse.Namespace) -> None:
     for i, run in enumerate(runs, start=1):
         strategy = run["strategy"]
         num_gpus = run["gpus"]
+        nodes = num_gpus / args.gpus_per_node
 
         command = get_command(strategy, num_gpus, args.comm_lib)
 
-        command = f"mpirun -np {num_gpus} {command}"
+        command = f"srun -N {nodes} {command}"
 
         print(f"[{i:02d}/{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
         print(f"        command: {command}")
@@ -110,7 +111,7 @@ def main(args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="launch_baseline_singlenode.py",
+        prog="baseline_single_node.py",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=__doc__,
     )
