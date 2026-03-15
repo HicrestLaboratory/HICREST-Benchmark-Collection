@@ -5,6 +5,7 @@ Maps (strategy, num_gpus, comm_lib) -> full DLNetBench command string.
 """
 
 from __future__ import annotations
+from typing import Union
 from experiments_generator import STRATEGY_DEFS
 
 FEASIBLE_GPU_COUNTS: dict[str, frozenset[int]] = {
@@ -43,18 +44,25 @@ _STRATEGIES_NUM_RUNS_B200: dict[str, tuple[int, int]] = {
     "DP+PP+TP":     (1, 2), # 23s  * 3 = 1m 9s
 }
 
-def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model:str = "B200") -> str:
+def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model:str = "B200", num_warmup_override: Union[int, None]=None) -> str:
     if strategy not in _PARAMS:
         raise ValueError(f"Unknown strategy '{strategy}'. Valid: {sorted(_PARAMS)}")
+    
     if strategy not in _STRATEGIES_NUM_RUNS:
         raise ValueError(f"Unknown strategy number of runs '{strategy}'. Valid: {sorted(_STRATEGIES_NUM_RUNS)}")
+    
     if num_gpus not in FEASIBLE_GPU_COUNTS[strategy]:
         raise ValueError(f"num_gpus={num_gpus} not feasible for '{strategy}'. "
                          f"Valid: {sorted(FEASIBLE_GPU_COUNTS[strategy])}")
+        
     if gpu_model == "B200":
         num_runs = _STRATEGIES_NUM_RUNS_B200[strategy]
     else:
         num_runs = _STRATEGIES_NUM_RUNS[strategy]
+        
+    if num_warmup_override is not None and num_warmup_override >= 0:
+        num_runs = (num_warmup_override, num_runs[0] + num_runs[1])
+        
     return f"./DLNetBench/bin/{comm_lib}/{_EXECUTABLES[strategy]} {_PARAMS[strategy](num_gpus)} -w {num_runs[0]} -r {num_runs[1]} -g {gpu_model}"
 
 

@@ -43,7 +43,7 @@ import import_export
 # Config
 # ---------------------------------------------------------------------------
 
-OUT_DIR = Path("plots")
+OUT_DIR = Path("plots") / "concurrent"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 METRICS = ["throughput", "runtime", "commtime"]

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from parsers import stdout_to_csv
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 import import_export
@@ -101,8 +102,8 @@ def main() -> None:
             issues.append((str(job.job_id), tag, OUTCOME_NO_DATA, "stdout is empty"))
             job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_NO_DATA})
             continue
-
-        df = _parse_csv(stdout)
+        
+        df = _parse_csv(stdout_to_csv(stdout))
         if df is None:
             issues.append((
                 str(job.job_id), tag, OUTCOME_BAD_CSV,
@@ -116,7 +117,7 @@ def main() -> None:
             "sbm_job_id":  job.job_id,
             "sbm_tag":     tag,
             "cluster":     cluster_name,
-            "tot_runtime": str(job.get_run_time()),
+            "tot_runtime": job.get_run_time(),
             # set at launch time in launch_baseline_singlenode.py
             "strategy":    (job.variables or {}).get("strategy"),
             "gpus":        (job.variables or {}).get("gpus"),

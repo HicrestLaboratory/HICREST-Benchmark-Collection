@@ -1,5 +1,5 @@
 """
-launch_baseline_singlenode.py
+run_baselines_no_placement.py
 ==============================
 Launches single-node baseline experiments using sbatchman.
 
@@ -9,13 +9,13 @@ sbatchman.launch_job — each job waits for the previous one to complete.
 
 Usage
 -----
-  python launch_baseline_singlenode.py experiments.json \\
+  python run_baselines_no_placement.py experiments.json \\
       --config-name my_config \\
       --comm-lib nccl \\
       --gpus-per-node 72
 
   # dry run (does not actually submit jobs)
-  python launch_baseline_singlenode.py experiments.json \\
+  python run_baselines_no_placement.py experiments.json \\
       --config-name my_config \\
       --comm-lib nccl \\
       --gpus-per-node 72 \\
@@ -33,6 +33,7 @@ import sbatchman as sbm
 
 sys.path.append(str(Path(__file__).parent))
 from command_map import get_command, FEASIBLE_GPU_COUNTS
+from collections import Counter
 
 
 # ---------------------------------------------------------------------------
@@ -48,19 +49,16 @@ def _load_baseline_runs(input_json: str, gpus_per_node: int) -> list[dict]:
         sys.exit(1)
 
     all_runs = doc["baseline_set"]
-    single_node = [r for r in all_runs if r["gpus"] <= gpus_per_node]
-    skipped     = len(all_runs) - len(single_node)
+    single_node_count = len([r for r in all_runs if r["gpus"] <= gpus_per_node])
 
-    print(f"[baseline] Total baseline runs      : {len(all_runs)}")
-    print(f"[baseline] Single-node (≤ {gpus_per_node} GPUs)  : {len(single_node)}")
-    if skipped:
-        print(f"[baseline] Skipped (multi-node)     : {skipped}")
+    print(f"[baseline] Total baseline runs     :{len(all_runs)}")
+    print(f"[baseline] Single-node (≤ {gpus_per_node} GPUs)  : {single_node_count}")
+    gpu_counts = Counter(r["gpus"] for r in all_runs)
+    print("[baseline] Histogram of runs by GPU count:")
+    for gpus, count in sorted(gpu_counts.items()):
+        print(f"    {gpus:>3} GPUs : {count} runs")
 
-    if not single_node:
-        print("Error: no single-node baseline runs after filtering.", file=sys.stderr)
-        sys.exit(1)
-
-    return single_node
+    return all_runs
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +68,6 @@ def _load_baseline_runs(input_json: str, gpus_per_node: int) -> list[dict]:
 def main(args: argparse.Namespace) -> None:
     runs = _load_baseline_runs(args.input_json, args.gpus_per_node)
 
-    print(f"\n[baseline] Config name : baseline_gpus{num_gpus}")
     print(f"[baseline] Comm lib    : {args.comm_lib}")
     print(f"[baseline] Dry run     : {args.dry_run}")
     print(f"[baseline] Launching {len(runs)} jobs sequentially...\n")
@@ -79,10 +76,10 @@ def main(args: argparse.Namespace) -> None:
 
     for i, run in enumerate(runs, start=1):
         strategy = run["strategy"]
-        num_gpus = run["gpus"]
-        nodes = num_gpus / args.gpus_per_node
+        num_gpus = int(run["gpus"])
+        nodes = int(num_gpus / args.gpus_per_node)
 
-        command = get_command(strategy, num_gpus, args.comm_lib)
+        command = get_command(strategy, num_gpus, args.comm_lib, num_warmup_override=0)
 
         command = f"srun -N {nodes} {command}"
 
@@ -92,11 +89,12 @@ def main(args: argparse.Namespace) -> None:
             print(f"        waiting for job_id={previous_job_id}")
 
         job = sbm.launch_job(
-            config_name      = f"baseline_gpus{num_gpus}",
+            config_name      = f"{nodes}_nodes",
             command          = command,
-            tag              = f"baseline_{strategy}_{num_gpus}gpus",
+            tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes",
             previous_job_id  = previous_job_id,
             dry_run          = args.dry_run,
+            variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes}
         )
 
         previous_job_id = job.job_id
@@ -124,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Communication library (e.g. 'nccl', 'mpi'). Injected into the command path.",
     )
     p.add_argument(
-        "--gpus-per-node", type=int, default=72, metavar="N",
+        "--gpus-per-node", type=int, default=4, metavar="N",
         help="GPUs per physical node. Runs with gpus > N are skipped (default: 72).",
     )
     p.add_argument(
