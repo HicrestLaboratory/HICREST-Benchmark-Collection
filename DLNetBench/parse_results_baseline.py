@@ -112,18 +112,15 @@ def main() -> None:
             continue
 
         # Good data — build flat metadata from the job
-        # Tag format: baseline_{strategy}_{num_gpus}gpus  (see launch script)
-        parts    = tag.split("_")          # ["baseline", strategy, "Ngpus"]
-        strategy = parts[1] if len(parts) > 1 else "unknown"
-        gpus_str = parts[2] if len(parts) > 2 else "unknown"
-
         meta: dict[str, Any] = {
             "sbm_job_id":  job.job_id,
             "sbm_tag":     tag,
             "cluster":     cluster_name,
             "tot_runtime": str(job.get_run_time()),
-            "strategy":    strategy,
-            "gpus":        gpus_str,
+            # set at launch time in launch_baseline_singlenode.py
+            "strategy":    (job.variables or {}).get("strategy"),
+            "gpus":        (job.variables or {}).get("gpus"),
+            "nodes":       (job.variables or {}).get("nodes"),
         }
 
         pairs.append((meta, {"measurements": df}))
