@@ -20,11 +20,11 @@ _EXECUTABLES: dict[str, str] = {
 }
 
 _PARAMS: dict[str, callable] = {
-    "DP":           lambda g: "vit_h_16_bfloat16 50 ./DLNetBench",
-    "FSDP":         lambda g: f"llama3_8b_16_bfloat16 16 {g if g < 8 else 8} ./DLNetBench",
-    "DP+PP":        lambda g: f"minerva_7b_16_bfloat16 {2 if g==4 else 4 if g==8 else 8} 16 ./DLNetBench",
-    "DP+PP+Expert": lambda g: "mixtral_8x7b_16_bfloat16 4 16 8 ./DLNetBench",
-    "DP+PP+TP":     lambda g: "llama3_70b_16_bfloat16 80 16 4 ./DLNetBench",
+    "DP":           lambda g: "vit-h 50 ./DLNetBench",
+    "FSDP":         lambda g: f"llama3-8b 16 {g if g < 8 else 8} ./DLNetBench",
+    "DP+PP":        lambda g: f"minerva-7b {2 if g==4 else 4 if g==8 else 8} 16 ./DLNetBench",
+    "DP+PP+Expert": lambda g: "mixtral-8x7b 4 16 8 ./DLNetBench",
+    "DP+PP+TP":     lambda g: "llama3-70b 80 16 4 ./DLNetBench",
 }
 
 _STRATEGIES_NUM_RUNS: dict[str, tuple[int, int]] = {
