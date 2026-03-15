@@ -111,6 +111,8 @@ def main() -> None:
         from_active=True,
         from_archived=False,
     )
+    
+    jobs = [j for j in jobs if not j.tag.startswith('baseline')]
 
     if not jobs:
         print("No completed jobs found.")
