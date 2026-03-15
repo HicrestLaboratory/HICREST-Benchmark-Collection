@@ -240,7 +240,7 @@ def launch_job(
             f"--nodes={num_nodes}",
             f"--ntasks={num_nodes*TASKS_PER_NODE}",
             f"--ntasks-per-node={TASKS_PER_NODE}",
-            f"--gres=gpu:{TASKS_PER_NODE}",
+            # f"--gres=gpu:{TASKS_PER_NODE}",
             f"--cpus-per-task={CPUS_PER_TASK}",
             f"--job-name={uid}",
             # f"--gpu-bind=closest",
