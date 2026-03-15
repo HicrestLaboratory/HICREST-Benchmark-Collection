@@ -181,7 +181,7 @@ def launch_job(
     command: str,
     strategy: str,
     assigned_resources: list,   # node names (srun) or device IDs as strings (mpirun)
-    use_mpirun: bool,
+    bind_to_device: bool,
     gpus_per_node: int,
     extra_srun_flags: list[str],
     out_dir: Path,
@@ -196,7 +196,7 @@ def launch_job(
       .repetition   – how many times this job has been launched (0-indexed)
       .strategy     – strategy string from the JSON
       .resources    – list of assigned nodes or device IDs
-      .use_mpirun   – bool
+      .bind_to_device – bool
       .app          – command string
       .stdout_path  – Path to stdout file
       .stderr_path  – Path to stderr file
@@ -206,14 +206,24 @@ def launch_job(
     stdout_path = out_dir / f"{uid}.stdout"
     stderr_path = out_dir / f"{uid}.stderr"
 
-    if use_mpirun:
+    if bind_to_device:
         # resources are device IDs (integers stored as strings)
         device_ids   = ",".join(str(d) for d in assigned_resources)
         num_ranks    = len(assigned_resources)
+        # cmd = [
+        #     "mpirun",
+        #     "-np", str(num_ranks),
+        #     "--map-by", "slot",
+        #     *extra_srun_flags,
+        #     *command.split(),
+        #     "-d", device_ids,
+        # ]
         cmd = [
-            "mpirun",
-            "-np", str(num_ranks),
-            "--map-by", "slot",
+            "srun",
+            "--ntasks=", str(num_ranks),
+            "--cpus-per-task=1",
+            "--gpus-per-task=1",
+            f"--job-name={uid}",
             *extra_srun_flags,
             *command.split(),
             "-d", device_ids,
@@ -249,7 +259,7 @@ def launch_job(
     proc.repetition  = repetition    # type: ignore[attr-defined]
     proc.strategy    = strategy      # type: ignore[attr-defined]
     proc.resources   = assigned_resources  # type: ignore[attr-defined]
-    proc.use_mpirun  = use_mpirun    # type: ignore[attr-defined]
+    proc.bind_to_device  = bind_to_device    # type: ignore[attr-defined]
     proc.app         = command       # type: ignore[attr-defined]
     proc.stdout_path = stdout_path   # type: ignore[attr-defined]
     proc.stderr_path = stderr_path   # type: ignore[attr-defined]
@@ -263,7 +273,7 @@ def launch_job(
 
 METADATA_FIELDS = [
     "uid", "job_name", "repetition", "strategy",
-    "resources", "use_mpirun", "app", "start_ts",
+    "resources", "bind_to_device", "app", "start_ts",
 ]
 
 def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
@@ -501,7 +511,7 @@ def run_scheduler(
     out_dir: Path,
     extra_flags: list[str],
     walltime: int,
-    use_mpirun: bool,
+    bind_to_device: bool,
     gpus_per_node: int,
     kill_signal: signal.Signals,
     log_path: Optional[Path],
@@ -522,7 +532,7 @@ def run_scheduler(
             command          = info["command"],
             strategy         = info["strategy"],
             assigned_resources = info["resources"],
-            use_mpirun       = use_mpirun,
+            bind_to_device   = bind_to_device,
             gpus_per_node    = gpus_per_node,
             extra_srun_flags = extra_flags,
             out_dir          = out_dir,
@@ -636,14 +646,14 @@ def main() -> None:
         pattern = json.load(f)
 
     placement = pattern.get("placement", "linear").lower()
-    use_mpirun = (placement == "device")
+    bind_to_device = (placement == "device")
     gpus_per_node = pattern.get("gpus_per_node", 1)
     
     if placement == 'runtime' and args.system is None:
         print("If placement == 'runtime', --system must be set")
         sys.exit(1)
 
-    if use_mpirun:
+    if bind_to_device:
         if args.nodelist:
             available = expand_slurm_nodelist(args.nodelist)
         else:
@@ -656,7 +666,7 @@ def main() -> None:
 
     debug(f"Available resources: {available}")
 
-    jobs = assign_resources(pattern, available, use_devices=use_mpirun, system=args.system)
+    jobs = assign_resources(pattern, available, use_devices=bind_to_device, system=args.system)
 
     pid = os.getpid()
     out_dir = Path(args.output_dir) if args.output_dir else Path(f"workerpool_out_{pid}")
@@ -678,7 +688,7 @@ def main() -> None:
         out_dir      = out_dir,
         extra_flags  = extra_flags,
         walltime     = args.walltime,
-        use_mpirun   = use_mpirun,
+        bind_to_device   = bind_to_device,
         gpus_per_node= gpus_per_node,
         kill_signal  = kill_signal,
         log_path     = log_path,

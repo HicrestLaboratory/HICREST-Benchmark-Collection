@@ -13,32 +13,26 @@ isarco:
   configs:
     - name: "gpus_{gpus}"
 
-# TODO with nodes instead of gpus
 nvl72:
   scheduler: slurm
 
   default_conf:
+    # Change me as needed
     partition: "gamoraq"
     time: "00:03:00"
-    # This converts to gres=gpu:4
-    gpus: 4
+    # gpus: 4
+    # qos: "?"
+    exclusive: true
+    custom_headers:
+      - "#SBATCH --ntasks-per-node=4"
 
     # SPECIFY IF NEEDED
     # modules: 
     #   - ""
-    # custom_headers:
-    # - "#SBATCH --ntasks-per-node=?"
 
   configs:
-    - name: "gpus_8"
-      nodes: 2
-      # FIX if needed
-      ntasks: 1
-    
-    - name: "gpus_16"
-      nodes: 4
-      # FIX if needed
-      ntasks: 1
+    - name: "{nodes}_nodes"
+      nodes: "{nodes}"
 
 leonardo:
   scheduler: slurm

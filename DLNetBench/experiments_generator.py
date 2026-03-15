@@ -47,19 +47,20 @@ from datetime import datetime, timezone
 # ── Hardware ────────────────────────────────────────────────────────────────
 G: int = 72                # Total number of GPUs in the cluster
 
-# ── Strategies ──────────────────────────────────────────────────────────────
-STRATEGY_DEFS: list[tuple[str, list[int]]] = [
-    ("DP",           [8, 16]),
-    ("FSDP",         [16, 32]),
-    ("DP+PP",        [16, 32, 64]),
-    ("DP+PP+TP",     [640, 960]),
-    ("DP+PP+Expert", [448, 512]), # 128, 192, 256, 320, 384,
-]
-
 # ── Pattern generation ───────────────────────────────────────────────────────
 G_MIN: int = 8
 K_MAX: int = math.floor(G / G_MIN)
 GEOMETRIC_BETA: float = 0.5
+
+# ── Strategies ──────────────────────────────────────────────────────────────
+STRATEGY_DEFS: list[tuple[str, list[int]]] = [
+    ("DP",           [8, 16]),              # Nodes: 2, 4
+    ("FSDP",         [16, 32]),             # Nodes: 4, 8, 16
+    ("DP+PP",        [16, 32, 64]),         # Nodes: 4, 8, 16
+    ("DP+PP+TP",     [640, 960]),           # Nodes: 160, 240
+    ("DP+PP+Expert", [448, 512]),           # Nodes: 112, 128
+    # DP+PP+Expert excluded: 128, 192, 256, 320, 384,
+]
 
 HIERARCHICAL_PATTERNS: list[tuple[list[float], int]] = [
     ([0.50, 0.25], 4),
@@ -92,6 +93,29 @@ STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
 }
 
 N_STOCHASTIC_PATTERNS: int = 3
+
+
+# ===== THIS IS ONLY FOR 8 GPU DGX =====
+# G: int = 8
+# G_MIN: int = 2
+# K_MAX: int = math.floor(G / G_MIN)
+# STRATEGY_DEFS: list[tuple[str, list[int]]] = [
+#     ("DP",           [2, 4]),
+#     ("FSDP",         [4]),        
+#     ("DP+PP",        [4]),
+# ]
+# STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
+#     "small": {
+#         "tier_weight": 0.7,
+#         "sizes": [2, 4],
+#         "sub_weights": {},
+#     }, 
+#     "large": {
+#         "tier_weight": 0.3,
+#         "sizes": [6],
+#         "sub_weights": {},
+#     },
+# }
 
 # ── Entropy-stratified sampling ──────────────────────────────────────────────
 ENTROPY_DELTA_1: float = 0.3

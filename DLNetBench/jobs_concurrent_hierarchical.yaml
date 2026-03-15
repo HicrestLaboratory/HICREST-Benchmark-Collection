@@ -1,11 +1,14 @@
 sequential: true
 
 variables:
-  nodes: [8]
-  system: ['leonardo']
+  nodes: [10]             # Ensure these are enough for the experiments that will run
+  system: ['leonardo']    # Does not matter if placement != runtime
+
+  # -- Change as needed --
+  experiment: "experiments_test/"
   # experiment: "experiments/"
   # experiment: ["test_8_nodes.json"]
-  experiment: ["test_8_nodes_topo.json"]
+  # experiment: ["test_8_nodes_topo.json"]
 
   walltime: [45]
 

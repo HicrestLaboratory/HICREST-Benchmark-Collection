@@ -329,7 +329,7 @@ def _coerce(key: str, raw: str):
         except ValueError:
             return raw
  
-    if key == "use_mpirun":
+    if key == "bind_to_device":
         return raw.lower() == "true"
  
     if key == "resources":
@@ -360,7 +360,7 @@ def parse_scheduler_output(text: str) -> tuple[list[dict], list[str]]:
         repetition: ...
         strategy: ...
         resources: ...
-        use_mpirun: ...
+        bind_to_device: ...
         app: ...
         start_ts: ...
         exit_code: ...
@@ -383,7 +383,7 @@ def parse_scheduler_output(text: str) -> tuple[list[dict], list[str]]:
             "repetition":  int,
             "strategy":    str,
             "resources":   list[str],           # nodes or device IDs
-            "use_mpirun":  bool,
+            "bind_to_device":  bool,
             "app":         str,                 # command string
             "start_ts":    str,
             "exit_code":   int | None,          # None if the field was missing
@@ -490,7 +490,7 @@ def parse_scheduler_output(text: str) -> tuple[list[dict], list[str]]:
             "repetition":  block.meta.get("repetition", None),
             "strategy":    block.meta.get("strategy", ""),
             "resources":   block.meta.get("resources", []),
-            "use_mpirun":  block.meta.get("use_mpirun", False),
+            "bind_to_device":  block.meta.get("bind_to_device", False),
             "app":         block.meta.get("app", ""),
             "start_ts":    block.meta.get("start_ts", ""),
             "exit_code":   block.meta.get("exit_code", None),

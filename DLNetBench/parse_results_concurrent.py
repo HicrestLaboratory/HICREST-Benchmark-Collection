@@ -78,7 +78,7 @@ def _build_metadata(sbm_job: sbm.Job, run: dict[str, Any]) -> dict[str, Any]:
         "repetition":    run["repetition"],
         "strategy":      run["strategy"],
         "resources":     ",".join(str(r) for r in run["resources"]),
-        "use_mpirun":    run["use_mpirun"],
+        "bind_to_device":run["bind_to_device"],
         "app":           run["app"],
         "start_ts":      run["start_ts"],
         "finished_at":   run["finished_at"],

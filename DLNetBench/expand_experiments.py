@@ -163,7 +163,7 @@ GLOBAL_CONFIG_FILENAME: str = "global_config.json"
 
 # Valid placement modes per interconnect type
 VALID_PLACEMENTS: dict = {
-    "uniform":      {"device"},
+    "uniform":      {"device", "random", "linear"},
     "hierarchical": {"runtime", "random", "linear", "hardcoded"},
 }
 
