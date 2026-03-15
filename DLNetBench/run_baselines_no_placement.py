@@ -79,7 +79,7 @@ def main(args: argparse.Namespace) -> None:
         num_gpus = int(run["gpus"])
         nodes = int(num_gpus / args.gpus_per_node)
 
-        command = get_command(strategy, num_gpus, args.comm_lib, num_warmup_override=0)
+        command = get_command(strategy, num_gpus, args.comm_lib, args.gpu_model, num_warmup_override=0)
 
         command = f"srun -N {nodes} {command}"
 
@@ -120,6 +120,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--comm-lib", required=True, metavar="LIB",
         help="Communication library (e.g. 'nccl', 'mpi'). Injected into the command path.",
+    )
+    p.add_argument(
+        "--gpu-model", type=str, required=True, metavar="GPU_MODEL", 
+        help="The GPU model to emulate compute time (sleep)", choices=["B200", "H200", "A100"]
     )
     p.add_argument(
         "--gpus-per-node", type=int, default=4, metavar="N",

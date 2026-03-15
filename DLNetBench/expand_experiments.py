@@ -451,7 +451,7 @@ def _classify_jobs(
 
 def build_experiment_json(
     rec: dict,
-    exp_index: int,
+    gpu_model: str,
     gpus_per_node: int,
     comm_lib: str,
     placement_mode: str,           # device|random|linear|runtime|hardcoded
@@ -511,7 +511,7 @@ def build_experiment_json(
 
         # Base fields — always present
         entry: dict = {
-            "command":          get_command(run["strategy"], gpus, comm_lib),
+            "command":          get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model),
             "nodes":            nodes,
             "gpus":             gpus,
             "seed":             seed,
@@ -707,7 +707,7 @@ def main(args: argparse.Namespace) -> None:
     for idx, rec in enumerate(records, start=1):
         exp_doc = build_experiment_json(
             rec=rec,
-            exp_index=idx,
+            gpu_model=args.gpu_model,
             comm_lib=args.comm_lib,
             gpus_per_node=args.gpus_per_node,
             placement_mode=placement_mode,
@@ -776,8 +776,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument(
-        "--comm_lib", type=str, required=True, metavar="COMM_LIB", 
+        "--comm-lib", type=str, required=True, metavar="COMM_LIB", 
         help="Communication library to use", choices=["nccl", "rccl", "oneccl"]
+    )
+    
+    p.add_argument(
+        "--gpu-model", type=str, required=True, metavar="GPU_MODEL", 
+        help="The GPU model to emulate compute time (sleep)", choices=["B200", "H200", "A100"]
     )
 
     # Required
