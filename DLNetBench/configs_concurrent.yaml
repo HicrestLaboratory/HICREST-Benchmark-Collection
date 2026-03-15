@@ -34,6 +34,11 @@ nvl72:
     - name: "{nodes}_nodes"
       nodes: "{nodes}"
 
+    - name: "{nodes}_nodes_no_mnnvl"
+      nodes: "{nodes}"
+      env:
+        - "NCCL_MNNVL_ENABLE=0"
+
 leonardo:
   scheduler: slurm
 
