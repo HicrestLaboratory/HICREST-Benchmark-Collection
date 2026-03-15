@@ -70,7 +70,7 @@ def _load_baseline_runs(input_json: str, gpus_per_node: int) -> list[dict]:
 def main(args: argparse.Namespace) -> None:
     runs = _load_baseline_runs(args.input_json, args.gpus_per_node)
 
-    print(f"\n[baseline] Config name : {args.config_name}")
+    print(f"\n[baseline] Config name : baseline_gpus{num_gpus}")
     print(f"[baseline] Comm lib    : {args.comm_lib}")
     print(f"[baseline] Dry run     : {args.dry_run}")
     print(f"[baseline] Launching {len(runs)} jobs sequentially...\n")
@@ -118,10 +118,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "input_json", metavar="EXPERIMENTS_JSON",
         help="Master JSON produced by experiment_design.py. Must contain 'baseline_set'.",
-    )
-    p.add_argument(
-        "--config-name", required=True, metavar="NAME",
-        help="sbatchman configuration name to use for all jobs.",
     )
     p.add_argument(
         "--comm-lib", required=True, metavar="LIB",
