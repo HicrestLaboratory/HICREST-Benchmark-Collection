@@ -165,6 +165,21 @@ def main() -> None:
         print("Nothing to write — no valid data collected.")
         return
 
+    # ------------------------------------------------------------------
+    # Preview collected data
+    # ------------------------------------------------------------------
+    preview_rows = []
+    for meta, dfs in pairs:
+        df = dfs["measurements"].copy()
+        for k, v in meta.items():
+            df[k] = v
+        preview_rows.append(df)
+
+    preview = pd.concat(preview_rows, ignore_index=True)
+    print("=== Preview of collected data ===")
+    print(preview.to_string())
+    print()
+
     print(f"Writing {len(pairs)} job(s) to {out_file} ...")
     import_export.write_multiple_to_parquet(pairs, out_file)
     print(f"Done.  Output: {out_file.resolve()}")
