@@ -90,17 +90,20 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
 
         config_name = f"{nodes}_{config_prefix}" if config_prefix == "nodes" else f"{num_gpus}_{config_prefix}"
 
-        job = sbm.launch_job(
-            config_name      = config_name,
-            command          = command,
-            tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
-            previous_job_id  = previous_job_id,
-            dry_run          = args.dry_run,
-            variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes, 'comm_lib': args.comm_lib, 'gpu_model': args.gpu_model},
-        )
-
-        previous_job_id = job.job_id
-        print(f"        → job_id={job.job_id}\n")
+        try:
+            job = sbm.launch_job(
+                config_name      = config_name,
+                command          = command,
+                tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
+                previous_job_id  = previous_job_id,
+                dry_run          = args.dry_run,
+                variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes, 'comm_lib': args.comm_lib, 'gpu_model': args.gpu_model},
+            )
+            previous_job_id = job.job_id
+            print(f"        → job_id={job.job_id}\n")
+        except Exception as e:
+            previous_job_id = None
+            print(e)
 
     print(f"\n\033[32m[baseline] Done. {len(runs)} jobs launched.\033[0m")
 

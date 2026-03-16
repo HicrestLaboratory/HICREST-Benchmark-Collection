@@ -150,8 +150,9 @@ from pathlib import Path
 from typing import Optional
 from command_map import get_command
 
-sys.path.append(str(Path(__file__).parent.parent / "common" / "JobPlacer"))
-from cli_wrapper import JobPlacer, JobRequest, PlacementResult, TopologySource
+sys.path.append(str(Path(__file__).parent.parent / "common"))
+from utils.slurm import expand_slurm_nodelist
+from JobPlacer.cli_wrapper import JobPlacer, JobRequest, PlacementResult
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -287,7 +288,8 @@ class PlacementOracle:
             system=system,
             topology_file=f'../common/JobPlacer/{system}_topo.txt', # FIXME
             sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt', # FIXME
-            all_nodes=True, # FIXME
+            all_nodes=reserved_nodes is None,
+            nodelist=reserved_nodes,
             binary='../common/JobPlacer/target/release/job_placer_placement_classes'
         )
         self.system = system
@@ -308,7 +310,7 @@ class PlacementOracle:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
 
-    def find_placement(self, jobs: list, seed=None, timeout=5.0) -> PlacementResult:
+    def find_placement(self, jobs: list, seed=None, timeout=5.0, svg_out=None) -> PlacementResult:
         """Query the oracle for one experiment's node assignments."""        
         oracle_jobs = {}
         for j in jobs:
@@ -322,6 +324,7 @@ class PlacementOracle:
             oracle_jobs,
             seed=seed,
             timeout=timeout,
+            svg_out=svg_out,
         )
 
 # ---------------------------------------------------------------------------
@@ -366,7 +369,7 @@ class PlacementSummary:
             for pc in sorted(self.by_class):
                 ok, nok = self.by_class[pc]
                 bar = "█" * ok + "░" * nok
-                print(f"    {pc:<14}  {bar}  "
+                print(f"    {pc:<22}  {bar:<20}  "
                       f"feasible={ok}  infeasible={nok}  ({ok+nok})")
         if self.infeasible_reasons:
             print("\n  Infeasibility reasons:")
@@ -460,6 +463,7 @@ def build_experiment_json(
     small_threshold: Optional[int],
     force_single_large: bool,
     include_design_meta: bool,
+    idx: int,
 ) -> dict:
     """
     Build and return the dict for a single experiment JSON file.
@@ -491,7 +495,11 @@ def build_experiment_json(
             }
             for i, (run, _) in enumerate(classified)
         ]
-        oracle_result = oracle.find_placement(payload, seed=seed)
+        svg_out = None
+        # svg_out = '_'.join([f'{r["strategy"]}-{int(r["gpus"]/4)}' for r, _ in classified])
+        # svg_out = str(idx)
+        # svg_out = Path(f'topos/{svg_out}.svg')
+        oracle_result = oracle.find_placement(payload, seed=seed, svg_out=svg_out)
         print(oracle_result)
         print()
         print()
@@ -511,7 +519,7 @@ def build_experiment_json(
 
         # Base fields — always present
         entry: dict = {
-            "command":          get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=True),
+            "command":          get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=False),
             "nodes":            nodes,
             "gpus":             gpus,
             "seed":             seed,
@@ -532,6 +540,7 @@ def build_experiment_json(
                 nodelist = oracle_result.placements.get(f'training_{i}')
                 if nodelist:
                     entry["nodelist"] = nodelist
+                    entry["placement_class"] = oracle_result.raw.get('placements').get(f'training_{i}').get('placement_class')
                 else:
                     # Oracle said feasible but returned no list for this job
                     entry["placement_class"] = "hardcoded_partial"
@@ -677,8 +686,7 @@ def main(args: argparse.Namespace) -> None:
     if placement_mode == "hardcoded":
         reserved: list = []
         if args.reserved_nodes:
-            reserved = [n.strip() for n in args.reserved_nodes.split(",")
-                        if n.strip()]
+            reserved = expand_slurm_nodelist(args.reserved_nodes)
             preview = ", ".join(reserved[:10]) + ("…" if len(reserved) > 10 else "")
             print(f"[oracle] Reserved nodes ({len(reserved)}): {preview}")
         oracle  = PlacementOracle(args.oracle_program, args.system, reserved)
@@ -716,6 +724,7 @@ def main(args: argparse.Namespace) -> None:
             small_threshold=args.small_job_threshold,
             force_single_large=args.split_large_small,
             include_design_meta=args.include_design_meta,
+            idx=idx,
         )
         fname = f"experiment_{str(idx).zfill(n_digits)}.json"
         fpath = out_dir / fname
