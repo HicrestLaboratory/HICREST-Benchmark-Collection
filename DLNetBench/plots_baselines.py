@@ -318,6 +318,10 @@ def main():
     print("Loading data...")
     meta_df, pairs = load_data(args.parquet_files)
     print(meta_df.to_string(index=False))
+    meta_df['cluster'] = meta_df['cluster'] + meta_df['gpu_model']
+    for p, _ in pairs:
+        p['cluster'] = p['cluster'] + p['gpu_model']
+    print(meta_df.to_string(index=False))
 
     summary = build_summary(meta_df, pairs)
     print(f"\nSummary ({len(summary)} jobs):")
