@@ -58,7 +58,7 @@ from JobPlacer.cli_wrapper import JobPlacer, JobRequest, PlacementResult
 
 TASKS_PER_NODE  = 4   # For almost any system
 CPUS_PER_TASK   = 8   # For Leonardo
-POLL_INTERVAL   = 1   # seconds between status polls
+POLL_INTERVAL   = 0.3 # seconds between status polls
 
 DEBUG_ENABLED   = False
 
