@@ -111,8 +111,15 @@ def main() -> None:
         from_active=True,
         from_archived=False,
     )
-    
+
+    # walltime = 600
+    # print(f"Found {len(jobs)} completed job(s) in sbatchman.  Filtering for walltime={walltime} seconds and excluding baselines...")
     jobs = [j for j in jobs if not j.tag.startswith('baseline')]
+    print(f"{len(jobs)} job(s) remain after baseline filtering.")
+    # jobs = [j for j in jobs if j.variables.get('walltime') == walltime]
+    # print(f"{len(jobs)} job(s) remain after walltime filtering.")
+    # for j in jobs:
+    #     print(f"{j.command}")
 
     if not jobs:
         print("No completed jobs found.")

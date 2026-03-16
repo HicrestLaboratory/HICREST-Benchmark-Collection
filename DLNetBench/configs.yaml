@@ -66,3 +66,24 @@ lumi:
   configs:
     - name: "lumi__standard-g__{nodes}_nodes"
       nodes: "{nodes}"
+
+baldo:
+  scheduler: slurm
+
+  default_conf:
+    partition: "short"
+    nodes: 1
+    time: "00:00:40"
+    modules:
+      - "NVHPC/nvhpc/24.7"
+  configs:
+    - name: "baldo__short__2_nodes"
+      gpus: 2
+      cpus_per_task: 4
+      custom_headers:
+        - "#SBATCH --ntasks-per-node=2"
+    - name: "baldo__short__4_nodes"
+      gpus: 4
+      cpus_per_task: 4
+      custom_headers:
+        - "#SBATCH --ntasks-per-node=4"

@@ -65,7 +65,7 @@ def _load_baseline_runs(input_json: str, gpus_per_node: int) -> list[dict]:
 # Main
 # ---------------------------------------------------------------------------
 
-def main(args: argparse.Namespace) -> None:
+def main(args: argparse.Namespace, config_prefix:str) -> None:
     runs = _load_baseline_runs(args.input_json, args.gpus_per_node)
 
     print(f"[baseline] Comm lib    : {args.comm_lib}")
@@ -77,24 +77,26 @@ def main(args: argparse.Namespace) -> None:
     for i, run in enumerate(runs, start=1):
         strategy = run["strategy"]
         num_gpus = int(run["gpus"])
-        nodes = int(num_gpus / args.gpus_per_node)
+        nodes = int(num_gpus / args.gpus_per_node) if num_gpus > args.gpus_per_node else 1
 
-        command = get_command(strategy, num_gpus, args.comm_lib, args.gpu_model, num_warmup_override=0)
+        command = get_command(strategy, num_gpus, args.comm_lib, args.gpu_model, num_warmup_override=0, use_dgx=(args.dgx == "DGX_A100"))
 
-        command = f"srun -N {nodes} {command}"
+        command = f"mpirun -np {num_gpus} {command}"
 
         print(f"[{i:02d}/{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
         print(f"        command: {command}")
         if previous_job_id is not None:
             print(f"        waiting for job_id={previous_job_id}")
 
+        config_name = f"{nodes}_{config_prefix}" if config_prefix == "nodes" else f"{num_gpus}_{config_prefix}"
+
         job = sbm.launch_job(
-            config_name      = f"{nodes}_nodes",
+            config_name      = config_name,
             command          = command,
-            tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes",
+            tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
             previous_job_id  = previous_job_id,
             dry_run          = args.dry_run,
-            variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes}
+            variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes, 'comm_lib': args.comm_lib, 'gpu_model': args.gpu_model},
         )
 
         previous_job_id = job.job_id
@@ -117,6 +119,8 @@ def build_parser() -> argparse.ArgumentParser:
         "input_json", metavar="EXPERIMENTS_JSON",
         help="Master JSON produced by experiment_design.py. Must contain 'baseline_set'.",
     )
+    p.add_argument("--dgx", required=False, help="Use DGX-A100 node.", choices=["DGX_A100"], default=None)
+
     p.add_argument(
         "--comm-lib", required=True, metavar="LIB",
         help="Communication library (e.g. 'nccl', 'mpi'). Injected into the command path.",
@@ -133,6 +137,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", default=False,
         help="Pass dry_run=True to sbatchman — jobs are not actually submitted.",
     )
+    p.add_argument(
+        "--config-prefix", type=str, default="nodes", metavar="PREFIX",
+        help="Prefix for config names (default: 'nodes'). If set to 'gpus', config names will be based on GPU count instead of node count.",
+    )
     return p
 
 
@@ -147,4 +155,4 @@ if __name__ == "__main__":
     _p = build_parser()
     _a = _p.parse_args()
     _validate(_a, _p)
-    main(_a)
+    main(_a, config_prefix=_a.config_prefix)

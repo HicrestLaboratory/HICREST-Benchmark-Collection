@@ -1,6 +1,6 @@
 variables:
   nodes: [2, 4, 6, 8, 10, 12, 14, 16, 18, 32, 64] # , 128, 256, 512, 1024]
-  gpus: [2, 4]
+  gpus: [2, 4, 8]
 
 isarco:
   scheduler: local
@@ -33,12 +33,33 @@ nvl72:
   configs:
     - name: "{nodes}_nodes"
       nodes: "{nodes}"
-
+      
     - name: "{nodes}_nodes_no_mnnvl"
       nodes: "{nodes}"
       env:
         - "NCCL_MNNVL_ENABLE=0"
 
+baldo:
+  scheduler: slurm
+
+  default_conf:
+    time: "00:15:00"
+    account: "flavio.vella"
+    partition: "short"
+    qos: "normal"
+    nodes: 1
+    ntasks: 8
+    nodelist: ["gpu01"]
+    reservation: "gpu_vella"
+    modules: 
+      - "hpcx-ompi"
+      - "NVHPC/nvhpc-hpcx-cuda12/24.7"
+    custom_headers:
+      - "#SBATCH --cpus-per-task=4"
+
+  configs:
+    - name: "{gpus}_gpus"
+      gpus: "{gpus}"
 leonardo:
   scheduler: slurm
 

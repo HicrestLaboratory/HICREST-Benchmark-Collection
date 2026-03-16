@@ -122,6 +122,8 @@ def main() -> None:
             "strategy":    (job.variables or {}).get("strategy"),
             "gpus":        (job.variables or {}).get("gpus"),
             "nodes":       (job.variables or {}).get("nodes"),
+            "comm_lib":    (job.variables or {}).get("comm_lib"),
+            "gpu_model":   (job.variables or {}).get("gpu_model"),
         }
 
         pairs.append((meta, {"measurements": df}))

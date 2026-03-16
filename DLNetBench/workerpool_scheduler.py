@@ -221,7 +221,7 @@ def launch_job(
         cmd = [
             "srun",
             "--ntasks=", str(num_ranks),
-            "--cpus-per-task=1",
+            f"--cpus-per-task={CPUS_PER_TASK}",
             "--gpus-per-task=1",
             f"--job-name={uid}",
             *extra_srun_flags,

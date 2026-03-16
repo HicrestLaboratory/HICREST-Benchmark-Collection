@@ -39,7 +39,6 @@ from dataclasses import dataclass
 from typing import Optional
 from datetime import datetime, timezone
 
-
 # ===========================================================================
 # CONFIG  –  edit this block to customise the experiment design
 # ===========================================================================
@@ -60,6 +59,12 @@ STRATEGY_DEFS: list[tuple[str, list[int]]] = [
     ("DP+PP+TP",     [640, 960]),           # Nodes: 160, 240
     ("DP+PP+Expert", [448, 512]),           # Nodes: 112, 128
     # DP+PP+Expert excluded: 128, 192, 256, 320, 384,
+]
+
+STRATEGY_DEFS_DGX_A100: list[tuple[str, list[int]]] = [
+    ("DP",           [2, 4, 8]),
+    ("FSDP",         [4, 8]),        
+    ("DP+PP",        [4, 8]),
 ]
 
 HIERARCHICAL_PATTERNS: list[tuple[list[float], int]] = [
@@ -227,12 +232,16 @@ def build_strategies(defs: list[tuple[str, list[int]]]) -> list[Strategy]:
     return [Strategy(name, frozenset(gpus)) for name, gpus in defs]
 
 
-def build_baseline_set(strategies: list[Strategy], g_total: int) -> list[SingleRun]:
+def build_baseline_set(strategies: list[Strategy], g_total: int, strict:bool=True) -> list[SingleRun]:
     baseline: list[SingleRun] = []
     for s in strategies:
         for g in sorted(s.feasible):
-            if g < g_total:
-                baseline.append(SingleRun(s, g))
+            if strict:
+                if g < g_total:
+                        baseline.append(SingleRun(s, g))
+            else:
+                if g <= g_total:
+                    baseline.append(SingleRun(s, g))
     return baseline
 
 
@@ -1563,11 +1572,55 @@ def serialize_to_json(doc: dict, path: str) -> None:
 # MAIN
 # ===========================================================================
 
+# ===== THIS IS ONLY FOR 8 GPU DGX =====
+# G: int = 8
+# G_MIN: int = 2
+# K_MAX: int = math.floor(G / G_MIN)
+# STRATEGY_DEFS: list[tuple[str, list[int]]] = [
+#     ("DP",           [2, 4]),
+#     ("FSDP",         [4]),        
+#     ("DP+PP",        [4]),
+# ]
+# STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
+#     "small": {
+#         "tier_weight": 0.7,
+#         "sizes": [2, 4],
+#         "sub_weights": {},
+#     }, 
+#     "large": {
+#         "tier_weight": 0.3,
+#         "sizes": [6],
+#         "sub_weights": {},
+#     },
+# }
+
+def override_args_values(args) -> None:
+    global G, G_MIN, K_MAX, STRATEGY_DEFS, STOCHASTIC_TIER_CONFIG
+
+    if args.dgx == "DGX_A100":
+        args.g = 8
+        args.g_min = 2
+        args.k_max = math.floor(args.g / args.g_min)
+        STRATEGY_DEFS = STRATEGY_DEFS_DGX_A100
+        STOCHASTIC_TIER_CONFIG = {
+            "small": {
+                "tier_weight": 0.7,
+                "sizes": [2, 4],
+                "sub_weights": {},
+            },
+            "large": {
+                "tier_weight": 0.3,
+                "sizes": [6],
+                "sub_weights": {},
+            },
+        }
+
+
 def main(cfg: argparse.Namespace) -> None:
     rng = random.Random(cfg.seed)
 
     strategies = build_strategies(STRATEGY_DEFS)
-    baseline = build_baseline_set(strategies, cfg.G)
+    baseline = build_baseline_set(strategies, cfg.G, strict=False)
     print_baseline_set(cfg, baseline)
 
     feasible_gpu_counts = compute_feasible_gpu_counts(strategies, cfg.G)
@@ -1729,6 +1782,7 @@ examples:
 
     parser.add_argument("--G", "-G", required=True, type=_positive_int, metavar="N",
                         help="Total number of GPUs. REQUIRED.")
+    parser.add_argument("--dgx", required=False, help="Use DGX-A100 node.", choices=["DGX_A100"], default=None)
 
     pg = parser.add_argument_group("pattern generation")
     pg.add_argument("--k-max", type=_positive_int, default=K_MAX, metavar="K",
@@ -1850,4 +1904,5 @@ if __name__ == "__main__":
     _parser = build_parser()
     _args = _parser.parse_args()
     _validate_args(_args, _parser)
+    override_args_values(_args)
     main(_args)

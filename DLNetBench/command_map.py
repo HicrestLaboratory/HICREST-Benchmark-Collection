@@ -6,10 +6,14 @@ Maps (strategy, num_gpus, comm_lib) -> full DLNetBench command string.
 
 from __future__ import annotations
 from typing import Union
-from experiments_generator import STRATEGY_DEFS
+from experiments_generator import STRATEGY_DEFS, STRATEGY_DEFS_DGX_A100
 
 FEASIBLE_GPU_COUNTS: dict[str, frozenset[int]] = {
     strategy[0]: frozenset(strategy[1]) for strategy in STRATEGY_DEFS
+}
+
+FEASIBLE_GPU_COUNTS_DGX_A100: dict[str, frozenset[int]] = {
+    strategy[0]: frozenset(strategy[1]) for strategy in STRATEGY_DEFS_DGX_A100
 }
 
 _EXECUTABLES: dict[str, str] = {
@@ -23,7 +27,7 @@ _EXECUTABLES: dict[str, str] = {
 _PARAMS: dict[str, callable] = {
     "DP":           lambda g: "vit-h 50 ./DLNetBench",
     "FSDP":         lambda g: f"llama3-8b 16 {g if g < 8 else 8} ./DLNetBench",
-    "DP+PP":        lambda g: f"minerva-7b {2 if g==4 else 4 if g==8 else 8} 16 ./DLNetBench",
+    "DP+PP":        lambda g: f"minerva-7b {2 if g <= 8 else 8} 16 ./DLNetBench",
     "DP+PP+Expert": lambda g: "mixtral-8x7b 4 16 8 ./DLNetBench",
     "DP+PP+TP":     lambda g: "llama3-70b 80 16 4 ./DLNetBench",
 }
@@ -44,17 +48,22 @@ _STRATEGIES_NUM_RUNS_B200: dict[str, tuple[int, int]] = {
     "DP+PP+TP":     (1, 2), # 23s  * 3 = 1m 9s
 }
 
-def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model:str = "B200", num_warmup_override: Union[int, None]=None) -> str:
+def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model:str = "B200", num_warmup_override: Union[int, None]=None, use_dgx:bool=False) -> str:
     if strategy not in _PARAMS:
         raise ValueError(f"Unknown strategy '{strategy}'. Valid: {sorted(_PARAMS)}")
     
     if strategy not in _STRATEGIES_NUM_RUNS:
         raise ValueError(f"Unknown strategy number of runs '{strategy}'. Valid: {sorted(_STRATEGIES_NUM_RUNS)}")
     
-    if num_gpus not in FEASIBLE_GPU_COUNTS[strategy]:
-        raise ValueError(f"num_gpus={num_gpus} not feasible for '{strategy}'. "
-                         f"Valid: {sorted(FEASIBLE_GPU_COUNTS[strategy])}")
-        
+    if use_dgx:
+        if num_gpus not in FEASIBLE_GPU_COUNTS_DGX_A100[strategy]:
+            raise ValueError(f"num_gpus={num_gpus} not feasible for '{strategy}'. "
+                             f"Valid: {sorted(FEASIBLE_GPU_COUNTS_DGX_A100[strategy])}")
+    else:
+        if num_gpus not in FEASIBLE_GPU_COUNTS[strategy]:
+            raise ValueError(f"num_gpus={num_gpus} not feasible for '{strategy}'. "
+                             f"Valid: {sorted(FEASIBLE_GPU_COUNTS[strategy])}")
+
     if gpu_model == "B200":
         num_runs = _STRATEGIES_NUM_RUNS_B200[strategy]
     else:

@@ -511,7 +511,7 @@ def build_experiment_json(
 
         # Base fields — always present
         entry: dict = {
-            "command":          get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model),
+            "command":          get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=True),
             "nodes":            nodes,
             "gpus":             gpus,
             "seed":             seed,
