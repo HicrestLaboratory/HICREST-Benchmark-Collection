@@ -25,6 +25,27 @@ generation starts.  Each generator stops as soon as its quota is filled, so the
 combinatorial space is never fully enumerated.  Variety is guaranteed because
 quotas are allocated round-robin across families/bins first, then within each
 family round-robin across patterns.
+
+Per-strategy placement classes
+-------------------------------
+Each parallelism strategy may only be scheduled under a subset of placement
+classes.  The mapping is defined in STRATEGY_PLACEMENT_MAP (below).  For each
+class the capacity constraint (max GPUs that fit under one L1-switch or one
+group) is checked at experiment-generation time; infeasible (strategy, size,
+class) triples are silently dropped.
+
+Placement-class vocabulary
+--------------------------
+  INTRA_L1_RANDOM     – all GPUs within one L1-switch, nodes chosen at random
+  INTRA_GROUP_RANDOM  – all GPUs within one group,    nodes chosen at random
+  INTER_GROUP_RANDOM  – GPUs may span multiple groups, nodes chosen at random
+  INTRA_GROUP_SAME_L1 – every DP replica placed on the *same* L1-switch,
+                        all L1-switches within a single group  (annotation 1)
+  INTER_GROUP_SAME_L1 – every DP replica placed on its own L1-switch,
+                        L1-switches drawn from *different* groups  (annotation 2)
+
+Add/rename/remove entries freely in PLACEMENT_CLASS_DEFS and
+STRATEGY_PLACEMENT_MAP; the rest of the code uses only those two tables.
 """
 
 from __future__ import annotations
@@ -35,7 +56,7 @@ import math
 import random
 import subprocess
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -54,16 +75,15 @@ GEOMETRIC_BETA: float = 0.5
 # ── Strategies ──────────────────────────────────────────────────────────────
 STRATEGY_DEFS: list[tuple[str, list[int]]] = [
     ("DP",           [8, 16]),              # Nodes: 2, 4
-    ("FSDP",         [16, 32]),             # Nodes: 4, 8, 16
+    ("FSDP",         [16, 32]),             # Nodes: 4, 8
     ("DP+PP",        [16, 32, 64]),         # Nodes: 4, 8, 16
-    ("DP+PP+TP",     [640, 960]),           # Nodes: 160, 240
-    ("DP+PP+Expert", [448, 512]),           # Nodes: 112, 128
-    # DP+PP+Expert excluded: 128, 192, 256, 320, 384,
+    ("DP+PP+TP",     [224, 256]),           # Nodes: 56, 64
+    ("DP+PP+Expert", [512, 1024]),          # Nodes: 128, 256
 ]
 
 STRATEGY_DEFS_DGX_A100: list[tuple[str, list[int]]] = [
     ("DP",           [2, 4, 8]),
-    ("FSDP",         [4, 8]),        
+    ("FSDP",         [4, 8]),
     ("DP+PP",        [4, 8]),
 ]
 
@@ -99,29 +119,6 @@ STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
 
 N_STOCHASTIC_PATTERNS: int = 3
 
-
-# ===== THIS IS ONLY FOR 8 GPU DGX =====
-# G: int = 8
-# G_MIN: int = 2
-# K_MAX: int = math.floor(G / G_MIN)
-# STRATEGY_DEFS: list[tuple[str, list[int]]] = [
-#     ("DP",           [2, 4]),
-#     ("FSDP",         [4]),        
-#     ("DP+PP",        [4]),
-# ]
-# STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
-#     "small": {
-#         "tier_weight": 0.7,
-#         "sizes": [2, 4],
-#         "sub_weights": {},
-#     }, 
-#     "large": {
-#         "tier_weight": 0.3,
-#         "sizes": [6],
-#         "sub_weights": {},
-#     },
-# }
-
 # ── Entropy-stratified sampling ──────────────────────────────────────────────
 ENTROPY_DELTA_1: float = 0.3
 ENTROPY_DELTA_2: float = 0.7
@@ -130,50 +127,80 @@ ENUM_THRESHOLD: int = 5_000
 RANDOM_SEED: Optional[int] = 42
 
 # ── Experiment list size bounds ───────────────────────────────────────────────
-# MIN_EXPERIMENTS: lower bound on the output list.  An error is raised if the
-#   generator produces fewer experiments than this value.  Set to 0 to disable.
-# MAX_EXPERIMENTS: upper bound.  When set, the budget is distributed across
-#   pattern families, entropy bins, and (with topology) placement bins *before*
-#   generation begins, so sampling stops early rather than trimming afterward.
-#   Set to None to disable.
 MIN_EXPERIMENTS: int = 0
 MAX_EXPERIMENTS: Optional[int] = None
 
 # ── Topology (Section 6) ─────────────────────────────────────────────────────
 USE_TOPOLOGY: bool = False
 
-# Path / command of the external topology program.
 TOPOLOGY_PROGRAM: str = "topology_oracle"
 
-# Static topology parameters – describe the cluster hierarchy without any
-# external query.
+# Static topology parameters
 # Leonardo
-TOPO_Q1: int = 4             # GPUs per intra-node NVLink domain
-TOPO_Q2: int = 10  * TOPO_Q1 # GPUs per L1-switch
+TOPO_Q1: int = 4             # GPUs per intra-node NVLink domain  (unused after removing INTRA_NODE)
+TOPO_Q2: int = 10 * TOPO_Q1  # GPUs per L1-switch
 TOPO_Q3: int = 180 * TOPO_Q1 # GPUs per group (set equal to G for single-group clusters)
 
-# Whether to include intra-node as a valid placement class.
-INCLUDE_INTRA_NODE: bool = False
+# ---------------------------------------------------------------------------
+# Placement-class vocabulary
+# ---------------------------------------------------------------------------
+# Each entry: (class_name, human_label, score)
+#
+#   class_name   – internal key used everywhere in the code
+#   human_label  – shown in JSON / console output
+#   score        – numeric locality score (lower = tighter locality)
+#
+# Remove INTRA_NODE; add or rename entries freely here.
+# ---------------------------------------------------------------------------
+PLACEMENT_CLASS_DEFS: list[tuple[str, str, float]] = [
+    # name                      label                    score
+    ("INTRA_L1_RANDOM",         "intra-L1-random",       1.0),
+    ("INTRA_GROUP_RANDOM",      "intra-group-random",    2.0),
+    ("INTER_GROUP_RANDOM",      "inter-group-random",    3.0),
+    ("INTRA_GROUP_SAME_L1",     "intra-group-same-L1",   2.5),  # annotation (1)
+    ("INTER_GROUP_SAME_L1",     "inter-group-same-L1",   3.0),  # annotation (2)
+]
 
-# Number of additional node-selection replicates per baseline run for
-# intra-group and inter-group placement classes.
-N_BASELINE_TOPO_REPS: int = 0
+# ---------------------------------------------------------------------------
+# Per-strategy placement-class mapping
+# ---------------------------------------------------------------------------
+# Each strategy name maps to the list of placement-class *names* (keys from
+# PLACEMENT_CLASS_DEFS) that are allowed for that strategy.
+#
+# Capacity constraints are enforced automatically based on the placement
+# class's semantics (see _placement_class_capacity() below).  If a job's
+# GPU count exceeds the capacity of a class, that (strategy, size, class)
+# triple is silently dropped.
+#
+# Edit freely – adding a new strategy or a new class only requires updating
+# these two tables.
+# ---------------------------------------------------------------------------
+STRATEGY_PLACEMENT_MAP: dict[str, list[str]] = {
+    # Strategy            Allowed placement-class names
+    "DP":            ["INTRA_L1_RANDOM",
+                      "INTRA_GROUP_RANDOM",
+                      "INTER_GROUP_RANDOM"],
 
-# Number of alternative node assignments to generate per (experiment, placement
-# class vector) pair.
-N_PLACEMENT_SEEDS_PER_VECTOR: int = 1
+    "FSDP":          ["INTRA_L1_RANDOM",
+                      "INTRA_GROUP_SAME_L1",    # annotation (1)
+                      "INTER_GROUP_SAME_L1"],     # annotation (2)
+
+    "DP+PP":         ["INTRA_L1_RANDOM",
+                      "INTRA_GROUP_SAME_L1",    # annotation (1)
+                      "INTER_GROUP_SAME_L1"],     # annotation (2)
+
+    "DP+PP+TP":      ["INTER_GROUP_RANDOM"],
+
+    "DP+PP+Expert":  ["INTER_GROUP_RANDOM"],
+}
 
 # Placement-vector scoring and bin boundaries.
 PLACEMENT_BIN_LO_HI:  float = 1.67
 PLACEMENT_BIN_MED_HI: float = 2.33
 
-# Placement-class vectors to sample per locality bin per experiment.
+N_BASELINE_TOPO_REPS: int = 0
+N_PLACEMENT_SEEDS_PER_VECTOR: int = 1
 N_PLACEMENT_SAMPLES_PER_BIN: int = 1
-
-# Maximum placement-class vector space size below which exact enumeration is
-# used in _sample_placement_vectors_stratified.  Above this threshold the
-# function switches to DP-guided rejection sampling, which is O(k²) regardless
-# of the number of classes per slot.
 PLACEMENT_ENUM_THRESHOLD: int = 50_000
 
 # ── JSON output ──────────────────────────────────────────────────────────────
@@ -183,6 +210,26 @@ DEFAULT_JSON_OUTPUT: str = "experiments.json"
 # ===========================================================================
 # SECTION 1 – Data structures
 # ===========================================================================
+
+@dataclass(frozen=True)
+class PlacementClassInfo:
+    """Immutable descriptor for one placement class."""
+    name: str          # internal key
+    label: str         # human-readable label
+    score: float       # numeric locality score
+
+
+def _build_placement_registry(
+    defs: list[tuple[str, str, float]],
+) -> dict[str, PlacementClassInfo]:
+    return {name: PlacementClassInfo(name, label, score) for name, label, score in defs}
+
+
+# Module-level registry – rebuilt when the config changes via CLI.
+_PLACEMENT_REGISTRY: dict[str, PlacementClassInfo] = _build_placement_registry(
+    PLACEMENT_CLASS_DEFS
+)
+
 
 @dataclass(frozen=True)
 class Strategy:
@@ -232,13 +279,15 @@ def build_strategies(defs: list[tuple[str, list[int]]]) -> list[Strategy]:
     return [Strategy(name, frozenset(gpus)) for name, gpus in defs]
 
 
-def build_baseline_set(strategies: list[Strategy], g_total: int, strict:bool=True) -> list[SingleRun]:
+def build_baseline_set(
+    strategies: list[Strategy], g_total: int, strict: bool = True
+) -> list[SingleRun]:
     baseline: list[SingleRun] = []
     for s in strategies:
         for g in sorted(s.feasible):
             if strict:
                 if g < g_total:
-                        baseline.append(SingleRun(s, g))
+                    baseline.append(SingleRun(s, g))
             else:
                 if g <= g_total:
                     baseline.append(SingleRun(s, g))
@@ -249,21 +298,16 @@ def build_baseline_set(strategies: list[Strategy], g_total: int, strict:bool=Tru
 class BaselineWithPlacement:
     """
     A baseline run annotated with a topology placement class and a seed.
-
-    When USE_TOPOLOGY is enabled every (S_i, g) in B is replicated across:
-      1                    x intra-L1    (canonical, seed=0)
-      N_BASELINE_TOPO_REPS x intra-group (seeds 1..N)
-      N_BASELINE_TOPO_REPS x inter-group (seeds 1..N)
-    intra-node is added only if INCLUDE_INTRA_NODE is True.
     """
     run: SingleRun
-    placement_class: str
+    placement_class: str      # placement class *name* (key in _PLACEMENT_REGISTRY)
     replicate_index: int
     seed: int
 
     def __str__(self) -> str:
+        label = _PLACEMENT_REGISTRY[self.placement_class].label
         return (
-            f"  {str(self.run):<30}  class={self.placement_class:<14}  "
+            f"  {str(self.run):<30}  class={label:<22}  "
             f"rep={self.replicate_index}  seed={self.seed}"
         )
 
@@ -273,7 +317,6 @@ def build_baseline_set_with_topology(
     g_total: int,
     oracle: "TopologyOracle",
     n_baseline_topo_reps: int,
-    include_intra_node: bool,
     base_seed: int = 0,
 ) -> list[BaselineWithPlacement]:
     flat_baseline = build_baseline_set(strategies, g_total)
@@ -281,27 +324,29 @@ def build_baseline_set_with_topology(
     seed_ctr = base_seed
 
     for run in flat_baseline:
-        classes_in_scope = _placement_classes_in_scope(
-            run.gpus, g_total, oracle, include_intra_node
+        classes_in_scope = _feasible_placement_classes_for_run(
+            run.strategy, run.gpus, g_total, oracle
         )
-        for pc in classes_in_scope:
+        for pc_name in classes_in_scope:
             result.append(BaselineWithPlacement(
                 run=run,
-                placement_class=pc,
+                placement_class=pc_name,
                 replicate_index=0,
                 seed=seed_ctr,
             ))
             seed_ctr += 1
 
+            # Extra replicates for cross-group classes
+            pc_info = _PLACEMENT_REGISTRY[pc_name]
             n_reps = (
                 n_baseline_topo_reps
-                if pc in (PlacementClass.INTRA_GROUP, PlacementClass.INTER_GROUP)
+                if pc_info.score >= PLACEMENT_BIN_LO_HI
                 else 0
             )
             for rep in range(1, n_reps + 1):
                 result.append(BaselineWithPlacement(
                     run=run,
-                    placement_class=pc,
+                    placement_class=pc_name,
                     replicate_index=rep,
                     seed=seed_ctr,
                 ))
@@ -512,7 +557,8 @@ def pattern_E_stochastic_tier_batch(
         if len(patterns) >= n_patterns:
             break
         p = pattern_E_stochastic_tier(
-            g_total, k_max, g_min, tier_config, feasible_gpu_counts, rng, utilization=utilization,
+            g_total, k_max, g_min, tier_config, feasible_gpu_counts, rng,
+            utilization=utilization,
         )
         if p is not None and p.slots not in seen:
             seen.add(p.slots)
@@ -524,7 +570,6 @@ def pattern_E_stochastic_tier_batch(
 # Budget computation helpers
 # ===========================================================================
 
-# Entropy and placement bin names (fixed order used everywhere for consistency).
 ENTROPY_BIN_NAMES   = ("low", "medium", "high")
 PLACEMENT_BIN_NAMES = ("low", "medium", "high")
 FAMILY_NAMES = ("A", "B", "C", "D", "E")
@@ -538,21 +583,6 @@ def _compute_family_budgets(
     n_placement_samples_per_bin: int,
     n_seeds_per_vector: int,
 ) -> Optional[dict[str, int]]:
-    """
-    Distribute max_experiments evenly across active pattern families.
-
-    Returns {family -> max_patterns_for_that_family} so each family can
-    independently cap the number of patterns it contributes, stopping
-    generation early rather than trimming afterward.
-
-    Derivation:
-      Each pattern yields up to (n_samples_per_bin × 3) flat experiments.
-      With topology each flat experiment expands by up to
-        (n_placement_samples_per_bin × 3 × n_seeds_per_vector) hierarchical ones.
-      We invert that to get patterns_per_family.
-
-    Returns None when max_experiments is None (no cap).
-    """
     if max_experiments is None:
         return None
     if not active_families:
@@ -567,7 +597,7 @@ def _compute_family_budgets(
     else:
         flat_per_family = experiments_per_family
 
-    labelling_per_pattern = n_samples_per_bin * 3  # 3 entropy bins
+    labelling_per_pattern = n_samples_per_bin * 3
     patterns_per_family = max(1, flat_per_family // max(1, labelling_per_pattern))
 
     return {f: patterns_per_family for f in active_families}
@@ -581,13 +611,6 @@ def _compute_per_pattern_bin_quota(
     n_placement_samples_per_bin: int,
     n_seeds_per_vector: int,
 ) -> int:
-    """
-    How many labelling samples per entropy bin each pattern may contribute.
-
-    Recalculated after pattern generation with the real pattern count for
-    tighter accuracy: if fewer patterns were produced than the family budget
-    anticipated, each pattern gets a proportionally larger quota.
-    """
     if max_experiments is None:
         return n_samples_per_bin
 
@@ -601,7 +624,7 @@ def _compute_per_pattern_bin_quota(
         return n_samples_per_bin
 
     flat_per_pattern = max(1, flat_budget // n_active_patterns)
-    per_bin = max(1, flat_per_pattern // 3)  # 3 entropy bins
+    per_bin = max(1, flat_per_pattern // 3)
     return per_bin
 
 
@@ -611,11 +634,6 @@ def _compute_per_experiment_placement_bin_quota(
     n_placement_samples_per_bin: int,
     n_seeds_per_vector: int,
 ) -> int:
-    """
-    How many placement-class vectors per locality bin each flat experiment may
-    contribute.  Recalculated with the real flat-experiment count so that if
-    fewer flat experiments were produced, each gets a proportionally larger quota.
-    """
     if max_experiments is None:
         return n_placement_samples_per_bin
 
@@ -637,17 +655,8 @@ def build_pattern_set(
     generate_equal_splits: bool, generate_geometric: bool,
     generate_hierarchical: bool, generate_powerlaw: bool,
     generate_stochastic: bool,
-    # ── early-exit cap ──────────────────────────────────────────────────────
     family_budgets: Optional[dict[str, int]] = None,
 ) -> list[TaggedPattern]:
-    """
-    Build the pattern set, respecting per-family caps when family_budgets is
-    provided.  Generators stop early once their quota is filled, so the
-    combinatorial space is never fully enumerated for large G.
-
-    family_budgets: {family_letter -> max_patterns_for_that_family}
-      When None, no cap is applied (original behaviour).
-    """
     seen: set[AllocationPattern] = set()
     patterns: list[TaggedPattern] = []
     family_counts: dict[str, int] = {f: 0 for f in FAMILY_NAMES}
@@ -681,7 +690,9 @@ def build_pattern_set(
 
         if generate_hierarchical and _budget_ok("C"):
             for tf, nt in hierarchical_defs:
-                tp = pattern_C_hierarchical(g_total, k_max, g_min, tf, nt, feasible_gpu_counts, rho)
+                tp = pattern_C_hierarchical(
+                    g_total, k_max, g_min, tf, nt, feasible_gpu_counts, rho
+                )
                 if tp is not None:
                     add(tp)
 
@@ -758,17 +769,6 @@ def _random_labelling(per_slot: list[list[Strategy]], rng: random.Random) -> lis
 
 
 def _labelling_canonical_key(lab: list, pattern: AllocationPattern) -> tuple:
-    """
-    Order-invariant key for a strategy labelling.
-
-    Two labellings that are permutations of each other map to the same key,
-    so experiments that differ only in which job slot gets which strategy are
-    treated as identical (they are expected to have the same performance).
-
-    The key is a sorted tuple of (strategy_name, gpu_count) pairs — using
-    gpu_count rather than just strategy_name handles the case where the same
-    strategy appears at multiple different slot sizes within one pattern.
-    """
     return tuple(sorted(zip((s.name for s in lab), pattern)))
 
 
@@ -856,18 +856,8 @@ def build_experiment_set(
     strategies: list[Strategy], n_per_bin: int,
     delta1_frac: float, delta2_frac: float,
     enum_threshold: int, rng: random.Random,
-    # ── early-exit cap ──────────────────────────────────────────────────────
     max_experiments: Optional[int] = None,
 ) -> list[Experiment]:
-    """
-    Build the flat experiment set with budget-aware early stopping.
-
-    When max_experiments is set, a per-bin quota is derived from the real
-    pattern count and distributed equitably across patterns (round-robin by
-    pattern order, which already varies by family due to build_pattern_set).
-    Each entropy bin is filled independently so low/medium/high are all
-    represented before any single bin is over-filled.
-    """
     effective_n_per_bin = _compute_per_pattern_bin_quota(
         max_experiments=max_experiments,
         n_active_patterns=len(patterns),
@@ -917,51 +907,85 @@ def build_experiment_set(
 # SECTION 6 – Network Topology Model & Placement Classification
 # ===========================================================================
 
-class PlacementClass:
+# ---------------------------------------------------------------------------
+# Capacity helpers  (one function per structural constraint)
+# ---------------------------------------------------------------------------
+
+def _placement_class_capacity(
+    pc_name: str,
+    oracle: "TopologyOracle",
+) -> int:
     """
-    Placement classes and their numeric scores for vector scoring.
+    Return the maximum number of GPUs that *one job* may request under a
+    given placement class, given the current topology parameters.
 
-      intra-node  -> score 0  (excluded by default; set INCLUDE_INTRA_NODE=True to enable)
-      intra-L1    -> score 1  (all GPUs within one L1-switch / rack domain)
-      intra-group -> score 2  (spans multiple L1 domains within one group)
-      inter-group -> score 3  (spans multiple group domains)
+    The capacity depends on the *structural* meaning of each class:
+
+      INTRA_L1_RANDOM      – all GPUs fit inside one L1-switch  → q2
+      INTRA_GROUP_RANDOM   – all GPUs fit inside one group       → q3
+      INTER_GROUP_RANDOM   – no upper bound from locality        → ∞
+      INTRA_GROUP_SAME_L1  – same as INTRA_GROUP_RANDOM because
+                             replicas are spread across L1-switches
+                             inside one group                    → q3
+      INTER_GROUP_SAME_L1   – no upper bound from locality        → ∞
+
+    Extend this function when new placement classes are added.
     """
-    INTRA_NODE  = "intra-node"
-    INTRA_L1    = "intra-L1"
-    INTRA_GROUP = "intra-group"
-    INTER_GROUP = "inter-group"
+    q2: int = oracle.topology_params["q2"]
+    q3: int = oracle.topology_params["q3"]
 
-    SHORT_NAME: dict[str, str] = {
-        "intra-node":  "intra-node",
-        "intra-L1":    "intra-L1",
-        "intra-group": "intra-group",
-        "inter-group": "inter-group",
+    capacities: dict[str, int] = {
+        "INTRA_L1_RANDOM":    q2,
+        "INTRA_GROUP_RANDOM": q3,
+        "INTER_GROUP_RANDOM": 2 ** 62,   # effectively unbounded
+        "INTRA_GROUP_SAME_L1": q3,
+        "INTER_GROUP_SAME_L1": 2 ** 62,   # effectively unbounded
     }
-
-    SCORE: dict[str, float] = {
-        "intra-node":  0.0,
-        "intra-L1":    1.0,
-        "intra-group": 2.0,
-        "inter-group": 3.0,
-    }
-
-    # Integer scores used by the DP-based placement sampler (same values,
-    # kept as int to avoid floating-point accumulation in DP tables).
-    INT_SCORE: dict[str, int] = {
-        "intra-node":  0,
-        "intra-L1":    1,
-        "intra-group": 2,
-        "inter-group": 3,
-    }
+    # Fall back to unbounded for unknown classes so that adding new entries to
+    # PLACEMENT_CLASS_DEFS never silently breaks the generator.
+    return capacities.get(pc_name, 2 ** 62)
 
 
+def _feasible_placement_classes_for_run(
+    strategy: Strategy,
+    gpu_count: int,
+    g_total: int,
+    oracle: "TopologyOracle",
+) -> list[str]:
+    """
+    Return the placement-class names that are simultaneously:
+      1. In STRATEGY_PLACEMENT_MAP for this strategy.
+      2. Capacity-feasible for this job's GPU count.
+
+    The result is in the same order as STRATEGY_PLACEMENT_MAP[strategy.name].
+    """
+    allowed: list[str] = STRATEGY_PLACEMENT_MAP.get(strategy.name, [])
+    feasible: list[str] = []
+    for pc_name in allowed:
+        if pc_name not in _PLACEMENT_REGISTRY:
+            # Silently skip unknown class names (typos in config).
+            continue
+        cap = _placement_class_capacity(pc_name, oracle)
+        if gpu_count <= cap:
+            feasible.append(pc_name)
+    return feasible
+
+
+# ---------------------------------------------------------------------------
+# Placement-vector types and scoring
+# ---------------------------------------------------------------------------
+
+# A placement-class vector assigns one placement class to every job slot in
+# an experiment.  Each element is a placement-class *name* (key in the
+# registry).
 PlacementClassVector = tuple[str, ...]
 
 
 def placement_vector_score(kappa: PlacementClassVector) -> float:
+    """Average locality score across all slots (higher = more spread out)."""
     if not kappa:
         return 0.0
-    return sum(PlacementClass.SCORE.get(c, 0.0) for c in kappa) / len(kappa)
+    return sum(_PLACEMENT_REGISTRY[c].score for c in kappa if c in _PLACEMENT_REGISTRY) / len(kappa)
 
 
 def placement_bin(score: float, lo_hi: float, med_hi: float) -> str:
@@ -972,41 +996,28 @@ def placement_bin(score: float, lo_hi: float, med_hi: float) -> str:
     return "high"
 
 
-def _placement_classes_in_scope(
-    gpu_count: int, g_total: int,
-    oracle: "TopologyOracle", include_intra_node: bool,
-) -> list[str]:
-    q1 = oracle.topology_params["q1"]
-    q2 = oracle.topology_params["q2"]
-    q3 = oracle.topology_params["q3"]
-    feasible: list[str] = []
-    if include_intra_node and gpu_count <= q1:
-        feasible.append(PlacementClass.INTRA_NODE)
-    if gpu_count <= q2:
-        feasible.append(PlacementClass.INTRA_L1)
-    if gpu_count <= q3:
-        feasible.append(PlacementClass.INTRA_GROUP)
-    feasible.append(PlacementClass.INTER_GROUP)
-    return feasible
-
+# ---------------------------------------------------------------------------
+# DP-based placement vector scoring distribution
+# ---------------------------------------------------------------------------
 
 def _placement_score_distribution(per_slot_classes: list[list[str]]) -> dict[int, int]:
     """
     Compute the exact count of placement-class vectors that yield each
-    integer score-sum via dynamic programming.
+    integer score-sum via dynamic programming.  O(k²) in the number of slots.
 
-    Complexity: O(k * S_max) where S_max = 3*k (max score per slot is 3).
-    This is O(k²) — completely tractable for any realistic k, replacing the
-    O(n_classes^k) full enumeration that caused exponential blowup for large k.
-
-    Returns: {score_sum -> count_of_vectors_with_that_sum}
+    Scores are multiplied by 2 and rounded to avoid floating-point in the DP
+    table (all defined scores are multiples of 0.5).
     """
+    # Use integer scores scaled by 2 to avoid float accumulation.
+    def _int_score(pc_name: str) -> int:
+        return round(_PLACEMENT_REGISTRY[pc_name].score * 2)
+
     dp: dict[int, int] = {0: 1}
     for classes in per_slot_classes:
         new_dp: dict[int, int] = {}
         for prev_sum, cnt in dp.items():
             for c in classes:
-                s = prev_sum + PlacementClass.INT_SCORE[c]
+                s = prev_sum + _int_score(c)
                 new_dp[s] = new_dp.get(s, 0) + cnt
         dp = new_dp
     return dp
@@ -1021,50 +1032,35 @@ def _sample_placement_vectors_stratified(
     enum_threshold: int = PLACEMENT_ENUM_THRESHOLD,
 ) -> list[tuple[PlacementClassVector, str]]:
     """
-    Stratified placement-class vector sampler that scales to large k.
+    Stratified placement-class vector sampler.
+
+    Each slot receives only the placement classes that are feasible for that
+    slot's strategy *and* GPU count (pre-filtered by the caller).  This means
+    the per-slot lists may differ between slots.
 
     Two modes selected automatically:
 
-    Exact mode  (total vectors <= enum_threshold):
-      Enumerate all vectors via itertools.product, bin by score, then
-      reservoir-sample n_per_bin from each bin.  Identical to the previous
-      behaviour for small experiments.
+    Exact mode  (total vectors ≤ enum_threshold):
+      Enumerate all vectors, bin by score, reservoir-sample n_per_bin per bin.
 
     DP-guided rejection mode  (total vectors > enum_threshold):
-      1. Run the O(k²) DP to find which score-sum values exist and how
-         many vectors map to each bin.  Bins with zero population are
-         skipped immediately — no wasted attempts.
-      2. Estimate the acceptance probability for the rarest needed bin.
-      3. Draw random vectors one slot at a time and accept into the
-         appropriate bin until each bin has n_per_bin samples or the
-         attempt budget is exhausted.
-
-    Variety guarantee: each accepted vector is checked against a `seen`
-    set, so all returned vectors are distinct within a single call.
-    Across multiple calls variety is maintained by the caller's RNG state.
-
-    Args:
-        per_slot_classes: list of length k; each element is the list of
-            placement-class strings available to that job slot.
-        n_per_bin: target number of vectors per locality bin.
-        lo_hi, med_hi: bin boundary thresholds (see placement_bin).
-        rng: caller-owned Random instance (preserves overall seed state).
-        enum_threshold: switch point between exact and DP-guided sampling.
-
-    Returns:
-        List of (PlacementClassVector, bin_label) pairs, at most
-        3 * n_per_bin entries (one group per bin, some bins may be empty).
+      O(k²) DP counts bin populations, then rejection-samples until each bin
+      has n_per_bin distinct vectors.
     """
     k = len(per_slot_classes)
     if k == 0:
         return []
 
-    # Total vector space size — computed without enumerating the space.
+    # Any slot with no feasible classes → no valid vector exists.
+    if any(len(cl) == 0 for cl in per_slot_classes):
+        return []
+
+    # Total vector space size (computed without full enumeration).
     total_vecs = 1
     for classes in per_slot_classes:
         total_vecs *= len(classes)
         if total_vecs > enum_threshold:
-            break  # Early exit; exact value not needed beyond threshold.
+            break
 
     # ── Exact mode ────────────────────────────────────────────────────────
     if total_vecs <= enum_threshold:
@@ -1079,27 +1075,20 @@ def _sample_placement_vectors_stratified(
         return result
 
     # ── DP-guided rejection mode ──────────────────────────────────────────
-    # Step 1: score-sum distribution via O(k²) DP.
     dp = _placement_score_distribution(per_slot_classes)
 
-    # Step 2: map score sums to bins, count population per bin.
+    # Map scaled score-sums to bins.
     bin_populations: dict[str, int] = {"low": 0, "medium": 0, "high": 0}
-    for score_sum, cnt in dp.items():
-        b = placement_bin(score_sum / k, lo_hi, med_hi)
+    for score_sum_x2, cnt in dp.items():
+        b = placement_bin(score_sum_x2 / (k * 2), lo_hi, med_hi)
         bin_populations[b] += cnt
 
-    # Bins with zero population cannot yield any samples; skip them.
     needed_bins = [b for b in ("low", "medium", "high")
                    if bin_populations[b] > 0 and n_per_bin > 0]
     if not needed_bins:
         return []
 
-    # Step 3: compute a safe attempt budget.
-    # The rarest needed bin has probability p_min = bin_pop / total_vecs.
-    # Expected attempts to collect n_per_bin unique samples from it is
-    # approximately n_per_bin / p_min.  We add a 10× safety factor and
-    # cap at 500 000 to prevent runaway loops on degenerate inputs.
-    total_vecs_exact = sum(dp.values())  # exact count from DP
+    total_vecs_exact = sum(dp.values())
     p_min = min(bin_populations[b] / total_vecs_exact for b in needed_bins)
     safety_factor = 10
     max_attempts = min(
@@ -1107,12 +1096,10 @@ def _sample_placement_vectors_stratified(
         500_000,
     )
 
-    # Step 4: rejection sampling.
     collected: dict[str, list[PlacementClassVector]] = {"low": [], "medium": [], "high": []}
     seen: set[PlacementClassVector] = set()
 
     for _ in range(max_attempts):
-        # Early exit once all reachable bins are satisfied.
         if all(
             len(collected[b]) >= n_per_bin or bin_populations[b] == 0
             for b in ("low", "medium", "high")
@@ -1125,7 +1112,7 @@ def _sample_placement_vectors_stratified(
         if kappa in seen:
             continue
 
-        score = sum(PlacementClass.INT_SCORE[c] for c in kappa) / k
+        score = placement_vector_score(kappa)
         b = placement_bin(score, lo_hi, med_hi)
         if len(collected[b]) < n_per_bin:
             collected[b].append(kappa)
@@ -1143,9 +1130,7 @@ def _sample_placement_vectors_stratified(
 # ===========================================================================
 
 class TopologyOracle:
-    """
-    Thin wrapper around the external topology analysis program.
-    """
+    """Thin wrapper around the external topology analysis program."""
 
     def __init__(
         self,
@@ -1218,9 +1203,7 @@ class TopologyOracle:
 
 @dataclass
 class HierarchicalExperiment:
-    """
-    X = (P, φ, κ, seed) – one element of E_hier.
-    """
+    """X = (P, φ, κ, seed) – one element of E_hier."""
     base: Experiment
     placement_class_vector: PlacementClassVector
     placement_bin_label: str
@@ -1228,10 +1211,13 @@ class HierarchicalExperiment:
     placement_seed: int
 
     def __str__(self) -> str:
-        short = [PlacementClass.SHORT_NAME.get(c, c) for c in self.placement_class_vector]
+        labels = [
+            _PLACEMENT_REGISTRY[c].label if c in _PLACEMENT_REGISTRY else c
+            for c in self.placement_class_vector
+        ]
         return (
             f"{self.base}"
-            f"  κ={short}"
+            f"  κ={labels}"
             f"  P-bin={self.placement_bin_label}"
             f"  score={self.placement_score:.2f}"
             f"  seed={self.placement_seed}\n"
@@ -1244,36 +1230,20 @@ def build_hierarchical_experiment_set(
     n_placement_samples_per_bin: int,
     placement_bin_lo_hi: float,
     placement_bin_med_hi: float,
-    include_intra_node: bool,
     g_total: int,
     rng: random.Random,
     base_seed: int = 10_000,
     n_seeds_per_vector: int = 1,
-    # ── early-exit cap ──────────────────────────────────────────────────────
     max_experiments: Optional[int] = None,
 ) -> list[HierarchicalExperiment]:
     """
     Build E_hier with budget-aware early stopping.
 
-    When max_experiments is set, a per-bin quota is derived from the real
-    flat-experiment count.  Global placement-bin counters stop each bin from
-    being over-filled; the three bins are iterated in round-robin so all three
-    locality levels are represented before any one dominates.
-
-    Performance note
-    ----------------
-    The previous implementation called _all_placement_class_vectors(), which
-    used itertools.product to enumerate the *entire* placement-class vector
-    space before sampling from it.  For experiments with many small jobs (high
-    k) and multiple eligible placement classes per job, this space grows as
-    n_classes^k — e.g. k=16 with 3 classes/job gives 43 million vectors, and
-    k=24 gives 282 billion.
-
-    The new _sample_placement_vectors_stratified() replaces that with an
-    O(k²) DP that counts bin populations without enumeration, then uses
-    DP-guided rejection sampling to collect exactly the required vectors.
-    For small experiments (total vectors <= PLACEMENT_ENUM_THRESHOLD) the
-    original exact-enumeration path is retained unchanged.
+    Per-slot placement-class lists are now derived from
+    _feasible_placement_classes_for_run(), which intersects the strategy's
+    allowed classes (STRATEGY_PLACEMENT_MAP) with the capacity constraint
+    for each GPU count.  Slots with no feasible class yield no valid vector
+    and are skipped.
     """
     effective_n_per_bin = _compute_per_experiment_placement_bin_quota(
         max_experiments=max_experiments,
@@ -1298,14 +1268,19 @@ def build_hierarchical_experiment_set(
         ):
             break
 
-        # Build per-slot class lists once (replaces _all_placement_class_vectors).
+        # Each slot gets the intersection of its strategy's allowed classes
+        # and the capacity feasibility filter.
         per_slot_classes: list[list[str]] = [
-            _placement_classes_in_scope(run.gpus, g_total, oracle, include_intra_node)
+            _feasible_placement_classes_for_run(
+                run.strategy, run.gpus, g_total, oracle
+            )
             for run in exp.config.runs
         ]
 
-        # _sample_placement_vectors_stratified handles both the small (exact)
-        # and large (DP-guided) cases transparently.
+        # Skip experiments where any slot has no feasible placement class.
+        if any(len(cl) == 0 for cl in per_slot_classes):
+            continue
+
         sampled = _sample_placement_vectors_stratified(
             per_slot_classes=per_slot_classes,
             n_per_bin=effective_n_per_bin,
@@ -1403,6 +1378,21 @@ def print_hierarchical_experiment_set(
                 print(e)
 
 
+def print_placement_class_registry() -> None:
+    """Print the active placement-class vocabulary and per-strategy mappings."""
+    print(f"\n\033[34m{'='*PRINTS_SEP_WIDTH}")
+    print("PLACEMENT CLASS REGISTRY")
+    print(f"{'='*PRINTS_SEP_WIDTH}\033[0m")
+    print(f"  {'Name':<25}  {'Label':<28}  Score")
+    print(f"  {'-'*25}  {'-'*28}  -----")
+    for name, info in _PLACEMENT_REGISTRY.items():
+        print(f"  {name:<25}  {info.label:<28}  {info.score}")
+    print(f"\n  Per-strategy allowed classes:")
+    for strat, classes in STRATEGY_PLACEMENT_MAP.items():
+        labels = [_PLACEMENT_REGISTRY[c].label if c in _PLACEMENT_REGISTRY else c for c in classes]
+        print(f"  {strat:<20}  {', '.join(labels)}")
+
+
 def print_summary(
     g_total: int, strategies: list[Strategy], baseline: list[SingleRun],
     patterns: list[TaggedPattern], experiments: list[Experiment],
@@ -1469,8 +1459,10 @@ def _experiment_to_dict(exp: Experiment) -> dict:
 def _hier_experiment_to_dict(he: HierarchicalExperiment) -> dict:
     d = _experiment_to_dict(he.base)
     d["placement_class_vector"] = [
-        PlacementClass.SHORT_NAME.get(c, c) for c in he.placement_class_vector
+        _PLACEMENT_REGISTRY[c].label if c in _PLACEMENT_REGISTRY else c
+        for c in he.placement_class_vector
     ]
+    d["placement_class_vector_names"] = list(he.placement_class_vector)
     d["placement_bin"] = he.placement_bin_label
     d["placement_score"] = he.placement_score
     d["placement_seed"] = he.placement_seed
@@ -1478,9 +1470,15 @@ def _hier_experiment_to_dict(he: HierarchicalExperiment) -> dict:
 
 
 def _baseline_topo_to_dict(bwp: BaselineWithPlacement) -> dict:
+    label = (
+        _PLACEMENT_REGISTRY[bwp.placement_class].label
+        if bwp.placement_class in _PLACEMENT_REGISTRY
+        else bwp.placement_class
+    )
     return {
         "run": _single_run_to_dict(bwp.run),
-        "placement_class": PlacementClass.SHORT_NAME.get(bwp.placement_class, bwp.placement_class),
+        "placement_class": label,
+        "placement_class_name": bwp.placement_class,
         "replicate_index": bwp.replicate_index,
         "seed": bwp.seed,
     }
@@ -1521,7 +1519,6 @@ def build_json_output(
         "enum_threshold": cfg.enum_threshold,
         "min_experiments": cfg.min_experiments,
         "max_experiments": cfg.max_experiments,
-        "include_intra_node": cfg.include_intra_node,
         "topo_q1": cfg.topo_q1,
         "topo_q2": cfg.topo_q2,
         "topo_q3": cfg.topo_q3,
@@ -1530,6 +1527,11 @@ def build_json_output(
         "placement_bin_lo_hi": cfg.placement_bin_lo_hi,
         "placement_bin_med_hi": cfg.placement_bin_med_hi,
         "n_placement_samples_per_bin": cfg.n_placement_samples_per_bin,
+        "placement_class_defs": [
+            {"name": name, "label": label, "score": score}
+            for name, label, score in PLACEMENT_CLASS_DEFS
+        ],
+        "strategy_placement_map": STRATEGY_PLACEMENT_MAP,
     }
     doc = {
         "meta": meta,
@@ -1572,29 +1574,7 @@ def serialize_to_json(doc: dict, path: str) -> None:
 # MAIN
 # ===========================================================================
 
-# ===== THIS IS ONLY FOR 8 GPU DGX =====
-# G: int = 8
-# G_MIN: int = 2
-# K_MAX: int = math.floor(G / G_MIN)
-# STRATEGY_DEFS: list[tuple[str, list[int]]] = [
-#     ("DP",           [2, 4]),
-#     ("FSDP",         [4]),        
-#     ("DP+PP",        [4]),
-# ]
-# STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
-#     "small": {
-#         "tier_weight": 0.7,
-#         "sizes": [2, 4],
-#         "sub_weights": {},
-#     }, 
-#     "large": {
-#         "tier_weight": 0.3,
-#         "sizes": [6],
-#         "sub_weights": {},
-#     },
-# }
-
-def override_args_values(args) -> None:
+def override_args_values(args: argparse.Namespace) -> None:
     global G, G_MIN, K_MAX, STRATEGY_DEFS, STOCHASTIC_TIER_CONFIG
 
     if args.dgx == "DGX_A100":
@@ -1617,7 +1597,15 @@ def override_args_values(args) -> None:
 
 
 def main(cfg: argparse.Namespace) -> None:
+    # Rebuild the placement registry if the config was modified at runtime.
+    global _PLACEMENT_REGISTRY
+    _PLACEMENT_REGISTRY = _build_placement_registry(PLACEMENT_CLASS_DEFS)
+
     rng = random.Random(cfg.seed)
+
+    # Print the active placement vocabulary before anything else.
+    if cfg.use_topology:
+        print_placement_class_registry()
 
     strategies = build_strategies(STRATEGY_DEFS)
     baseline = build_baseline_set(strategies, cfg.G, strict=False)
@@ -1626,12 +1614,11 @@ def main(cfg: argparse.Namespace) -> None:
     feasible_gpu_counts = compute_feasible_gpu_counts(strategies, cfg.G)
     utilizations = _utilization_grid(cfg.util_min, cfg.util_max, cfg.util_steps)
 
-    # ── Compute per-family pattern budgets before generation ─────────────────
     gen_flags = {
         "A": not cfg.use_topology,
         "B": False,
         "C": False,
-        "D": False, # cfg.use_topology,
+        "D": False,
         "E": True,
     }
     active_families = [f for f, active in gen_flags.items() if active]
@@ -1681,13 +1668,14 @@ def main(cfg: argparse.Namespace) -> None:
             q1=cfg.topo_q1, q2=cfg.topo_q2, q3=cfg.topo_q3,
         )
         if not oracle._available:
-            print(f"\n[TopologyOracle] External program not found – oracle available for later use.\n"
-                  f"  Program: '{cfg.topology_program}'")
+            print(
+                f"\n[TopologyOracle] External program not found – using stub responses.\n"
+                f"  Program: '{cfg.topology_program}'"
+            )
 
         baseline_topo = build_baseline_set_with_topology(
             strategies=strategies, g_total=cfg.G, oracle=oracle,
             n_baseline_topo_reps=cfg.n_baseline_topo_reps,
-            include_intra_node=cfg.include_intra_node,
         )
         print_baseline_set_topology(cfg, baseline_topo)
 
@@ -1696,14 +1684,13 @@ def main(cfg: argparse.Namespace) -> None:
             n_placement_samples_per_bin=cfg.n_placement_samples_per_bin,
             placement_bin_lo_hi=cfg.placement_bin_lo_hi,
             placement_bin_med_hi=cfg.placement_bin_med_hi,
-            include_intra_node=cfg.include_intra_node,
             g_total=cfg.G, rng=rng,
             n_seeds_per_vector=cfg.n_placement_seeds_per_vector,
             max_experiments=cfg.max_experiments,
         )
         print_hierarchical_experiment_set(cfg, hier_experiments)
 
-    # ── Validate lower bound (upper bound already met during generation) ─────
+    # ── Validate lower bound ─────────────────────────────────────────────────
     primary = hier_experiments if hier_experiments is not None else experiments
     primary_name = "hierarchical" if hier_experiments is not None else "flat"
     if cfg.min_experiments > 0 and len(primary) < cfg.min_experiments:
@@ -1782,7 +1769,8 @@ examples:
 
     parser.add_argument("--G", "-G", required=True, type=_positive_int, metavar="N",
                         help="Total number of GPUs. REQUIRED.")
-    parser.add_argument("--dgx", required=False, help="Use DGX-A100 node.", choices=["DGX_A100"], default=None)
+    parser.add_argument("--dgx", required=False, help="Use DGX-A100 node.",
+                        choices=["DGX_A100"], default=None)
 
     pg = parser.add_argument_group("pattern generation")
     pg.add_argument("--k-max", type=_positive_int, default=K_MAX, metavar="K",
@@ -1844,22 +1832,17 @@ examples:
                     help=f"GPUs per L1-switch/rack domain (default: {TOPO_Q2}).")
     tg.add_argument("--topo-q3", type=_positive_int, default=TOPO_Q3, metavar="N",
                     help=f"GPUs per group (default: {TOPO_Q3}).")
-    tg.add_argument("--include-intra-node", dest="include_intra_node",
-                    action="store_true", default=INCLUDE_INTRA_NODE,
-                    help="Include intra-node placement class (excluded by default).")
     tg.add_argument("--n-baseline-topo-reps", type=_positive_int,
                     default=N_BASELINE_TOPO_REPS, metavar="N",
                     help=(
-                        f"Replicates per baseline for intra-group and inter-group classes "
+                        f"Replicates per baseline for cross-group classes "
                         f"(default: {N_BASELINE_TOPO_REPS}). "
-                        "Each (S_i,g) in B: 1x intra-L1 + N x intra-group + N x inter-group."
                     ))
     tg.add_argument("--n-placement-seeds-per-vector", type=_positive_int,
                     default=N_PLACEMENT_SEEDS_PER_VECTOR, metavar="N",
                     help=(
                         f"Independent nodelist seeds per (experiment, placement vector) pair "
-                        f"(default: {N_PLACEMENT_SEEDS_PER_VECTOR}). "
-                        "Each seed produces a distinct nodelist at expand time."
+                        f"(default: {N_PLACEMENT_SEEDS_PER_VECTOR})."
                     ))
     tg.add_argument("--n-placement-samples-per-bin", type=_positive_int,
                     default=N_PLACEMENT_SAMPLES_PER_BIN, metavar="N",
@@ -1898,6 +1881,22 @@ def _validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
             parser.error("--max-experiments must be >= 1.")
         if args.min_experiments > args.max_experiments:
             parser.error("--min-experiments must be <= --max-experiments.")
+
+    # Warn about strategies missing from the placement map.
+    for strat_name, _ in STRATEGY_DEFS:
+        if strat_name not in STRATEGY_PLACEMENT_MAP:
+            print(
+                f"[WARNING] Strategy '{strat_name}' has no entry in STRATEGY_PLACEMENT_MAP; "
+                "it will receive no placement classes and be skipped in hierarchical experiments."
+            )
+    # Warn about unknown placement-class names in the map.
+    for strat_name, pc_names in STRATEGY_PLACEMENT_MAP.items():
+        for pc_name in pc_names:
+            if pc_name not in _PLACEMENT_REGISTRY:
+                print(
+                    f"[WARNING] STRATEGY_PLACEMENT_MAP['{strat_name}'] references unknown "
+                    f"placement class '{pc_name}' (not in PLACEMENT_CLASS_DEFS)."
+                )
 
 
 if __name__ == "__main__":
