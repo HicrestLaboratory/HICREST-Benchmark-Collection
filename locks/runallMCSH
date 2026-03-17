@@ -1,0 +1,65 @@
+#!/bin/sh -
+
+# Experiments for: MCSH
+
+algorithms="MCS SpinLock HemLock PthreadLock Reciprocating FissileTicket"
+time=60
+
+# Get hostname and sanitize it for C macro usage
+rawhost=`hostname`
+outdir=`hostname | tr '-' '_'`
+exec="${outdir}.out"
+
+atomicinst=
+
+mkdir -p "${rawhost}"
+
+if [ ${#} -ne 0 ] ; then
+    algorithms="${@}"
+fi
+
+cflag="-Wall -Wextra -Werror -Wno-implicit-fallthrough -std=gnu11 -O3 -DNDEBUG -fno-reorder-functions -DPIN"
+
+# ARM-specific tuning (optional)
+if [ "${outdir}" = "algol" -o "${outdir}" = "prolog" ] ; then
+    atomicinst=-mno-outline-atomics
+#   atomicinst=-march=armv8.2-a+lse
+    cflag="${cflag} ${atomicinst} -DATOMIC"
+fi
+
+# Always use system gcc
+CC=gcc
+
+# Fail fast if gcc is missing
+command -v ${CC} >/dev/null 2>&1 || { echo "Compiler gcc not found"; exit 1; }
+
+runalgorithm() {
+    for atomic in "" ; do
+        outfile="${rawhost}/${1}${atomic}"
+        echo "${outfile}"
+
+        ${CC} ${cflag} \
+            ${affinity:+-D${affinity}} \
+            ${atomic:+-D${atomic}} \
+            ${atomicinst:+-DATOMICINST=${atomicinst}} \
+            -DHOST_${outdir} \
+            -DAlgorithm=${1} \
+            -DNCS_DELAY=20 \
+            Harness.c -lpthread -lm -o "${exec}" || exit 1
+
+        ./run1 time=${time} exec="./${exec}" > "${outfile}"
+
+        if [ -f core ] ; then
+            echo "core generated for ${1}"
+            break
+        fi
+    done
+}
+
+rm -rf core
+
+for algorithm in ${algorithms} ; do
+    runalgorithm ${algorithm}
+done
+
+rm -f "${exec}"

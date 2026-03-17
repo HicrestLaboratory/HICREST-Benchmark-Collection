@@ -1,0 +1,23 @@
+variables:
+  benchmark: ["runallMCSH"]
+  pioneer_ncpus: [64]
+  # bananaf3_ncpus: [8]
+  # arriesgado_ncpus: [4]
+
+# preprocess: "export LD_LIBRARY_PATH=/apps/riscv/llvm/EPI/development/lib"
+
+jobs:
+  - config: "pioneer_{pioneer_ncpus}cpus"
+    command: "./{benchmark}"
+    config_jobs:
+      - tag: "{benchmark}_pioneer_{pioneer_ncpus}cpus"
+
+  # - config: "bananaf3_{bananaf3_ncpus}cpus"
+  #   command: "./{benchmark}"
+  #   config_jobs:
+  #     - tag: "{benchmark}_bananaf3_{bananaf3_ncpus}cpus"
+
+  # - config: "arriesgado_{arriesgado_ncpus}cpus"
+  #   command: "./{benchmark}"
+  #   config_jobs:
+  #     - tag: "{benchmark}_arriesgado_{arriesgado_ncpus}cpus"

@@ -1,0 +1,26 @@
+variables:
+  pioneer_ncpus: [64]
+  # bananaf3_ncpus: [8]
+  # arriesgado_ncpus: [4]
+
+hca:
+  scheduler: slurm
+
+  default_conf:
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    time: "04:00:00"
+
+  configs:
+    - name: "pioneer_{pioneer_ncpus}cpus"
+      partition: "pioneer"
+      cpus_per_task: "{pioneer_ncpus}"
+
+    # - name: "bananaf3_{bananaf3_ncpus}cpus"
+    #   partition: "bananaf3-k6.6"
+    #   cpus_per_task: "{bananaf3_ncpus}"
+
+    # - name: "arriesgado_{arriesgado_ncpus}cpus"
+    #   partition: "arriesgado-jammy"
+    #   cpus_per_task: "{arriesgado_ncpus}"
