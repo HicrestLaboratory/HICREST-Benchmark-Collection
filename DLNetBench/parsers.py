@@ -167,6 +167,7 @@ def stdout_to_csv_multi(stdout_content):
                 continue
             
             runtimes = parsed.get("runtimes", [])
+            stage_id = parsed.get("stage_id")
             throughputs = parsed.get("throughputs", [])
             pp_comm_times = parsed.get("pp_comm_time", [])
             dp_comm_times = parsed.get("dp_comm_time", [])
@@ -224,6 +225,7 @@ def stdout_to_csv_multi(stdout_content):
                 continue
             
             stage_id = parsed.get("stage_id")
+            tp_id = parsed.get("tp_id")
             runtimes = parsed.get("runtimes", [])
             throughputs = parsed.get("throughputs", [])
             pp_comm_times = parsed.get("pp_comm_time", [])
@@ -249,6 +251,7 @@ def stdout_to_csv_multi(stdout_content):
                 
                 for mb_idx in range(num_microbatches):
                     # Forward phase
+                    print(f"Debug: rank={rank}, stage={stage_id}, tp_id={tp_id}, len_runtimes={len(runtimes)}, len_pp_comm_times={len(pp_comm_times)}, start_idx={start_idx}, mb_idx={mb_idx}")
                     fwd_time = pp_comm_times[start_idx + mb_idx]
                     pp_comm_rows.append((run_idx, rank, mb_idx, 'fwd', fwd_time))
                 
