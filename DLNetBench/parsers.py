@@ -2,6 +2,7 @@ import json
 import sys
 import ast
 import re
+import pandas as pd
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Union
@@ -9,11 +10,12 @@ from typing import Optional, Union
 sys.path.append(str(Path(__file__).parent.parent / "common" / "ccutils" / "parser"))
 from ccutils_parser import MPIOutputParser
 
-def stdout_to_csv(stdout_content):
+def stdout_to_csv_multi(stdout_content):
     """
-    Parse ccutils stdout and convert to CSV format string.
+    Parse ccutils stdout and convert to multiple CSV format strings.
     
-    For each run, returns the MAX runtime and MAX commtime across all ranks.
+    Returns a dictionary of DataFrames for each metric category.
+    ALL DataFrames now include run_id and rank columns - NO aggregation across ranks.
     
     Parameters:
     -----------
@@ -22,18 +24,11 @@ def stdout_to_csv(stdout_content):
     
     Returns:
     --------
-    str : CSV-formatted string with header "runtime,commtime" and data rows
-         Each row represents one run with max values across all ranks
+    dict : Dictionary with keys as DataFrame names and values as CSV-formatted strings
     
-    The function automatically detects the strategy and calculates communication time:
-    - dp: commtime = barrier_time
-    - fsdp: commtime = sum(allgather_fwd) + sum(allgather_bwd) + sum(reduce_scatter) + barrier
-    - dp_pp: commtime = sum(pp_comm) + dp_comm
-            (pp_comm is pure send/recv, merged recv+send for middle stages)
-    - dp_pp_tp: commtime = sum(pp_comm) + sum(tp_comm) + dp_comm
-            (pp_comm and tp_comm are pure communication)
-    - dp_pp_ep: commtime = sum(pp_comm) + sum(ep_comm) + dp_ep_comm + dp_comm
-            (pp_comm, ep_comm are pure communication; dp_ep_comm, dp_comm are all-reduces)
+    For dp_pp strategy:
+    - 'main': run_id, rank, runtime, dp_comm_time, throughput (per-rank, per-run)
+    - 'pp_comm': run_id, rank, microbatch_id, pp_comm_time (detailed per microbatch)
     """
     
     # Parse the stdout
@@ -42,7 +37,6 @@ def stdout_to_csv(stdout_content):
     
     # Auto-detect strategy (first non-empty section)
     if not parser_output:
-        print(parser_output)
         raise ValueError("No ccutils sections found in stdout")
     
     strategy_name = list(parser_output.keys())[0]
@@ -50,76 +44,121 @@ def stdout_to_csv(stdout_content):
     
     print(f"Detected strategy: {strategy_name}")
     
-    # Collect data per rank: {rank: [(runtime, commtime), ...]}
-    rank_data = {}
+    result_dfs = {}
     
     if strategy_name == "dp":
         # DP: runtime vs barrier_time
+        # Keep per-rank, per-run data (no aggregation)
         rank_outputs = section.mpi_all_prints["ccutils_rank_json"].rank_outputs
         
+        results = []
         for rank, json_str in rank_outputs.items():
             parsed = json.loads(json_str)
             runtimes = parsed.get("runtimes", [])
             throughputs = parsed.get("throughputs", [])
             barrier_times = parsed.get("barrier_time", [])
+            comm_times = parsed.get("comm_time", [])
             
-            rank_results = []
-            for runtime, barrier_time, throughput in zip(runtimes, barrier_times, throughputs):
-                rank_results.append((runtime, barrier_time, throughput))
-            
-            rank_data[rank] = rank_results
+            for run_idx, (runtime, barrier_time, comm_time, throughput) in enumerate(zip(runtimes, barrier_times, comm_times, throughputs)):
+                results.append((run_idx, rank, runtime, barrier_time, comm_time, throughput))
+        
+        # Convert to CSV
+        csv_lines = ["run_id,rank,runtime,barrier_time,comm_time,throughput"]
+        for run_id, rank, runtime, barrier_time, comm_time, throughput in results:
+            csv_lines.append(f"{run_id},{rank},{runtime},{barrier_time},{comm_time},{throughput}")
+        
+        result_dfs['main'] = "\n".join(csv_lines)
     
     elif strategy_name == "fsdp":
-        # FSDP: runtime vs (allgather_fwd + allgather_bwd + reduce_scatter + barrier)
+        # FSDP: Split into main DF, allgather DF, and reduce_scatter DF
         json_data = section.json_data
         num_units = json_data.get("num_units")
         rank_outputs = section.mpi_all_prints["ccutils_rank_json"].rank_outputs
+        
+        # Main DF data: [(run_id, rank, runtime, allgather, barrier, throughput), ...]
+        main_rows = []
+        # Allgather DF data: [(run_id, rank, unit_id, phase, comm_time, wait_time), ...]
+        allgather_rows = []
+        # Reduce_scatter DF data: [(run_id, rank, unit_id, reduce_scatter_time), ...]
+        reduce_scatter_rows = []
         
         for rank, json_str in rank_outputs.items():
             parsed = json.loads(json_str)
             runtimes = parsed.get("runtime", [])
             throughputs = parsed.get("throughputs", [])
             barrier_times = parsed.get("barrier", [])
-            allgather_times = parsed.get("allgather", [])
+            allgather_times = parsed.get("allgather", [])  # first blocking allgather
+            allgather_comm_fwd_times = parsed.get("allgather_comm_fwd", [])
             allgather_wait_fwd_times = parsed.get("allgather_wait_fwd", [])
             allgather_wait_bwd_times = parsed.get("allgather_wait_bwd", [])
             reduce_scatter_times = parsed.get("reduce_scatter", [])
             
             num_runs = len(runtimes)
             
-            rank_results = []
+            # Main DF: one row per run per rank
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
                 throughput = throughputs[run_idx]
                 barrier = barrier_times[run_idx] if run_idx < len(barrier_times) else 0.0
-                allgather = allgather_times[run_idx]
+                allgather = allgather_times[run_idx] if run_idx < len(allgather_times) else 0.0
+                main_rows.append((run_idx, rank, runtime, allgather, barrier, throughput))
+            
+            # Allgather DF: forward pass (num_units - 1 per run)
+            for run_idx in range(num_runs):
+                fwd_start = run_idx * (num_units - 1)
+                fwd_end = fwd_start + (num_units - 1)
                 
-                # Sum allgather operations for this run
-                ag_fwd_start = run_idx * (num_units - 1)
-                ag_fwd_end = ag_fwd_start + (num_units - 1)
-                ag_fwd_sum = sum(allgather_wait_fwd_times[ag_fwd_start:ag_fwd_end])
+                for unit_idx, (comm_time, wait_time) in enumerate(
+                    zip(allgather_comm_fwd_times[fwd_start:fwd_end],
+                        allgather_wait_fwd_times[fwd_start:fwd_end])
+                ):
+                    allgather_rows.append((run_idx, rank, unit_idx + 1, 'fwd', comm_time, wait_time))
+            
+            # Allgather DF: backward pass (num_units - 1 per run, only wait time)
+            for run_idx in range(num_runs):
+                bwd_start = run_idx * (num_units - 1)
+                bwd_end = bwd_start + (num_units - 1)
                 
-                ag_bwd_start = run_idx * (num_units - 1)
-                ag_bwd_end = ag_bwd_start + (num_units - 1)
-                ag_bwd_sum = sum(allgather_wait_bwd_times[ag_bwd_start:ag_bwd_end])
-                
-                # Sum reduce_scatter operations for this run
+                for unit_idx, wait_time in enumerate(allgather_wait_bwd_times[bwd_start:bwd_end]):
+                    # Note: backward has no comm_time (it's async, overlapped with compute)
+                    allgather_rows.append((run_idx, rank, unit_idx, 'bwd', 0.0, wait_time))
+            
+            # Reduce_scatter DF: num_units per run
+            for run_idx in range(num_runs):
                 rs_start = run_idx * num_units
                 rs_end = rs_start + num_units
-                rs_sum = sum(reduce_scatter_times[rs_start:rs_end])
                 
-                # Total comm time
-                commtime = ag_fwd_sum + ag_bwd_sum + rs_sum + barrier + allgather
-                
-                rank_results.append((runtime, commtime, throughput))
-            
-            rank_data[rank] = rank_results
+                for unit_idx, rs_time in enumerate(reduce_scatter_times[rs_start:rs_end]):
+                    reduce_scatter_rows.append((run_idx, rank, unit_idx, rs_time))
+        
+        # Convert to CSV
+        csv_lines = ["run_id,rank,runtime,allgather,barrier,throughput"]
+        for run_id, rank, runtime, allgather, barrier, throughput in main_rows:
+            csv_lines.append(f"{run_id},{rank},{runtime},{allgather},{barrier},{throughput}")
+        result_dfs['main'] = "\n".join(csv_lines)
+        
+        csv_lines = ["run_id,rank,unit_id,phase,comm_time,wait_time"]
+        for run_id, rank, unit_id, phase, comm_time, wait_time in allgather_rows:
+            csv_lines.append(f"{run_id},{rank},{unit_id},{phase},{comm_time},{wait_time}")
+        result_dfs['allgather'] = "\n".join(csv_lines)
+        
+        csv_lines = ["run_id,rank,unit_id,reduce_scatter_time"]
+        for run_id, rank, unit_id, rs_time in reduce_scatter_rows:
+            csv_lines.append(f"{run_id},{rank},{unit_id},{rs_time}")
+        result_dfs['reduce_scatter'] = "\n".join(csv_lines)
     
     elif strategy_name == "dp_pp":
-        # DP+PP: pp_comm is pure communication (recv+send merged for middle stages)
-        # commtime = sum(pp_comm) + dp_comm
+        # DP+PP: Split into main DF and pp_comm DF
+        # Keep per-rank, per-run data
         
         rank_outputs = section.mpi_all_prints["ccutils_rank_json"].rank_outputs
+        json_data = section.json_data
+        num_microbatches = json_data.get("num_microbatches")
+        
+        # Main DF data: [(run_id, rank, runtime, dp_comm_time, throughput), ...]
+        main_results = []
+        # PP Comm DF data: [(run_id, rank, microbatch_id, pp_comm_time), ...]
+        pp_comm_rows = []
         
         for rank, json_str in rank_outputs.items():
             try:
@@ -136,33 +175,47 @@ def stdout_to_csv(stdout_content):
             if num_runs == 0:
                 continue
             
-            # Calculate ops per run
-            ops_per_run = len(pp_comm_times) // num_runs if num_runs > 0 else 0
-            
-            rank_results = []
+            # Main DF: one row per run per rank
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
                 throughput = throughputs[run_idx]
-                
-                # Sum all pp_comm operations for this run (pure communication)
-                start_idx = run_idx * ops_per_run
-                end_idx = start_idx + ops_per_run
-                pp_comm_sum = sum(pp_comm_times[start_idx:end_idx])
-                
-                # Add dp_comm time for this run
                 dp_comm = dp_comm_times[run_idx] if run_idx < len(dp_comm_times) else 0
-                
-                commtime = pp_comm_sum + dp_comm
-                
-                rank_results.append((runtime, commtime, throughput))
+                main_results.append((run_idx, rank, runtime, dp_comm, throughput))
             
-            rank_data[rank] = rank_results
+            # PP Comm DF: one row per microbatch per run per rank
+            for run_idx in range(num_runs):
+                start_idx = run_idx * num_microbatches
+                end_idx = start_idx + num_microbatches
+                
+                for microbatch_idx, pp_time in enumerate(pp_comm_times[start_idx:end_idx]):
+                    pp_comm_rows.append((run_idx, rank, microbatch_idx, pp_time))
+        
+        # Convert main to CSV
+        csv_lines = ["run_id,rank,runtime,dp_comm_time,throughput"]
+        for run_id, rank, runtime, dp_comm, throughput in main_results:
+            csv_lines.append(f"{run_id},{rank},{runtime},{dp_comm},{throughput}")
+        result_dfs['main'] = "\n".join(csv_lines)
+        
+        # Convert pp_comm to CSV
+        csv_lines = ["run_id,rank,microbatch_id,pp_comm_time"]
+        for run_id, rank, mb_id, pp_time in pp_comm_rows:
+            csv_lines.append(f"{run_id},{rank},{mb_id},{pp_time}")
+        result_dfs['pp_comm'] = "\n".join(csv_lines)
     
     elif strategy_name == "dp_pp_tp":
-        # DP+PP+TP: pp_comm and tp_comm are both pure communication
-        # commtime = sum(pp_comm) + sum(tp_comm) + dp_comm
+        # DP+PP+TP: Split into main DF, pp_comm DF, and tp_comm DF
         
         rank_outputs = section.mpi_all_prints["ccutils_rank_json"].rank_outputs
+        json_data = section.json_data
+        num_microbatches = json_data.get("num_microbatches")
+        layers_per_stage = json_data.get("layers_per_stage")
+        
+        # Main DF data: [(run_id, rank, runtime, dp_comm_time, throughput), ...]
+        main_rows = []
+        # PP Comm DF data: [(run_id, rank, microbatch_id, phase, pp_comm_time), ...]
+        pp_comm_rows = []
+        # TP Comm DF data: [(run_id, rank, microbatch_id, layer_id, phase, tp_comm_time), ...]
+        tp_comm_rows = []
         
         for rank, json_str in rank_outputs.items():
             try:
@@ -170,6 +223,7 @@ def stdout_to_csv(stdout_content):
             except (json.JSONDecodeError, KeyError):
                 continue
             
+            stage_id = parsed.get("stage_id")
             runtimes = parsed.get("runtimes", [])
             throughputs = parsed.get("throughputs", [])
             pp_comm_times = parsed.get("pp_comm_time", [])
@@ -180,39 +234,86 @@ def stdout_to_csv(stdout_content):
             if num_runs == 0:
                 continue
             
-            # Calculate ops per run
-            pp_ops_per_run = len(pp_comm_times) // num_runs if num_runs > 0 else 0
-            tp_ops_per_run = len(tp_comm_times) // num_runs if num_runs > 0 else 0
-            
-            rank_results = []
+            # Main DF: one row per run per rank
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
                 throughput = throughputs[run_idx]
-                
-                # Sum all pp_comm operations for this run (pure communication)
-                pp_start = run_idx * pp_ops_per_run
-                pp_end = pp_start + pp_ops_per_run
-                pp_comm_sum = sum(pp_comm_times[pp_start:pp_end])
-                
-                # Sum all tp_comm operations for this run (pure communication)
-                tp_start = run_idx * tp_ops_per_run
-                tp_end = tp_start + tp_ops_per_run
-                tp_comm_sum = sum(tp_comm_times[tp_start:tp_end])
-                
-                # Add dp_comm time for this run
                 dp_comm = dp_comm_times[run_idx] if run_idx < len(dp_comm_times) else 0
-                
-                commtime = pp_comm_sum + tp_comm_sum + dp_comm
-                
-                rank_results.append((runtime, commtime, throughput))
+                main_rows.append((run_idx, rank, runtime, dp_comm, throughput))
             
-            rank_data[rank] = rank_results
+            # PP Comm DF: 2 entries per microbatch (fwd, bwd)
+            # Already merged for middle stages in the C++ code
+            for run_idx in range(num_runs):
+                start_idx = run_idx * num_microbatches * 2
+                end_idx = start_idx + num_microbatches * 2
+                
+                for mb_idx in range(num_microbatches):
+                    # Forward phase
+                    fwd_time = pp_comm_times[start_idx + mb_idx]
+                    pp_comm_rows.append((run_idx, rank, mb_idx, 'fwd', fwd_time))
+                
+                for mb_idx in range(num_microbatches):
+                    # Backward phase
+                    bwd_time = pp_comm_times[start_idx + num_microbatches + mb_idx]
+                    pp_comm_rows.append((run_idx, rank, mb_idx, 'bwd', bwd_time))
+            
+            # TP Comm DF: 4 * layers_per_stage allreduces per microbatch 
+            # (2 per layer in fwd, 2 per layer in bwd)
+            tp_ops_per_mb = 2 * layers_per_stage
+            for run_idx in range(num_runs):
+                start_idx = run_idx * num_microbatches * 4 * layers_per_stage
+                
+                # Forward pass: first half
+                for mb_idx in range(num_microbatches):
+                    fwd_start = start_idx + mb_idx * tp_ops_per_mb
+                    for layer_idx in range(layers_per_stage):
+                        # 2 allreduces per layer
+                        tp_comm_rows.append((run_idx, rank, mb_idx, layer_idx, 'fwd', 
+                                            tp_comm_times[fwd_start + layer_idx * 2]))
+                        tp_comm_rows.append((run_idx, rank, mb_idx, layer_idx, 'fwd', 
+                                            tp_comm_times[fwd_start + layer_idx * 2 + 1]))
+                
+                # Backward pass: second half
+                bwd_base = start_idx + num_microbatches * tp_ops_per_mb
+                for mb_idx in range(num_microbatches):
+                    bwd_start = bwd_base + mb_idx * tp_ops_per_mb
+                    for layer_idx in range(layers_per_stage):
+                        # 2 allreduces per layer
+                        tp_comm_rows.append((run_idx, rank, mb_idx, layer_idx, 'bwd', 
+                                            tp_comm_times[bwd_start + layer_idx * 2]))
+                        tp_comm_rows.append((run_idx, rank, mb_idx, layer_idx, 'bwd', 
+                                            tp_comm_times[bwd_start + layer_idx * 2 + 1]))
+        
+        # Convert to CSV
+        csv_lines = ["run_id,rank,runtime,dp_comm_time,throughput"]
+        for run_id, rank, runtime, dp_comm, throughput in main_rows:
+            csv_lines.append(f"{run_id},{rank},{runtime},{dp_comm},{throughput}")
+        result_dfs['main'] = "\n".join(csv_lines)
+        
+        csv_lines = ["run_id,rank,microbatch_id,phase,pp_comm_time"]
+        for run_id, rank, mb_id, phase, pp_time in pp_comm_rows:
+            csv_lines.append(f"{run_id},{rank},{mb_id},{phase},{pp_time}")
+        result_dfs['pp_comm'] = "\n".join(csv_lines)
+        
+        csv_lines = ["run_id,rank,microbatch_id,layer_id,phase,tp_comm_time"]
+        for run_id, rank, mb_id, layer_id, phase, tp_time in tp_comm_rows:
+            csv_lines.append(f"{run_id},{rank},{mb_id},{layer_id},{phase},{tp_time}")
+        result_dfs['tp_comm'] = "\n".join(csv_lines)
     
     elif strategy_name == "dp_pp_ep":
-        # DP+PP+EP: pp_comm, ep_comm are pure communication, plus dp_ep_comm and dp_comm
-        # commtime = sum(pp_comm) + sum(ep_comm) + dp_ep_comm + dp_comm
+        # DP+PP+EP: Split into main DF, pp_comm DF, and ep_comm DF
         
         rank_outputs = section.mpi_all_prints["ccutils_rank_json"].rank_outputs
+        json_data = section.json_data
+        num_microbatches = json_data.get("num_microbatches")
+        layers_per_stage = json_data.get("layers_per_stage", 1)
+        
+        # Main DF data: [(run_id, rank, runtime, dp_ep_comm_time, dp_comm_time, throughput), ...]
+        main_rows = []
+        # PP Comm DF data: [(run_id, rank, microbatch_id, phase, pp_comm_time), ...]
+        pp_comm_rows = []
+        # EP Comm DF data: [(run_id, rank, microbatch_id, layer_id, phase, ep_comm_time), ...]
+        ep_comm_rows = []
         
         for rank, json_str in rank_outputs.items():
             try:
@@ -220,6 +321,7 @@ def stdout_to_csv(stdout_content):
             except (json.JSONDecodeError, KeyError):
                 continue
             
+            stage_id = parsed.get("stage_id")
             runtimes = parsed.get("runtimes", [])
             throughputs = parsed.get("throughputs", [])
             pp_comm_times = parsed.get("pp_comm_time", [])
@@ -231,62 +333,77 @@ def stdout_to_csv(stdout_content):
             if num_runs == 0:
                 continue
             
-            # Calculate ops per run
-            pp_ops_per_run = len(pp_comm_times) // num_runs if num_runs > 0 else 0
-            ep_ops_per_run = len(ep_comm_times) // num_runs if num_runs > 0 else 0
-            
-            rank_results = []
+            # Main DF: one row per run per rank
             for run_idx in range(num_runs):
                 runtime = runtimes[run_idx]
                 throughput = throughputs[run_idx]
-                
-                # Sum all pp_comm operations for this run (pure communication)
-                pp_start = run_idx * pp_ops_per_run
-                pp_end = pp_start + pp_ops_per_run
-                pp_comm_sum = sum(pp_comm_times[pp_start:pp_end])
-                
-                # Sum all ep_comm operations for this run (pure all-to-all)
-                ep_start = run_idx * ep_ops_per_run
-                ep_end = ep_start + ep_ops_per_run
-                ep_comm_sum = sum(ep_comm_times[ep_start:ep_end])
-                
-                # Add dp_ep_comm time for this run (all-reduce within EP group)
                 dp_ep_comm = dp_ep_comm_times[run_idx] if run_idx < len(dp_ep_comm_times) else 0
-                
-                # Add dp_comm time for this run (all-reduce for DP)
                 dp_comm = dp_comm_times[run_idx] if run_idx < len(dp_comm_times) else 0
-                
-                commtime = pp_comm_sum + ep_comm_sum + dp_ep_comm + dp_comm
-                
-                rank_results.append((runtime, commtime, throughput))
+                main_rows.append((run_idx, rank, runtime, dp_ep_comm, dp_comm, throughput))
             
-            rank_data[rank] = rank_results
+            # PP Comm DF: 2 entries per microbatch (fwd, bwd)
+            # Already merged for middle stages in the C++ code
+            for run_idx in range(num_runs):
+                start_idx = run_idx * num_microbatches * 2
+                end_idx = start_idx + num_microbatches * 2
+                
+                for mb_idx in range(num_microbatches):
+                    # Forward phase
+                    fwd_time = pp_comm_times[start_idx + mb_idx]
+                    pp_comm_rows.append((run_idx, rank, mb_idx, 'fwd', fwd_time))
+                
+                for mb_idx in range(num_microbatches):
+                    # Backward phase
+                    bwd_time = pp_comm_times[start_idx + num_microbatches + mb_idx]
+                    pp_comm_rows.append((run_idx, rank, mb_idx, 'bwd', bwd_time))
+            
+            # EP Comm DF: 2 * layers_per_stage alltoalls per microbatch per phase
+            # (2 alltoalls per layer: to experts and from experts)
+            ep_ops_per_mb = 2 * layers_per_stage
+            for run_idx in range(num_runs):
+                start_idx = run_idx * num_microbatches * ep_ops_per_mb * 2
+                
+                # Forward pass
+                for mb_idx in range(num_microbatches):
+                    fwd_start = start_idx + mb_idx * ep_ops_per_mb
+                    for layer_idx in range(layers_per_stage):
+                        # 2 alltoalls per layer (to experts, from experts)
+                        ep_comm_rows.append((run_idx, rank, mb_idx, layer_idx, 'fwd', 
+                                            ep_comm_times[fwd_start + layer_idx * 2]))
+                        ep_comm_rows.append((run_idx, rank, mb_idx, layer_idx, 'fwd', 
+                                            ep_comm_times[fwd_start + layer_idx * 2 + 1]))
+                
+                # Backward pass
+                bwd_base = start_idx + num_microbatches * ep_ops_per_mb
+                for mb_idx in range(num_microbatches):
+                    bwd_start = bwd_base + mb_idx * ep_ops_per_mb
+                    for layer_idx in range(layers_per_stage):
+                        # 2 alltoalls per layer
+                        ep_comm_rows.append((run_idx, rank, mb_idx, layer_idx, 'bwd', 
+                                            ep_comm_times[bwd_start + layer_idx * 2]))
+                        ep_comm_rows.append((run_idx, rank, mb_idx, layer_idx, 'bwd', 
+                                            ep_comm_times[bwd_start + layer_idx * 2 + 1]))
+        
+        # Convert to CSV
+        csv_lines = ["run_id,rank,runtime,dp_ep_comm_time,dp_comm_time,throughput"]
+        for run_id, rank, runtime, dp_ep_comm, dp_comm, throughput in main_rows:
+            csv_lines.append(f"{run_id},{rank},{runtime},{dp_ep_comm},{dp_comm},{throughput}")
+        result_dfs['main'] = "\n".join(csv_lines)
+        
+        csv_lines = ["run_id,rank,microbatch_id,phase,pp_comm_time"]
+        for run_id, rank, mb_id, phase, pp_time in pp_comm_rows:
+            csv_lines.append(f"{run_id},{rank},{mb_id},{phase},{pp_time}")
+        result_dfs['pp_comm'] = "\n".join(csv_lines)
+        
+        csv_lines = ["run_id,rank,microbatch_id,layer_id,phase,ep_comm_time"]
+        for run_id, rank, mb_id, layer_id, phase, ep_time in ep_comm_rows:
+            csv_lines.append(f"{run_id},{rank},{mb_id},{layer_id},{phase},{ep_time}")
+        result_dfs['ep_comm'] = "\n".join(csv_lines)
     
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}")
     
-    # Aggregate: for each run, take MAX across ranks
-    if not rank_data:
-        raise ValueError("No rank data collected")
-    
-    # Determine number of runs (assuming all ranks have same number of runs)
-    num_runs = len(next(iter(rank_data.values())))
-    
-    results = []
-    for run_idx in range(num_runs):
-        # Collect all (runtime, commtime) for this run across ranks
-        max_runtime = max(rank_data[rank][run_idx][0] for rank in rank_data)
-        max_commtime = max(rank_data[rank][run_idx][1] for rank in rank_data)
-        min_throughput = min(rank_data[rank][run_idx][2] for rank in rank_data)
-        
-        results.append((max_runtime, max_commtime, min_throughput))
-    
-    # Convert to CSV format string
-    csv_lines = ["runtime,commtime,throughput"]
-    for runtime, commtime, throughput in results:
-        csv_lines.append(f"{runtime},{commtime},{throughput}")
-    
-    return "\n".join(csv_lines)
+    return result_dfs
 
 # ---------------------------------------------------------------------------
 # Internal state machine types
@@ -566,6 +683,7 @@ def runs_by_job(runs: list[dict]) -> dict[str, list[dict]]:
 # Example usage
 if __name__ == "__main__":
     import sys
+    from io import StringIO
     
     if len(sys.argv) != 2:
         print("Usage: python ccutils_to_csv_simple.py <stdout_file>")
@@ -578,7 +696,10 @@ if __name__ == "__main__":
         stdout_content = f.read()
     
     # Convert to CSV format
-    csv_output = stdout_to_csv(stdout_content)
+    csv_output = stdout_to_csv_multi(stdout_content)
     
     # Print to stdout
-    print(csv_output)
+    for df_name, csv_str in csv_output.items():
+        print(f"=== {df_name} ===")
+        df = pd.read_csv(StringIO(csv_str))
+        print(df.head())  # Print first few lines of the DataFrame
