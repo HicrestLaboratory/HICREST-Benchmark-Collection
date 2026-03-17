@@ -1,0 +1,44 @@
+hca:
+  scheduler: slurm
+
+  default_conf:
+    nodes: 1
+    ntasks: 1
+    cpus_per_task: 1
+    exclusive: true
+    time: "06:00:00" 
+
+  configs:
+    - name: "pioneer"
+      partition: "pioneer"
+
+    - name: "arriesgado"
+      partition: "arriesgado-jammy"
+
+    - name: "bananaf3"
+      partition: "bananaf3"
+
+
+leonardo:
+  scheduler: slurm
+
+  default_conf:
+    account: "IscrC_OMG-25_0"
+    time: "00:30:00"
+    partition: "dcgp_usr_prod"
+    qos: "normal"
+    exclusive: true
+    nodes: 1
+    ntasks: 1
+    cpus_per_task: 1
+    custom_headers:
+      - "#SBATCH --gres=gres/tmpfs:10g"
+
+  configs:
+    - name: "leonardo-dcgp"
+      modules: 
+        - "gcc/12.2.0"
+
+    - name: "leonardo-dcgp-llvm"
+      modules: 
+        - "llvm/14.0.6--gcc--12.2.0-cuda-12.2"

@@ -1,0 +1,18 @@
+variables:
+  program: ["linear-chase", "random-chase", "fused-linear-chase"]
+
+# preprocess: "export LD_LIBRARY_PATH=/apps/riscv/llvm/EPI/development/lib"
+command: "./pointer-chasing/{program}"
+
+jobs:
+  - config: "pioneer"
+    config_jobs:
+      - tag: "{program}"
+
+  - config: "arriesgado"
+    config_jobs:
+      - tag: "{program}"
+
+  - config: "bananaf3"
+    config_jobs:
+      - tag: "{program}"

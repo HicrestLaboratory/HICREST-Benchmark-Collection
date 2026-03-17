@@ -1,0 +1,10 @@
+variables:
+  ncpus: [1, 2, 4, 8, 16, 32, 64]
+  
+command: "./STREAM/stream_c_custom"
+
+jobs:
+  - config: "brah_{ncpus}cpus"
+    config_jobs:
+      - tag: "stream_{ncpus}cpus"
+      

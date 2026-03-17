@@ -1,0 +1,89 @@
+variables:
+  amd_ncpus: [1, 2, 4, 8, 16, 32, 64]
+  baldo_ncpus: [1, 2, 4, 8] # Others are specified manually
+
+  pioneer_ncpus: [1, 2, 4, 8, 16, 32, 64]
+  bananaf3_ncpus: [1, 2, 4, 8]
+  arriesgado_ncpus: [1, 2, 4]
+
+hca:
+  scheduler: slurm
+
+  default_conf:
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    time: "00:10:00" 
+
+  configs:
+    - name: "pioneer_{pioneer_ncpus}cpus"
+      partition: "pioneer"
+      cpus_per_task: "{pioneer_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={pioneer_ncpus}"
+
+    - name: "arriesgado_{arriesgado_ncpus}cpus"
+      partition: "arriesgado-jammy"
+      cpus_per_task: "{arriesgado_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={arriesgado_ncpus}"
+        - "KMP_AFFINITY=disabled"
+
+    - name: "bananaf3_{bananaf3_ncpus}cpus"
+      partition: "bananaf3"
+      cpus_per_task: "{bananaf3_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={bananaf3_ncpus}"
+
+brah:
+  scheduler: local
+
+  configs:
+    - name: "brah_{amd_ncpus}cpus"
+      env:
+        - "OMP_NUM_THREADS={amd_ncpus}"
+
+baldo:
+  scheduler: slurm
+
+  default_conf:
+    nodes: 1
+    ntasks: 1
+    time: "01:00:00" 
+    gpus: 0
+    nodelist: ['gpu00']
+    partition: "medium"
+
+  configs:
+    # - name: "baldo_edu_{baldo_ncpus}cpus"
+    #   partition: "edu-medium"
+    #   cpus_per_task: "{baldo_ncpus}"
+    #   env:
+    #     - "OMP_NUM_THREADS={baldo_ncpus}"
+
+    - name: "baldo_{baldo_ncpus}cpus"
+      account: "flavio.vella"
+      cpus_per_task: "{baldo_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={baldo_ncpus}"
+
+    - name: "baldo_16cpus"
+      account: "flavio.vella"
+      gpus: 2
+      cpus_per_task: "16"
+      env:
+        - "OMP_NUM_THREADS=16"
+
+    - name: "baldo_32cpus"
+      account: "flavio.vella"
+      gpus: 3
+      cpus_per_task: "32"
+      env:
+        - "OMP_NUM_THREADS=32"
+
+    - name: "baldo_64cpus"
+      account: "flavio.vella"
+      gpus: 6
+      cpus_per_task: "64"
+      env:
+        - "OMP_NUM_THREADS=64"

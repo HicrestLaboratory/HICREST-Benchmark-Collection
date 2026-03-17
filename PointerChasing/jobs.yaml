@@ -1,0 +1,9 @@
+variables:
+  program: ["linear-chase", "random-chase", "fused-linear-chase"]
+  
+command: "./pointer-chasing/{program}"
+
+jobs:
+  - config: "brah"
+    config_jobs:
+      - tag: "{program}"
