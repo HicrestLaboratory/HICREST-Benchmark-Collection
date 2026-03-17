@@ -11,22 +11,24 @@ variables:
     - "taskbench"
 
 
+command: "./{benchmark}"
+
 jobs:
   - config: "pioneer_{pioneer_ncpus}cpus"
-    command: "./{benchmark}"
     config_jobs:
       - tag: "{benchmark}_{pioneer_ncpus}cpus"
 
       - tag: "arraybench_{array_bench_sizes}_{pioneer_ncpus}cpus"
         command: "./arraybench_{array_bench_sizes}"
+
   - config: "arriesgado_{arriesgado_ncpus}cpus"
-    command: "./{benchmark}"
     config_jobs:
       - tag: "{benchmark}_{arriesgado_ncpus}cpus"
+
       - tag: "arraybench_{array_bench_sizes}_{arriesgado_ncpus}cpus"
         command: "./arraybench_{array_bench_sizes}"
+
   - config: "bananaf3_{bananaf3_ncpus}cpus"
-    command: "./{benchmark}"
     config_jobs:
       - tag: "{benchmark}_{bananaf3_ncpus}cpus"
       - tag: "arraybench_{array_bench_sizes}_{bananaf3_ncpus}cpus"

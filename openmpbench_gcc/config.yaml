@@ -31,3 +31,33 @@ hca:
       cpus_per_task: "{bananaf3_ncpus}"
       env: 
         - "OMP_NUM_THREADS={bananaf3_ncpus}"
+
+
+leonardo:
+  scheduler: slurm
+
+  default_conf:
+    account: "IscrC_OMG-25_0"
+    time: "00:20:00"
+    partition: "dcgp_usr_prod"
+    qos: "normal"
+    exclusive: true
+    nodes: 1
+    ntasks: 1
+    custom_headers:
+      - "#SBATCH --gres=gres/tmpfs:10g"
+
+  configs:
+    - name: "leonardo-dcgp_{pioneer_ncpus}cpus"
+      cpus_per_task: "{pioneer_ncpus}"
+      modules: 
+        - "gcc/12.2.0"
+      env: 
+        - "OMP_NUM_THREADS={pioneer_ncpus}"
+
+    - name: "leonardo-dcgp-llvm_{pioneer_ncpus}cpus"
+      cpus_per_task: "{pioneer_ncpus}"
+      modules: 
+        - "llvm/14.0.6--gcc--12.2.0-cuda-12.2"
+      env: 
+        - "OMP_NUM_THREADS={pioneer_ncpus}"

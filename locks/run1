@@ -31,9 +31,14 @@
 T=1                  # starting thread count
 N=$(nproc)           # max threads = number of CPU cores
 time=10              # seconds per internal run
-runs=5               # repetitions inside program
 degree=""            # optional tree degree
 exec=a.out           # executable name
+
+if [[ "$LOCKS_ENABLE_PERF" == "1" ]]; then
+    runs=1
+else
+    runs=3
+fi
 
 while [ ${#} -gt 0 ] ; do			# process command-line arguments
     case "${1}" in
@@ -67,10 +72,15 @@ while [ $T -le $N ]; do
 	#  perf stat -B \
     #     -e L1-dcache-load-misses \
     #     ./${exec} ${T} ${time} ${runs} ${degree} >> perf.txt 2>&1
+    # perf stat -e cycles,instructions,cache-references,cache-misses,branches,branch-misses
 
-    #  perf stat -e cycles,instructions,cache-references,cache-misses,branches,branch-misses 
-     ./${exec} ${T} ${time} ${runs} ${degree}
 
+    if [[ "$LOCKS_ENABLE_PERF" == "1" ]]; then
+        perf stat -e cycles,instructions,cache-references,cache-misses,branches,branch-misses ./${exec} ${T} ${time} ${runs} ${degree} >> perf_results.txt 2>&1
+    else
+        ./${exec} ${T} ${time} ${runs} ${degree}
+    fi
+    
     if [ -f core ]; then
         echo "core generated for $T threads"
         break

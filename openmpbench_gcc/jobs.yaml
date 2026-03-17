@@ -1,0 +1,23 @@
+variables:
+  system: ["leonardo-dcgp-llvm"]
+  # system: ["leonardo-dcgp"]
+
+  ncpus: [1, 2, 4, 8, 16, 32, 64]
+
+  array_bench_sizes: [1, 243, 2187, 19683, 59049]
+
+  benchmark:
+    - "syncbench"
+    - "schedbench"
+    - "taskbench"
+
+
+command: "./{benchmark}"
+
+jobs:
+  - config: "{system}_{ncpus}cpus"
+    config_jobs:
+      - tag: "{benchmark}_{ncpus}cpus"
+
+      - tag: "arraybench_{array_bench_sizes}_{ncpus}cpus"
+        command: "./arraybench_{array_bench_sizes}"

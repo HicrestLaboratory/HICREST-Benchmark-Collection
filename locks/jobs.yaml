@@ -1,0 +1,15 @@
+variables:
+  system: ["leonardo-dcgp"] # pioneer
+  ncpus: [112]
+
+# preprocess: "export LD_LIBRARY_PATH=/apps/riscv/llvm/EPI/development/lib"
+command: "./runallMCSH"
+
+jobs:
+  - config: "{system}_{ncpus}cpus"
+    config_jobs:
+      - tag: "locks_{system}_{ncpus}cpus"
+
+  - config: "{system}_{ncpus}cpus_perf"
+    config_jobs:
+      - tag: "locks_cache_{system}_{ncpus}cpus"

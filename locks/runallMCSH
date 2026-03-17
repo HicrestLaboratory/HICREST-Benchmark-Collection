@@ -6,8 +6,8 @@ algorithms="MCS SpinLock HemLock PthreadLock Reciprocating FissileTicket"
 time=60
 
 # Get hostname and sanitize it for C macro usage
-rawhost=`hostname`
-outdir=`hostname | tr '-' '_'`
+rawhost=$(hostname)
+outdir=$(hostname | tr '.-' '__')
 exec="${outdir}.out"
 
 atomicinst=
@@ -36,6 +36,10 @@ command -v ${CC} >/dev/null 2>&1 || { echo "Compiler gcc not found"; exit 1; }
 runalgorithm() {
     for atomic in "" ; do
         outfile="${rawhost}/${1}${atomic}"
+
+        if [[ "$LOCKS_ENABLE_PERF" == "1" ]]; then
+            outfile="${rawhost}/${1}${atomic}_cache"
+        fi
         echo "${outfile}"
 
         ${CC} ${cflag} \
@@ -47,7 +51,7 @@ runalgorithm() {
             -DNCS_DELAY=20 \
             Harness.c -lpthread -lm -o "${exec}" || exit 1
 
-        ./run1 time=${time} exec="./${exec}" > "${outfile}"
+        ./run1 time=${time} exec="./${exec}" | tee "${outfile}"
 
         if [ -f core ] ; then
             echo "core generated for ${1}"
