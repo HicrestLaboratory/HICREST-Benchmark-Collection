@@ -73,8 +73,9 @@ OUTCOME_BAD_CSV = "bad_csv"
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
-    cluster_name = sbm.get_cluster_name()
+    cluster_name = "leonardo"#sbm.get_cluster_name()
     OUT_DIR.mkdir(exist_ok=True, parents=True)
     out_file = OUT_DIR / f"DLNetBenchBaseline_{cluster_name}_data.parquet"
 
@@ -104,6 +105,7 @@ def main() -> None:
 
     for job in jobs:
         stdout = job.get_stdout()
+        print(f"{stdout}")
         tag    = str(job.tag)
 
         print(f"  job_id={job.job_id}  tag={tag}  runtime={job.get_run_time()}")
