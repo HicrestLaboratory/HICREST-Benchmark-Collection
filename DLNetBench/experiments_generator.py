@@ -107,12 +107,12 @@ STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
     },
     "medium": {
         "tier_weight": 0.20,
-        "sizes": [16, 32, 64],
-        "sub_weights": {},
+        "sizes": [16, 32, 64, 512],
+        "sub_weights": {512: 0.15},
     },
     "large": {
         "tier_weight": 0.05,
-        "sizes": [448, 512, 640, 960],
+        "sizes": [1024],
         "sub_weights": {},
     },
 }
@@ -270,7 +270,7 @@ class Config:
 
     def __str__(self) -> str:
         slots = ", ".join(str(r) for r in self.runs)
-        return f"[{slots}]\n  util={int(self.utilization*100):3}%"
+        return f"[{slots}]\n  util={int(self.utilization*100):3}% nodes: {int(self.total_gpus/4)} ({int(self.total_gpus)} GPUs)"
 
 
 # ===========================================================================
@@ -717,6 +717,7 @@ def build_pattern_set(
                 g_total, k_max, g_min, stochastic_tier_config,
                 feasible_gpu_counts, cap, rng, utilization=rho,
             ):
+                print(tp)
                 add(tp)
 
     return patterns

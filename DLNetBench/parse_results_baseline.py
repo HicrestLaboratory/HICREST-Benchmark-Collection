@@ -105,7 +105,6 @@ def main() -> None:
 
     for job in jobs:
         stdout = job.get_stdout()
-        print(f"{stdout}")
         tag    = str(job.tag)
 
         print(f"  job_id={job.job_id}  tag={tag}  runtime={job.get_run_time()}")

@@ -527,7 +527,7 @@ def _plot_performance(
         ax.legend(fontsize=8, title="job", title_fontsize=8)
 
     fig.tight_layout()
-    out_path = OUT_DIR / f"{tag}_performance.pdf"
+    out_path = OUT_DIR / f"{tag}_performance.png"
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     return out_path
@@ -563,7 +563,7 @@ def _plot_slowdown_timeline(
     ax.legend(fontsize=8, title="job", title_fontsize=8)
 
     fig.tight_layout()
-    out_path = OUT_DIR / f"{tag}_slowdown_timeline.pdf"
+    out_path = OUT_DIR / f"{tag}_slowdown_timeline.png"
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     return out_path
@@ -626,7 +626,7 @@ def _plot_slowdown_summary(
                         f"{h:.3f}", ha="center", va="bottom", fontsize=7)
 
     fig.tight_layout()
-    out_path = OUT_DIR / f"{tag}_slowdown_summary.pdf"
+    out_path = OUT_DIR / f"{tag}_slowdown_summary.png"
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     return out_path
@@ -656,9 +656,9 @@ def _plot_slowdown_heatmap(
     im  = ax.imshow(df.values, aspect="auto", cmap="RdYlGn_r", vmin=1.0)
 
     ax.set_xticks(range(len(df.columns)))
-    ax.set_xticklabels(df.columns, rotation=30, ha="right", fontsize=8)
+    ax.set_xticklabels(df.columns, rotation=30, ha="right", fontsize=10)
     ax.set_yticks(range(len(df.index)))
-    ax.set_yticklabels(df.index, fontsize=7)
+    ax.set_yticklabels(df.index, fontsize=10)
     ax.set_xlabel("Job name (slot)", fontsize=9)
     ax.set_ylabel("sbm_job_id", fontsize=9)
     ax.set_title("Slowdown heatmap  (σ_j, mean over repetitions)", fontsize=10)
@@ -668,10 +668,10 @@ def _plot_slowdown_heatmap(
         for c in range(len(df.columns)):
             v = df.values[r, c]
             if not np.isnan(v):
-                ax.text(c, r, f"{v:.2f}", ha="center", va="center", fontsize=6, color="black")
+                ax.text(c, r, f"{(v*100)-100:.1f}%", ha="center", va="center", fontsize=10, color="black")
 
     fig.tight_layout()
-    out_path = OUT_DIR / "all_jobs_slowdown_heatmap.pdf"
+    out_path = OUT_DIR / "all_jobs_slowdown_heatmap.png"
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     return out_path

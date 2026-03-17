@@ -6,7 +6,7 @@ Supports scaling and time breakdown plots, per-cluster and cross-cluster compari
 Data format (new):
   - import_export.read_multiple_from_parquet returns (pairs, meta_df)
   - meta_df columns: sbm_job_id, sbm_tag, cluster, tot_runtime, strategy, gpus, nodes
-  - pairs: list of (meta_dict, dfs) where dfs['measurements'] has:
+  - pairs: list of (meta_dict, dfs) where dfs['main'] has:
       runtime, commtime, throughput  (per-iteration rows)
 """
 
@@ -33,7 +33,7 @@ def load_data(parquet_files: List[str]) -> Tuple[pd.DataFrame, List[Tuple[dict, 
     Load all parquet files and return (meta_df, pairs).
 
     meta_df has one row per job; pairs[i] = (meta_dict, dfs) for job i,
-    where dfs['measurements'] is the per-iteration DataFrame.
+    where dfs['main'] is the per-iteration DataFrame.
     """
     pairs, meta_df = import_export.read_multiple_from_parquet(parquet_files)
     return meta_df, pairs
@@ -51,13 +51,25 @@ def build_summary(meta_df: pd.DataFrame, pairs: List[Tuple[dict, dict]]) -> pd.D
     """
     records = []
     for meta, dfs in pairs:
-        meas = dfs['measurements'].copy()
+        if 'main' not in dfs:
+            dfs['main'] = dfs['measurements']
+        meas = dfs['main'].copy()
 
         # Skip the first iteration (warm-up) if there are enough rows
         if len(meas) > 1:
             meas = meas.iloc[1:]
 
-        compute_time = meas['runtime'] - meas['commtime']
+        print(meas.columns)
+        
+        barrier_col_name = 'barrier'
+        if barrier_col_name not in meas.columns:
+            barrier_col_name = 'barrier_time'
+        if barrier_col_name not in meas.columns:
+            barrier_col_name = 'dp_comm_time'
+        if barrier_col_name not in meas.columns:
+            barrier_col_name = 'commtime'
+            
+        compute_time = meas['runtime'] - meas[barrier_col_name]
 
         records.append({
             'sbm_job_id':      meta['sbm_job_id'],
@@ -69,9 +81,9 @@ def build_summary(meta_df: pd.DataFrame, pairs: List[Tuple[dict, dict]]) -> pd.D
             'throughput_mean': meas['throughput'].mean(),
             'throughput_std':  meas['throughput'].std(),
             'runtime_mean':    meas['runtime'].mean(),
-            'commtime_mean':   meas['commtime'].mean(),
+            'barrier_mean':    meas[barrier_col_name].mean(),
             'compute_mean':    compute_time.mean(),
-            'comm_pct':        (meas['commtime'] / meas['runtime'] * 100).mean(),
+            'comm_pct':        (meas[barrier_col_name] / meas['runtime'] * 100).mean(),
             'compute_pct':     (compute_time     / meas['runtime'] * 100).mean(),
         })
 
@@ -317,9 +329,10 @@ def main():
     # ------------------------------------------------------------------
     print("Loading data...")
     meta_df, pairs = load_data(args.parquet_files)
-    meta_df['cluster'] = meta_df['cluster'] + meta_df['gpu_model']
+    # FIXME
+    meta_df['cluster'] = meta_df['cluster'] #  + meta_df['gpu_model']
     for p, _ in pairs:
-        p['cluster'] = p['cluster'] + p['gpu_model']
+        p['cluster'] = p['cluster'] # + p['gpu_model']
     print(meta_df.to_string(index=False))
 
     summary = build_summary(meta_df, pairs)
@@ -383,23 +396,22 @@ def main():
     # ------------------------------------------------------------------
     # Cross-cluster comparison plots (only when >1 cluster present)
     # ------------------------------------------------------------------
-    if len(clusters) > 1:
-        print("\n[Cross-cluster comparison — all strategies]")
+    print("\n[Cross-cluster comparison — all strategies]")
 
-        plot_scaling(
-            summary,
-            strategies=strategies,
-            output_file=str(output_dir / f"{pfx}all_scaling.png"),
-            title="Scaling — All Strategies, All Clusters",
-            show_ideal=not args.no_ideal,
-        )
+    plot_scaling(
+        summary,
+        strategies=strategies,
+        output_file=str(output_dir / f"{pfx}all_scaling.png"),
+        title="Scaling — All Strategies, All Clusters",
+        show_ideal=not args.no_ideal,
+    )
 
-        plot_breakdown(
-            summary,
-            strategies=strategies,
-            output_file=str(output_dir / f"{pfx}all_breakdown.png"),
-            title="Time Breakdown — All Strategies, All Clusters",
-        )
+    plot_breakdown(
+        summary,
+        strategies=strategies,
+        output_file=str(output_dir / f"{pfx}all_breakdown.png"),
+        title="Time Breakdown — All Strategies, All Clusters",
+    )
 
     print(f"\nDone. All plots saved to: {output_dir}/")
 
