@@ -1,0 +1,80 @@
+#!/bin/sh -
+
+# sudo echo $PID > /cpuset/exp/tasks
+
+# IRQs
+#   /proc/irq and /proc/interrupts
+#   /etc/default/irqbalance
+#      ENABLED="0"
+#      reboot
+
+# disable address-space randomization (ASR) via the following
+#   sudo
+#   cat /proc/sys/kernel/randomize_va_space
+#   0 => disable, 2 => randomize stack positions
+#   echo 0 > /proc/sys/kernel/randomize_va_space
+#   echo 2 > /proc/sys/kernel/randomize_va_space
+# set CPUs to maximum frequency
+#   sudo
+#   cpufreq-info  (lists information about all cores)
+#   cpufreq-set --cpu 0 --min 2600000
+#   ... for each even CPU (may work in pairs)
+#   cpufreq-set --cpu 0 --min 1000000
+
+# T=1
+# N=32		# T to N threads tested
+# inc=1		# increment loop counter
+# time=10 	# runs x time = length of experiment
+# runs=5		# experiment repetitions
+# degree=""	# tree degree (d-ary) for Zhang (optional)
+# exec=a.out	# name of executable file
+T=1                  # starting thread count
+N=$(nproc)           # max threads = number of CPU cores
+time=10              # seconds per internal run
+runs=5               # repetitions inside program
+degree=""            # optional tree degree
+exec=a.out           # executable name
+
+while [ ${#} -gt 0 ] ; do			# process command-line arguments
+    case "${1}" in
+	"T="* | "N="* | "inc="* | "time="* | "runs="* | "degree="* | "exec="* )
+	    eval ${1}
+	    ;;
+	* )
+	    echo "Usage: invalid command-line option ${1}"
+	    exit 1
+	    ;;
+    esac
+    shift					# remove argument
+done
+
+# rm -rf core
+
+# while [ ${T} -le ${N} ] ; do
+# #    perf stat -B -e L1-dcache-load-misses -e L1-dcache-prefetch-misses -e branch-load-misses ./a.out ${T} ${time} ${degree}	# Zhang d-ary
+# #    /usr/bin/time -f "%Uu %Ss %Er %Mkb" ./${exec} ${T} ${time} ${runs} ${degree}	# Zhang d-ary
+#     ./${exec} ${T} ${time} ${runs} ${degree}	# Zhang d-ary
+#     if [ -f core ] ; then
+# 	echo core generated for ${T} ${Time}
+# 	break
+#     fi
+#     T=`expr ${T} + ${inc}`
+# done
+rm -rf core
+
+while [ $T -le $N ]; do
+    #  echo "Running experiment with $T threads"
+	#  perf stat -B \
+    #     -e L1-dcache-load-misses \
+    #     ./${exec} ${T} ${time} ${runs} ${degree} >> perf.txt 2>&1
+
+    #  perf stat -e cycles,instructions,cache-references,cache-misses,branches,branch-misses 
+     ./${exec} ${T} ${time} ${runs} ${degree}
+
+    if [ -f core ]; then
+        echo "core generated for $T threads"
+        break
+    fi
+
+    T=$(( T * 2 ))  # next power of 2
+done

@@ -1,18 +1,20 @@
 sequential: true
 
 variables:
-  nodes: [10]             # Ensure these are enough for the experiments that will run
+  nodes: [64]             # Ensure these are enough for the experiments that will run
   system: ['leonardo']    # Does not matter if placement != runtime
+  tasks_per_node: [4]
+  cpus_per_task: [8]
 
   # -- Change as needed --
-  experiment: "experiments_test/"
-  # experiment: "experiments/"
+  # experiment: "experiments_testino/"
+  experiment: "experiments/"
 
-  walltime: [40]
+  walltime: [90]
 
 jobs:
   - config: "{nodes}_nodes"
     config_jobs:
       - tag: "{experiment_filename}"
         preprocess: "echo \"Allocated nodes: $SLURM_JOB_NODELIST\""
-        command: "python workerpool_scheduler.py --walltime {walltime} --nodelist \"$SLURM_JOB_NODELIST\" --system {system} --debug -p {experiment}"
+        command: "python workerpool_scheduler.py --walltime {walltime} --nodelist \"$SLURM_JOB_NODELIST\" --tasks-per-node {tasks_per_node} --cpus-per-task {cpus_per_task} --system {system} --debug -p {experiment}"

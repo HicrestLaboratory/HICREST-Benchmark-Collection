@@ -77,7 +77,7 @@ STRATEGY_DEFS: list[tuple[str, list[int]]] = [
     ("DP",           [8, 16]),              # Nodes: 2, 4
     ("FSDP",         [16, 32]),             # Nodes: 4, 8
     ("DP+PP",        [16, 32, 64]),         # Nodes: 4, 8, 16
-    ("DP+PP+TP",     [224, 256]),           # Nodes: 56, 64
+    ("DP+PP+TP",     [224, 256, 512]),      # Nodes: 56, 64, 128
     ("DP+PP+Expert", [512, 1024]),          # Nodes: 128, 256
 ]
 
@@ -153,12 +153,12 @@ TOPO_Q3: int = 180 * TOPO_Q1 # GPUs per group (set equal to G for single-group c
 # Remove INTRA_NODE; add or rename entries freely here.
 # ---------------------------------------------------------------------------
 PLACEMENT_CLASS_DEFS: list[tuple[str, str, float]] = [
-    # name                      label                    score
-    ("INTRA_L1_RANDOM",         "intra-L1-random",       1.0),
-    ("INTRA_GROUP_RANDOM",      "intra-group-random",    2.0),
-    ("INTER_GROUP_RANDOM",      "inter-group-random",    3.0),
-    ("INTRA_GROUP_SAME_L1",     "intra-group-same-L1",   2.5),  # annotation (1)
-    ("INTER_GROUP_SAME_L1",     "inter-group-same-L1",   3.0),  # annotation (2)
+    # name                      label                      score
+    ("INTRA_L1_RANDOM",         "intra-l1",                1.0),
+    ("INTRA_GROUP_RANDOM",      "intra-group",             2.0),
+    ("INTER_GROUP_RANDOM",      "inter-group",             3.0),
+    ("INTRA_GROUP_SAME_L1",     "intra-group-same-l1-2",   1.5),
+    ("INTER_GROUP_SAME_L1",     "inter-group-same-l1-2",   2.5),
 ]
 
 # ---------------------------------------------------------------------------
@@ -176,22 +176,24 @@ PLACEMENT_CLASS_DEFS: list[tuple[str, str, float]] = [
 # these two tables.
 # ---------------------------------------------------------------------------
 STRATEGY_PLACEMENT_MAP: dict[str, list[str]] = {
-    # Strategy            Allowed placement-class names
+    # Strategy       Allowed placement-class names
     "DP":            ["INTRA_L1_RANDOM",
                       "INTRA_GROUP_RANDOM",
                       "INTER_GROUP_RANDOM"],
 
     "FSDP":          ["INTRA_L1_RANDOM",
-                      "INTRA_GROUP_SAME_L1",    # annotation (1)
-                      "INTER_GROUP_SAME_L1"],     # annotation (2)
+                      "INTRA_GROUP_SAME_L1",
+                      "INTER_GROUP_SAME_L1"],
 
     "DP+PP":         ["INTRA_L1_RANDOM",
-                      "INTRA_GROUP_SAME_L1",    # annotation (1)
-                      "INTER_GROUP_SAME_L1"],     # annotation (2)
+                      "INTRA_GROUP_SAME_L1",
+                      "INTER_GROUP_SAME_L1"],
 
-    "DP+PP+TP":      ["INTER_GROUP_RANDOM"],
+    "DP+PP+TP":      ["INTRA_GROUP_SAME_L1",
+                      "INTER_GROUP_SAME_L1"],
 
-    "DP+PP+Expert":  ["INTER_GROUP_RANDOM"],
+    "DP+PP+Expert":  ["INTRA_GROUP_RANDOM",
+                      "INTER_GROUP_RANDOM"],
 }
 
 # Placement-vector scoring and bin boundaries.

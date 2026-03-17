@@ -46,8 +46,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
-from parsers import stdout_to_csv
-
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 from utils.slurm import expand_slurm_nodelist
 from JobPlacer.cli_wrapper import JobPlacer, JobRequest, PlacementResult
@@ -185,22 +183,24 @@ def launch_job(
     gpus_per_node: int,
     extra_srun_flags: list[str],
     out_dir: Path,
+    tasks_per_node: int,
+    cpus_per_task: int,
     log_path: Optional[Path],
 ) -> subprocess.Popen:
     """
     Build and launch one job. Returns the Popen handle with metadata attributes.
 
     Metadata attributes attached to the proc object:
-      .uid          – unique run identifier  (job_name + repetition counter)
-      .job_name     – original job key from the JSON
-      .repetition   – how many times this job has been launched (0-indexed)
-      .strategy     – strategy string from the JSON
-      .resources    – list of assigned nodes or device IDs
-      .bind_to_device – bool
-      .app          – command string
-      .stdout_path  – Path to stdout file
-      .stderr_path  – Path to stderr file
-      .start_ts     – launch timestamp string
+      .uid              – unique run identifier  (job_name + repetition counter)
+      .job_name         – original job key from the JSON
+      .repetition       – how many times this job has been launched (0-indexed)
+      .strategy         – strategy string from the JSON
+      .resources        – list of assigned nodes or device IDs
+      .bind_to_device   – bool
+      .app              – command string
+      .stdout_path      – Path to stdout file
+      .stderr_path      – Path to stderr file
+      .start_ts         – launch timestamp string
     """
     uid = f"{job_name}_rep{repetition}"
     stdout_path = out_dir / f"{uid}.stdout"
@@ -221,7 +221,7 @@ def launch_job(
         cmd = [
             "srun",
             "--ntasks=", str(num_ranks),
-            f"--cpus-per-task={CPUS_PER_TASK}",
+            f"--cpus-per-task={cpus_per_task}",
             "--gpus-per-task=1",
             f"--job-name={uid}",
             *extra_srun_flags,
@@ -238,10 +238,10 @@ def launch_job(
             "--export=ALL",
             f"--nodelist={nodelist_str}",
             f"--nodes={num_nodes}",
-            f"--ntasks={num_nodes*TASKS_PER_NODE}",
-            f"--ntasks-per-node={TASKS_PER_NODE}",
-            # f"--gres=gpu:{TASKS_PER_NODE}",
-            f"--cpus-per-task={CPUS_PER_TASK}",
+            f"--ntasks={num_nodes*tasks_per_node}",
+            f"--ntasks-per-node={tasks_per_node}",
+            # f"--gres=gpu:{tasks_per_node}",
+            f"--cpus-per-task={cpus_per_task}",
             f"--job-name={uid}",
             # f"--gpu-bind=closest",
             *extra_srun_flags,
@@ -319,13 +319,13 @@ def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
                     return transform(raw)
                 except Exception as exc:
                     return (
-                        f"  <stdout_to_csv failed with exit_code={exit_code}: {exc}>\n"
+                        f"  <transform on stdout failed with exit_code={exit_code}: {exc}>\n"
                         f"  Raw output follows:\n{raw}"
                     )
             return transform(raw)
         return raw
 
-    stdout_content = _read_stream("stdout_path", stdout_to_csv)
+    stdout_content = _read_stream("stdout_path", None)
     stderr_content = _read_stream("stderr_path", None)
 
     block = (
@@ -514,6 +514,8 @@ def run_scheduler(
     bind_to_device: bool,
     gpus_per_node: int,
     kill_signal: signal.Signals,
+    tasks_per_node: int,
+    cpus_per_task: int,
     log_path: Optional[Path],
 ) -> None:
 
@@ -536,6 +538,8 @@ def run_scheduler(
             gpus_per_node    = gpus_per_node,
             extra_srun_flags = extra_flags,
             out_dir          = out_dir,
+            tasks_per_node   = tasks_per_node,
+            cpus_per_task    = cpus_per_task,
             log_path         = log_path,
         )
 
@@ -625,6 +629,10 @@ def parse_args() -> argparse.Namespace:
                    help='Extra flags appended to every srun/mpirun invocation, e.g. "--mem=4G".')
     p.add_argument("--walltime", type=int, default=120, metavar="SECONDS",
                    help="Max run time in seconds (used when there are no large jobs). Default: 120.")
+    p.add_argument("--tasks-per-node", type=int, default=TASKS_PER_NODE,
+                   help=f"Tasks per node. Default: {TASKS_PER_NODE}.")
+    p.add_argument("--cpus-per-task", type=int, default=CPUS_PER_TASK,
+                   help=f"CPUs per task. Default: {CPUS_PER_TASK}.")
     p.add_argument("--output-log", default=None, metavar="FILE",
                    help="File to mirror scheduler log lines into (in addition to stdout).")
     p.add_argument("--kill-signal", default="SIGTERM", metavar="SIGNAL",
@@ -633,6 +641,9 @@ def parse_args() -> argparse.Namespace:
                    help="The system topology to query. Required if placement=runtime")
     p.add_argument("--debug", action="store_true",
                    help="Enable verbose debug output.")
+    
+    
+    
     return p.parse_args()
 
 

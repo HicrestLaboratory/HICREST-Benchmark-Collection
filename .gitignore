@@ -19,4 +19,5 @@ isarco1/
 parquets/
 
 DLNetBench/experiments*/
+DLNetBench/topos*/
 DLNetBench/**.json

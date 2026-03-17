@@ -29,7 +29,7 @@ _PARAMS: dict[str, callable] = {
     "FSDP":         lambda g: f"llama3-8b 16 {g if g < 8 else 8} ./DLNetBench",
     "DP+PP":        lambda g: f"minerva-7b {2 if g <= 8 else 8} 16 ./DLNetBench",
     "DP+PP+Expert": lambda g: "mixtral-8x7b 4 16 8 ./DLNetBench",
-    "DP+PP+TP":     lambda g: "llama3-70b 80 16 4 ./DLNetBench",
+    "DP+PP+TP":     lambda g: "llama3-70b 8 16 4 ./DLNetBench",
 }
 
 _STRATEGIES_NUM_RUNS: dict[str, tuple[int, int]] = {
@@ -42,10 +42,10 @@ _STRATEGIES_NUM_RUNS: dict[str, tuple[int, int]] = {
 
 _STRATEGIES_NUM_RUNS_B200: dict[str, tuple[int, int]] = {
     "DP":           (1, 10), # 1.1s * 6 = 6.6s
-    "FSDP":         (1, 4), # 4s   * 4 = 16s
-    "DP+PP":        (1, 4), # 3s   * 4 = 12s
-    "DP+PP+Expert": (1, 3), # 45s  * 3 = 2m 15s
-    "DP+PP+TP":     (1, 2), # 23s  * 3 = 1m 9s
+    "FSDP":         (1, 4),  # 4s   * 4 = 16s
+    "DP+PP":        (1, 4),  # 3s   * 4 = 12s
+    "DP+PP+Expert": (1, 3),  # 45s  * 3 = 2m 15s
+    "DP+PP+TP":     (1, 2),  # 23s  * 3 = 1m 9s
 }
 
 def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model:str = "B200", num_warmup_override: Union[int, None]=None, use_dgx:bool=False) -> str:
