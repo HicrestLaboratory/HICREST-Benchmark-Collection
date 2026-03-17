@@ -695,14 +695,16 @@ def main() -> None:
         sys.exit(1)
 
     run_scheduler(
-        jobs         = jobs,
-        out_dir      = out_dir,
-        extra_flags  = extra_flags,
-        walltime     = args.walltime,
-        bind_to_device   = bind_to_device,
-        gpus_per_node= gpus_per_node,
-        kill_signal  = kill_signal,
-        log_path     = log_path,
+        jobs            = jobs,
+        out_dir         = out_dir,
+        extra_flags     = extra_flags,
+        walltime        = args.walltime,
+        bind_to_device  = bind_to_device,
+        gpus_per_node   = gpus_per_node,
+        kill_signal     = kill_signal,
+        tasks_per_node  = args.tasks_per_node,
+        cpus_per_task   = args.cpus_per_task,
+        log_path        = log_path,
     )
 
 

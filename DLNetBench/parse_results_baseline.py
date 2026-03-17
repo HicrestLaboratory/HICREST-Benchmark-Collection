@@ -28,6 +28,39 @@ sys.path.append(str(Path(__file__).parent.parent / "common"))
 import import_export
 import sbatchman as sbm
 
+def format_bytes(size_bytes, binary=False, precision=2, space_between_size_and_unit=False):
+    """
+    Convert a size in bytes into a human-readable string.
+
+    Args:
+        size_bytes (int or float): Size in bytes
+        binary (bool): If True, use binary units (KiB, MiB, GiB).
+                        If False, use SI units (KB, MB, GB)
+        precision (int): Number of decimal places
+
+    Returns:
+        str: Human-readable string
+    """
+    if size_bytes < 0:
+        raise ValueError("size_bytes must be non-negative")
+
+    if binary:
+        # Binary prefixes: 1024
+        units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
+        factor = 1024.0
+    else:
+        # SI prefixes: 1000
+        units = ["B", "KB", "MB", "GB", "TB", "PB"]
+        factor = 1000.0
+
+    size = float(size_bytes)
+    for unit in units:
+        if size < factor:
+            return f"{size:.{precision}f}{' ' if space_between_size_and_unit else ''}{unit}"
+        size /= factor
+
+    return f"{size:.{precision}f}{' ' if space_between_size_and_unit else ''}{units[-1]}"
+
 # ---------------------------------------------------------------------------
 # Where to write the result
 # ---------------------------------------------------------------------------
@@ -102,6 +135,8 @@ def main() -> None:
     total_ok = 0
 
     job_summaries: list[dict] = []
+    jobs_runtimes: dict = {}
+    jobs_stdout_size: dict = {}
 
     for job in jobs:
         stdout = job.get_stdout()
@@ -150,8 +185,21 @@ def main() -> None:
 
         # Instead of wrapping in {"measurements": df}, pass the entire dfs dict
         pairs.append((meta, dfs))
+        job_key = f"{cluster_name}__{meta.get('strategy')}__{meta.get('gpus')}__{meta.get('gpu_model')}"
+        jobs_runtimes[job_key] = job.get_run_time()
+        jobs_stdout_size[job_key] = format_bytes(job.get_stdout_path().stat().st_size)
         total_ok += 1
         job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_OK})
+        
+    print()
+    print("=== Runtimes ===")
+    print(jobs_runtimes)
+    print()
+    
+    print()
+    print("=== Stdout sizes ===")
+    print(jobs_stdout_size)
+    print()
 
     # ------------------------------------------------------------------
     # Summary table

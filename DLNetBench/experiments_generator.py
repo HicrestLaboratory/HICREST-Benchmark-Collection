@@ -153,12 +153,14 @@ TOPO_Q3: int = 180 * TOPO_Q1 # GPUs per group (set equal to G for single-group c
 # Remove INTRA_NODE; add or rename entries freely here.
 # ---------------------------------------------------------------------------
 PLACEMENT_CLASS_DEFS: list[tuple[str, str, float]] = [
-    # name                      label                      score
-    ("INTRA_L1_RANDOM",         "intra-l1",                1.0),
-    ("INTRA_GROUP_RANDOM",      "intra-group",             2.0),
-    ("INTER_GROUP_RANDOM",      "inter-group",             3.0),
-    ("INTRA_GROUP_SAME_L1",     "intra-group-same-l1-2",   1.5),
-    ("INTER_GROUP_SAME_L1",     "inter-group-same-l1-2",   2.5),
+    # name                        label                      score
+    ("INTRA_L1_RANDOM",           "intra-l1",                1.0),
+    ("INTRA_GROUP_RANDOM",        "intra-group",             2.0),
+    ("INTER_GROUP_RANDOM",        "inter-group",             3.0),
+    ("INTRA_GROUP_SAME_L1_2",     "intra-group-same-l1-2",   1.5),
+    ("INTRA_GROUP_SAME_L1_4",     "intra-group-same-l1-4",   1.3),
+    ("INTER_GROUP_SAME_L1_2",     "inter-group-same-l1-2",   2.5),
+    ("INTER_GROUP_SAME_L1_4",     "inter-group-same-l1-4",   2.3),
 ]
 
 # ---------------------------------------------------------------------------
@@ -182,15 +184,15 @@ STRATEGY_PLACEMENT_MAP: dict[str, list[str]] = {
                       "INTER_GROUP_RANDOM"],
 
     "FSDP":          ["INTRA_L1_RANDOM",
-                      "INTRA_GROUP_SAME_L1",
-                      "INTER_GROUP_SAME_L1"],
+                      "INTRA_GROUP_SAME_L1_2",
+                      "INTER_GROUP_SAME_L1_2"],
 
     "DP+PP":         ["INTRA_L1_RANDOM",
-                      "INTRA_GROUP_SAME_L1",
-                      "INTER_GROUP_SAME_L1"],
+                      "INTRA_GROUP_SAME_L1_2",
+                      "INTER_GROUP_SAME_L1_2"],
 
-    "DP+PP+TP":      ["INTRA_GROUP_SAME_L1",
-                      "INTER_GROUP_SAME_L1"],
+    "DP+PP+TP":      ["INTRA_GROUP_SAME_L1_4",
+                      "INTER_GROUP_SAME_L1_4"],
 
     "DP+PP+Expert":  ["INTRA_GROUP_RANDOM",
                       "INTER_GROUP_RANDOM"],
@@ -717,7 +719,6 @@ def build_pattern_set(
                 g_total, k_max, g_min, stochastic_tier_config,
                 feasible_gpu_counts, cap, rng, utilization=rho,
             ):
-                print(tp)
                 add(tp)
 
     return patterns
