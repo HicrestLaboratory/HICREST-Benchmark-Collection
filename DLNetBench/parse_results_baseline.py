@@ -1,11 +1,12 @@
 """
 parse_results_baseline.py
 ==========================
-Collects all completed sbatchman baseline jobs, parses their stdout as CSV,
-and writes every measurement into a single Parquet file via import_export.
+Collects all completed sbatchman baseline jobs, parses their stdout as multiple CSVs,
+and writes every measurement into a single Parquet file (with multiple tables) 
+via import_export.
 
 Baseline jobs are identified by a tag starting with "baseline_".
-Each job's stdout is expected to be a raw CSV (header + data rows).
+Each job's stdout is expected to be processed into dictionary of CSV strings.
 
 Summary printed to stdout:
   - Per job: outcome (ok / no_data / bad_csv).
@@ -21,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from parsers import stdout_to_csv
+from parsers import stdout_to_csv_multi
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 import import_export
@@ -34,20 +35,29 @@ import sbatchman as sbm
 OUT_DIR = Path("results")
 
 # ---------------------------------------------------------------------------
-# CSV parsing  (same logic as aggregate_runs.py)
+# CSV parsing 
 # ---------------------------------------------------------------------------
 
-def _parse_csv(stdout: str) -> pd.DataFrame | None:
-    text = stdout.strip()
-    if not text:
+def _parse_csv_multi(csv_dict: dict[str, str]) -> dict[str, pd.DataFrame] | None:
+    """
+    Parses a dictionary of CSV-formatted strings into a dictionary of DataFrames.
+    """
+    if not csv_dict:
         return None
-    try:
-        df = pd.read_csv(io.StringIO(text))
-        if df.empty or df.columns.tolist() == []:
-            return None
-        return df
-    except Exception:
-        return None
+        
+    dfs = {}
+    for key, text in csv_dict.items():
+        text = text.strip()
+        if not text:
+            continue
+        try:
+            df = pd.read_csv(io.StringIO(text))
+            if not df.empty and df.columns.tolist() != []:
+                dfs[key] = df
+        except Exception:
+            pass
+            
+    return dfs if dfs else None
 
 
 # ---------------------------------------------------------------------------
@@ -103,11 +113,22 @@ def main() -> None:
             job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_NO_DATA})
             continue
         
-        df = _parse_csv(stdout_to_csv(stdout))
-        if df is None:
+        try:
+            csv_dict = stdout_to_csv_multi(stdout)
+            dfs = _parse_csv_multi(csv_dict)
+        except Exception as e:
+            dfs = None
             issues.append((
                 str(job.job_id), tag, OUTCOME_BAD_CSV,
-                f"could not parse CSV; first 120 chars: {stdout[:120].strip()!r}",
+                f"Parser failed with error: {str(e)}",
+            ))
+            job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_BAD_CSV})
+            continue
+
+        if dfs is None:
+            issues.append((
+                str(job.job_id), tag, OUTCOME_BAD_CSV,
+                f"could not parse CSV outputs; first 120 chars: {stdout[:120].strip()!r}",
             ))
             job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_BAD_CSV})
             continue
@@ -126,7 +147,8 @@ def main() -> None:
             "gpu_model":   (job.variables or {}).get("gpu_model"),
         }
 
-        pairs.append((meta, {"measurements": df}))
+        # Instead of wrapping in {"measurements": df}, pass the entire dfs dict
+        pairs.append((meta, dfs))
         total_ok += 1
         job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_OK})
 
@@ -173,15 +195,20 @@ def main() -> None:
     # ------------------------------------------------------------------
     preview_rows = []
     for meta, dfs in pairs:
-        df = dfs["measurements"].copy()
-        for k, v in meta.items():
-            df[k] = v
-        preview_rows.append(df)
+        # We target 'main' since the parser guarantees 'main' is generated for all strategies
+        if "main" in dfs:
+            df = dfs["main"].copy()
+            for k, v in meta.items():
+                df[k] = v
+            preview_rows.append(df)
 
-    preview = pd.concat(preview_rows, ignore_index=True)
-    print("=== Preview of collected data ===")
-    print(preview.to_string())
-    print()
+    if preview_rows:
+        preview = pd.concat(preview_rows, ignore_index=True)
+        print("=== Preview of collected 'main' data ===")
+        print(preview.to_string())
+        print()
+    else:
+        print("No 'main' DataFrames were generated to preview.\n")
 
     print(f"Writing {len(pairs)} job(s) to {out_file} ...")
     import_export.write_multiple_to_parquet(pairs, out_file)
