@@ -15,13 +15,11 @@ from parsers import stdout_to_csv_multi
 # ---------------------------------------------------------------------------
 
 _SCHEMA = {
-    # ── dp ──────────────────────────────────────────────────────────────────
     ("dp", "main"): {
         "group_keys_per_rank":  ["rank"],
         "group_keys_across":    [],
         "metric_cols":          ["runtime", "barrier_time", "comm_time", "throughput"],
     },
-    # ── fsdp ────────────────────────────────────────────────────────────────
     ("fsdp", "main"): {
         "group_keys_per_rank":  ["rank"],
         "group_keys_across":    [],
@@ -37,7 +35,6 @@ _SCHEMA = {
         "group_keys_across":    ["unit_id"],
         "metric_cols":          ["reduce_scatter_time"],
     },
-    # ── dp_pp ───────────────────────────────────────────────────────────────
     ("dp_pp", "main"): {
         "group_keys_per_rank":  ["rank"],
         "group_keys_across":    [],
@@ -48,7 +45,6 @@ _SCHEMA = {
         "group_keys_across":    ["microbatch_id"],
         "metric_cols":          ["pp_comm_time"],
     },
-    # ── dp_pp_tp ────────────────────────────────────────────────────────────
     ("dp_pp_tp", "main"): {
         "group_keys_per_rank":  ["rank"],
         "group_keys_across":    [],
@@ -60,11 +56,10 @@ _SCHEMA = {
         "metric_cols":          ["pp_comm_time"],
     },
     ("dp_pp_tp", "tp_comm"): {
-        "group_keys_per_rank":  ["rank", "microbatch_id", "layer_id", "phase"],
-        "group_keys_across":    ["microbatch_id", "layer_id", "phase"],
+        "group_keys_per_rank":  ["rank", "microbatch_id", "phase"],
+        "group_keys_across":    ["microbatch_id", "phase"],
         "metric_cols":          ["tp_comm_time"],
     },
-    # ── dp_pp_ep ────────────────────────────────────────────────────────────
     ("dp_pp_ep", "main"): {
         "group_keys_per_rank":  ["rank"],
         "group_keys_across":    [],
@@ -76,12 +71,11 @@ _SCHEMA = {
         "metric_cols":          ["pp_comm_time"],
     },
     ("dp_pp_ep", "ep_comm"): {
-        "group_keys_per_rank":  ["rank", "microbatch_id", "layer_id", "phase"],
-        "group_keys_across":    ["microbatch_id", "layer_id", "phase"],
+        "group_keys_per_rank":  ["rank", "microbatch_id", "phase"],
+        "group_keys_across":    ["microbatch_id", "phase"],
         "metric_cols":          ["ep_comm_time"],
     },
 }
-
 
 # ---------------------------------------------------------------------------
 # IQR outlier detection
