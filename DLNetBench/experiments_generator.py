@@ -107,12 +107,12 @@ STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
     },
     "medium": {
         "tier_weight": 0.20,
-        "sizes": [16, 32, 64],
-        "sub_weights": {},
+        "sizes": [16, 32, 64, 512],
+        "sub_weights": {512: 0.15},
     },
     "large": {
         "tier_weight": 0.05,
-        "sizes": [448, 512, 640, 960],
+        "sizes": [1024],
         "sub_weights": {},
     },
 }
@@ -153,12 +153,14 @@ TOPO_Q3: int = 180 * TOPO_Q1 # GPUs per group (set equal to G for single-group c
 # Remove INTRA_NODE; add or rename entries freely here.
 # ---------------------------------------------------------------------------
 PLACEMENT_CLASS_DEFS: list[tuple[str, str, float]] = [
-    # name                      label                      score
-    ("INTRA_L1_RANDOM",         "intra-l1",                1.0),
-    ("INTRA_GROUP_RANDOM",      "intra-group",             2.0),
-    ("INTER_GROUP_RANDOM",      "inter-group",             3.0),
-    ("INTRA_GROUP_SAME_L1",     "intra-group-same-l1-2",   1.5),
-    ("INTER_GROUP_SAME_L1",     "inter-group-same-l1-2",   2.5),
+    # name                        label                      score
+    ("INTRA_L1_RANDOM",           "intra-l1",                1.0),
+    ("INTRA_GROUP_RANDOM",        "intra-group",             2.0),
+    ("INTER_GROUP_RANDOM",        "inter-group",             3.0),
+    ("INTRA_GROUP_SAME_L1_2",     "intra-group-same-l1-2",   1.5),
+    ("INTRA_GROUP_SAME_L1_4",     "intra-group-same-l1-4",   1.3),
+    ("INTER_GROUP_SAME_L1_2",     "inter-group-same-l1-2",   2.5),
+    ("INTER_GROUP_SAME_L1_4",     "inter-group-same-l1-4",   2.3),
 ]
 
 # ---------------------------------------------------------------------------
@@ -182,15 +184,15 @@ STRATEGY_PLACEMENT_MAP: dict[str, list[str]] = {
                       "INTER_GROUP_RANDOM"],
 
     "FSDP":          ["INTRA_L1_RANDOM",
-                      "INTRA_GROUP_SAME_L1",
-                      "INTER_GROUP_SAME_L1"],
+                      "INTRA_GROUP_SAME_L1_2",
+                      "INTER_GROUP_SAME_L1_2"],
 
     "DP+PP":         ["INTRA_L1_RANDOM",
-                      "INTRA_GROUP_SAME_L1",
-                      "INTER_GROUP_SAME_L1"],
+                      "INTRA_GROUP_SAME_L1_2",
+                      "INTER_GROUP_SAME_L1_2"],
 
-    "DP+PP+TP":      ["INTRA_GROUP_SAME_L1",
-                      "INTER_GROUP_SAME_L1"],
+    "DP+PP+TP":      ["INTRA_GROUP_SAME_L1_4",
+                      "INTER_GROUP_SAME_L1_4"],
 
     "DP+PP+Expert":  ["INTRA_GROUP_RANDOM",
                       "INTER_GROUP_RANDOM"],
@@ -270,7 +272,7 @@ class Config:
 
     def __str__(self) -> str:
         slots = ", ".join(str(r) for r in self.runs)
-        return f"[{slots}]\n  util={int(self.utilization*100):3}%"
+        return f"[{slots}]\n  util={int(self.utilization*100):3}% nodes: {int(self.total_gpus/4)} ({int(self.total_gpus)} GPUs)"
 
 
 # ===========================================================================

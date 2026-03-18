@@ -148,7 +148,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-from command_map import get_command
+from command_map import get_command, _STRATEGIES_NUM_RUNS, _STRATEGIES_NUM_RUNS_B200
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 from utils.slurm import expand_slurm_nodelist
@@ -651,6 +651,17 @@ def main(args: argparse.Namespace) -> None:
         print("No experiments found in input JSON.", file=sys.stderr)
         sys.exit(1)
 
+    # Estimate total runtime
+    with open(args.profile_json, encoding="utf-8") as fh:
+        profile_data = json.load(fh)
+    
+    estimates = estimate_experiment_times(records, profile_data, args.gpu_model)
+    print(f"\n\033[36m{'='*72}")
+    print("RUNTIME ESTIMATION")
+    print(f"{'='*72}\033[0m")
+    print(f"  Total Baseline (Sequential) : {estimates['baseline_mins']:.2f} minutes")
+    print(f"  Total Concurrent Execution  : \033[32m{estimates['concurrent_mins']:.2f} minutes\033[0m")
+
     # ── Resolve placement mode ───────────────────────────────────────────────
     if args.placement_mode is None:
         placement_mode = _default_placement(interconnect)
@@ -800,6 +811,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="GPUs per physical node on the target system.  REQUIRED.",
     )
 
+    p.add_argument(
+        "--profile-json", type=str, required=True, metavar="FILE",
+        help="JSON file containing the single iteration time (in seconds) for each strategy."
+    )
+
     # Placement mode
     pm = p.add_argument_group("placement mode")
     pm.add_argument(
@@ -899,6 +915,54 @@ def _validate(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None
     if args.placement_mode != "device" and (args.gpus_per_node is None or args.gpus_per_node < 1):
         parser.error("--gpus-per-node must be ≥ 1.")
 
+def get_total_runs(strategy: str, gpu_model: str) -> int:
+    """Calculate total iterations (min_runs + max_runs) using command_map dicts."""
+    
+    # Select the correct dictionary based on the GPU model
+    target_dict = _STRATEGIES_NUM_RUNS_B200 if gpu_model == "B200" else _STRATEGIES_NUM_RUNS
+    
+    # Raise an exception if the strategy isn't found
+    if strategy not in target_dict:
+        raise ValueError(f"Unknown strategy '{strategy}' for GPU model '{gpu_model}'.")
+        
+    runs_tuple = target_dict[strategy]
+    
+    # Total runs = min_runs + max_runs
+    return runs_tuple[0] + runs_tuple[1]
+
+def estimate_experiment_times(records: list, profile_data: dict, gpu_model: str) -> dict:
+    """
+    Estimates the runtime of the baseline (sequential) vs concurrent placements.
+    profile_data: dict mapping strategy names to their single-iteration time in seconds.
+    """
+    total_baseline_secs = 0.0
+    total_concurrent_secs = 0.0
+
+    for rec in records:
+        runs = rec["config"]["runs"]
+        job_times = []
+        
+        for run in runs:
+            strat = run["strategy"]
+            iters = get_total_runs(strat, gpu_model)
+            
+            if strat not in profile_data:
+                raise ValueError(f"Strategy '{strat}' missing from the provided profile JSON.")
+            
+            time_per_iter = profile_data[strat]
+            job_times.append(iters * time_per_iter)
+        
+        if job_times:
+            # Baseline: Run sequentially, so sum the times of all jobs in the experiment
+            total_baseline_secs += sum(job_times)
+            # Concurrent: Run parallel, so the experiment takes as long as the slowest job
+            total_concurrent_secs += max(job_times)
+            
+    return {
+        "concurrent_mins": total_concurrent_secs / 60.0,
+        "baseline_mins": total_baseline_secs / 60.0,
+        "speedup": total_baseline_secs / total_concurrent_secs if total_concurrent_secs else 1.0
+    }
 
 if __name__ == "__main__":
     _p = build_parser()

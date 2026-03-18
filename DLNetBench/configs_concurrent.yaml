@@ -1,5 +1,5 @@
 variables:
-  nodes: [2, 4, 6, 8, 10, 12, 14, 16, 18, 32, 56, 64] # , 128, 256, 512, 1024]
+  nodes: [2, 4, 6, 8, 10, 12, 14, 16, 18, 32, 56, 64, 128, 256] # , 512, 1024]
   gpus: [2, 4, 8]
 
 isarco:
@@ -60,6 +60,8 @@ baldo:
   configs:
     - name: "{gpus}_gpus"
       gpus: "{gpus}"
+
+      
 leonardo:
   scheduler: slurm
 
@@ -69,7 +71,8 @@ leonardo:
     gpus: 4
     time: "00:03:00"
     partition: "boost_usr_prod"
-    qos: "normal"
+    # boost_qos_bprod
+    qos: "normal" 
     exclusive: true
     custom_headers:
       - "#SBATCH --ntasks-per-node=4"
