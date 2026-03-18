@@ -40,19 +40,22 @@ OUT_DIR = Path("results")
 # CSV parsing
 # ---------------------------------------------------------------------------
 
-def _parse_csv(stdout: str) -> pd.DataFrame | None:
-    """
-    Try to parse the stdout string as a CSV with a header row.
-    Returns a DataFrame on success, None if the content is absent or malformed.
-    """
+def _parse_csv(stdout: str) -> dict[str, pd.DataFrame] | None:
     text = stdout.strip()
     if not text:
         return None
     try:
-        df = pd.read_csv(io.StringIO(text))
-        if df.empty or df.columns.tolist() == []:
-            return None
-        return df
+        dfs = {}
+        for block in text.split("\n###\n"):
+            lines = block.strip().splitlines()
+            if not lines:
+                continue
+            df_name = lines[0].replace("###", "").strip()
+            csv_content = "\n".join(lines[1:])
+            df = pd.read_csv(io.StringIO(csv_content))
+            if not df.empty:
+                dfs[df_name] = df
+        return dfs if dfs else None
     except Exception:
         return None
 
