@@ -144,7 +144,7 @@ import math
 import os
 import subprocess
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -168,6 +168,27 @@ VALID_PLACEMENTS: dict = {
     "hierarchical": {"runtime", "random", "linear", "hardcoded"},
 }
 
+# In seconds
+RUNTIME_ESTIMATES = {
+    'leonardo__DP__8__A100':                5.935904,
+    'leonardo__DP__16__A100':               7.114242,
+    
+    'leonardo__FSDP__16__A100':             90.286853,
+    'leonardo__FSDP__32__A100':             89.194575,
+    
+    'leonardo__DP+PP__16__A100':            14.222422,
+    'leonardo__DP+PP__32__A100':            14.404939,
+    'leonardo__DP+PP__64__A100':            21.96247,
+    
+    'leonardo__DP+PP+TP__224__A100':        34.089267,
+    'leonardo__DP+PP+TP__256__A100':        47.625327,
+    'leonardo__DP+PP+TP__512__A100':        37.044405,
+    
+    'leonardo__DP+PP+Expert__512__A100':    214.022749,
+    'leonardo__DP+PP+Expert__1024__A100':   221.582458,
+}
+
+MIN_CONCURRENT_RUNTIME = 105 # FIXME
 
 # ---------------------------------------------------------------------------
 # Global JSON templates
@@ -406,14 +427,15 @@ def _fill_placeholders(obj, ppn: int,
     return obj
 
 
-def _extract_records(doc: dict) -> tuple[list, str]:
+def _extract_records(doc: dict) -> tuple[list, list, str]:
     """
     Return (records, interconnect_type).
     interconnect_type is "uniform" or "hierarchical".
     """
     if "hierarchical_experiments" in doc:
-        return doc["hierarchical_experiments"], "hierarchical"
-    return doc["experiments"], "uniform"
+        return doc["hierarchical_experiments"], doc["baseline_set_topology"], "hierarchical"
+    
+    return doc["experiments"], doc["baseline_set"], "uniform"
 
 
 def _default_placement(interconnect: str) -> str:
@@ -643,7 +665,7 @@ def main(args: argparse.Namespace) -> None:
     with open(args.input_json, encoding="utf-8") as fh:
         doc = json.load(fh)
 
-    records, interconnect = _extract_records(doc)
+    records, baselines, interconnect = _extract_records(doc)
     # print(interconnect)
     # print(records)
     # exit()
@@ -652,15 +674,21 @@ def main(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Estimate total runtime
-    with open(args.profile_json, encoding="utf-8") as fh:
-        profile_data = json.load(fh)
+    runtimes = defaultdict(dict)
+    for meta, runtime in RUNTIME_ESTIMATES.items():
+        system, strategy, gpus, compute = meta.split('__')
+        runtimes[f'{system}__{compute}'][f'{strategy}__{int(gpus)}'] = runtime
     
-    estimates = estimate_experiment_times(records, profile_data, args.gpu_model)
-    print(f"\n\033[36m{'='*72}")
-    print("RUNTIME ESTIMATION")
-    print(f"{'='*72}\033[0m")
-    print(f"  Total Baseline (Sequential) : {estimates['baseline_mins']:.2f} minutes")
-    print(f"  Total Concurrent Execution  : \033[32m{estimates['concurrent_mins']:.2f} minutes\033[0m")
+    for sys_compute, est_runtimes in runtimes.items():
+        estimates = estimate_experiment_times(records, baselines, est_runtimes, args.gpu_model)
+        print(f"\n\033[36m{'='*72}")
+        print(f"RUNTIME ESTIMATION for {sys_compute}")
+        print(f"{'='*72}\033[0m")
+        print(f"  Total Baseline (Sequential), #runs={len(estimates['baseline_times']):<3}  : {estimates['baseline_mins']:.2f} minutes")
+        print(f"  Total Concurrent Execution,  #runs={len(estimates['concurrent_times']):<3}  : {estimates['concurrent_mins']:.2f} minutes")
+        print(f"{'-'*72}")
+        print(f"  Baseline times   (seconds): {estimates['baseline_times']}")
+        print(f"  Concurrent times (seconds): {estimates['concurrent_times'][0]} and {len(estimates['concurrent_times'])-1} more")
 
     # ── Resolve placement mode ───────────────────────────────────────────────
     if args.placement_mode is None:
@@ -811,11 +839,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="GPUs per physical node on the target system.  REQUIRED.",
     )
 
-    p.add_argument(
-        "--profile-json", type=str, required=True, metavar="FILE",
-        help="JSON file containing the single iteration time (in seconds) for each strategy."
-    )
-
     # Placement mode
     pm = p.add_argument_group("placement mode")
     pm.add_argument(
@@ -930,38 +953,41 @@ def get_total_runs(strategy: str, gpu_model: str) -> int:
     # Total runs = min_runs + max_runs
     return runs_tuple[0] + runs_tuple[1]
 
-def estimate_experiment_times(records: list, profile_data: dict, gpu_model: str) -> dict:
+def estimate_experiment_times(records: list, baselines: list, profile_data: dict, gpu_model: str) -> dict:
     """
     Estimates the runtime of the baseline (sequential) vs concurrent placements.
     profile_data: dict mapping strategy names to their single-iteration time in seconds.
     """
+    baseline_secs = []
     total_baseline_secs = 0.0
+    concurrent_secs = []
     total_concurrent_secs = 0.0
-
+    
+    for bas in baselines:
+        time = profile_data[f'{bas["run"]["strategy"]}__{bas["run"]["gpus"]}']
+        baseline_secs.append(time)
+        total_baseline_secs += time
+    
     for rec in records:
         runs = rec["config"]["runs"]
         job_times = []
         
         for run in runs:
             strat = run["strategy"]
-            iters = get_total_runs(strat, gpu_model)
+            gpus = run["gpus"]
             
-            if strat not in profile_data:
-                raise ValueError(f"Strategy '{strat}' missing from the provided profile JSON.")
-            
-            time_per_iter = profile_data[strat]
-            job_times.append(iters * time_per_iter)
+            time_per_iter = profile_data[f'{strat}__{gpus}']
+            job_times.append(time_per_iter)
         
         if job_times:
-            # Baseline: Run sequentially, so sum the times of all jobs in the experiment
-            total_baseline_secs += sum(job_times)
-            # Concurrent: Run parallel, so the experiment takes as long as the slowest job
-            total_concurrent_secs += max(job_times)
+            concurrent_secs.append(job_times)
+            total_concurrent_secs += max(MIN_CONCURRENT_RUNTIME, max(job_times))
             
     return {
+        "concurrent_times": concurrent_secs,
+        "baseline_times": baseline_secs,
         "concurrent_mins": total_concurrent_secs / 60.0,
-        "baseline_mins": total_baseline_secs / 60.0,
-        "speedup": total_baseline_secs / total_concurrent_secs if total_concurrent_secs else 1.0
+        "baseline_mins": total_baseline_secs / 60.0
     }
 
 if __name__ == "__main__":

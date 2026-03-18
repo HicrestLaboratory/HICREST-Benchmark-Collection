@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from compact_csv import compact_all
 from parsers import stdout_to_csv_multi
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
@@ -137,6 +138,7 @@ def main() -> None:
     job_summaries: list[dict] = []
     jobs_runtimes: dict = {}
     jobs_stdout_size: dict = {}
+    jobs_stdout_size_compact: dict = {}
 
     for job in jobs:
         stdout = job.get_stdout()
@@ -187,7 +189,9 @@ def main() -> None:
         pairs.append((meta, dfs))
         job_key = f"{cluster_name}__{meta.get('strategy')}__{meta.get('gpus')}__{meta.get('gpu_model')}"
         jobs_runtimes[job_key] = job.get_run_time()
-        jobs_stdout_size[job_key] = format_bytes(job.get_stdout_path().stat().st_size)
+        jobs_stdout_size[job_key] = job.get_stdout_path().stat().st_size
+        # TODO comment
+        jobs_stdout_size_compact[job_key] = len(compact_all(job.get_stdout()))
         total_ok += 1
         job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_OK})
         
@@ -198,8 +202,15 @@ def main() -> None:
     
     print()
     print("=== Stdout sizes ===")
-    print(jobs_stdout_size)
+    print({k: format_bytes(s) for k, s in jobs_stdout_size.items()})
+    print('--- Compact ---')
+    print({k: format_bytes(s) for k, s in jobs_stdout_size_compact.items()})
+    print('--- Ratios ---')
+    print({k: f'{jobs_stdout_size_compact[k]/s*100.0:.2f}%' for k, s in jobs_stdout_size.items()})
+    print('--- Assuming 1 compact run of ALL (generous upperbound) ---')
+    print(format_bytes(sum([int(s) for s in jobs_stdout_size_compact.values()])))
     print()
+    # exit() # FIXME
 
     # ------------------------------------------------------------------
     # Summary table
