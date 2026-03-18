@@ -288,7 +288,7 @@ def plot_breakdown(
     ax.set_ylabel('Time (%)', fontsize=12)
     ax.set_ylim(0, 110)
     ax.set_title(title, fontsize=14, fontweight='bold')
-    ax.legend(fontsize=8, ncol=2, loc='upper right')
+    ax.legend(fontsize=8, ncol=4, loc='lower center', bbox_to_anchor=(0.5, 1.035))
     ax.grid(True, alpha=0.3, axis='y')
 
     plt.tight_layout()
