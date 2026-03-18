@@ -133,7 +133,7 @@ STOCHASTIC_TIER_CONFIG: dict[str, dict] = {
     "medium": {
         "tier_weight": 0.20,
         "sizes": [16, 32, 64, 512],
-        "sub_weights": {512: 0.15},
+        "sub_weights": {512: 0.25},
     },
     "large": {
         "tier_weight": 0.05,
@@ -1611,7 +1611,7 @@ def main(cfg: argparse.Namespace) -> None:
     utilizations = _utilization_grid(cfg.util_min, cfg.util_max, cfg.util_steps)
 
     gen_flags = {
-        "A": not cfg.use_topology,
+        "A": not cfg.use_topology or cfg.include_uniform_patterns,
         "B": False,
         "C": False,
         "D": False,
@@ -1825,6 +1825,8 @@ examples:
                      default=USE_TOPOLOGY, help="Enable hierarchical placement analysis.")
     tex.add_argument("--no-topology", dest="use_topology", action="store_false",
                      help="Skip placement analysis (flat model only).")
+    tg.add_argument("--include-uniform-patterns", action="store_true",
+                     default=False, help="Enable uniform patterns.")
     tg.add_argument("--topology-program", default=TOPOLOGY_PROGRAM, metavar="PATH",
                     help=f"Path to topology oracle (default: '{TOPOLOGY_PROGRAM}'). "
                          "Required commands: find_placement, shuffle_within_class.")

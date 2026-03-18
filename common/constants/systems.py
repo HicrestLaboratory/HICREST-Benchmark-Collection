@@ -64,7 +64,7 @@ SYSTEM_INTERCONNECT_SPECS = {
     'jupiter': {
         'bw_gpu_gpu': 150,  # 4 x NVLink 4.0
         'bw_gpu_cpu': 450,  # NVLink-C2C
-        'bw_cpu_nic': 64,   # ?
+        'bw_cpu_nic': 200,  #
         'bw_nic_l1':  200,  # Infiniband HDR
         'bw_l1_l2':   400,  # Dragonfly+
         'bw_l2_l2':   400,  # Dragonfly+

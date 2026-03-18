@@ -90,7 +90,7 @@ Baseline experiments are **isolated runs**: one job at a time, no concurrent tra
 
 **Construction:** For each strategy, runs are sampled across all feasible GPU counts, using the full range of placement classes.
 
-**In total we have 29 baselines that run sequentially shall take approximately 30 minutes.**
+**In total we have 29 baselines that run sequentially shall take approximately 40 minutes.**
 
 ---
 

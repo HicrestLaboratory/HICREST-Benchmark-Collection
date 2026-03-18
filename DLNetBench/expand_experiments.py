@@ -964,7 +964,9 @@ def estimate_experiment_times(records: list, baselines: list, profile_data: dict
     total_concurrent_secs = 0.0
     
     for bas in baselines:
-        time = profile_data[f'{bas["run"]["strategy"]}__{bas["run"]["gpus"]}']
+        if 'run' in bas:
+            bas = bas['run']
+        time = profile_data[f'{bas["strategy"]}__{bas["gpus"]}']
         baseline_secs.append(time)
         total_baseline_secs += time
     

@@ -22,6 +22,7 @@ nvl72:
     time: "00:03:00"
     # gpus: 4
     # qos: "?"
+    cpus_per_task: 8
     exclusive: true
     custom_headers:
       - "#SBATCH --ntasks-per-node=4"

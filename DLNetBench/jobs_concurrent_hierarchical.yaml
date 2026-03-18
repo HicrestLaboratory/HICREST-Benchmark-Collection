@@ -1,13 +1,14 @@
 sequential: true
 
 variables:
-  nodes: [64]             # Ensure these are enough for the experiments that will run
-  system: ['leonardo']    # Does not matter if placement != runtime
+  nodes: [18]          # Ensure these are enough for the experiments that will run
+  system: ['nvl72']    # Does not matter if placement != runtime
   tasks_per_node: [4]
   cpus_per_task: [8]
 
   # -- Change as needed --
-  experiment: "experiments_testino/"
+  experiment: "experiments_nvl72/"
+  # experiment: "experiments_testino/"
   # experiment: "experiments/"
 
   walltime: [90]
