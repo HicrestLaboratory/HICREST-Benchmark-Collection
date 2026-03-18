@@ -150,7 +150,7 @@ def main() -> None:
             continue
         
         try:
-            csv_dict = stdout_to_csv_multi(stdout)
+            csv_dict,_ = stdout_to_csv_multi(stdout)
             dfs = _parse_csv_multi(csv_dict)
         except Exception as e:
             dfs = None

@@ -251,7 +251,6 @@ def stdout_to_csv_multi(stdout_content):
                 
                 for mb_idx in range(num_microbatches):
                     # Forward phase
-                    print(f"Debug: rank={rank}, stage={stage_id}, tp_id={tp_id}, len_runtimes={len(runtimes)}, len_pp_comm_times={len(pp_comm_times)}, start_idx={start_idx}, mb_idx={mb_idx}")
                     fwd_time = pp_comm_times[start_idx + mb_idx]
                     pp_comm_rows.append((run_idx, rank, mb_idx, 'fwd', fwd_time))
                 
@@ -406,7 +405,7 @@ def stdout_to_csv_multi(stdout_content):
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}")
     
-    return result_dfs
+    return result_dfs, strategy_name
 
 # ---------------------------------------------------------------------------
 # Internal state machine types

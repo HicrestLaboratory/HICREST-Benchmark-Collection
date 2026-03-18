@@ -46,6 +46,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
+from compact_csv import compact_all
+
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 from utils.slurm import expand_slurm_nodelist
 from JobPlacer.cli_wrapper import JobPlacer, JobRequest, PlacementResult
@@ -325,7 +327,7 @@ def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
             return transform(raw)
         return raw
 
-    stdout_content = _read_stream("stdout_path", None)
+    stdout_content = _read_stream("stdout_path", compact_all)
     stderr_content = _read_stream("stderr_path", None)
 
     block = (
