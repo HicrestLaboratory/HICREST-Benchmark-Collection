@@ -27,6 +27,29 @@ Output:
   - Each job run writes stdout/stderr to separate files under --output-dir.
   - When a job finishes (naturally or by signal) its files are printed to stdout
     together with a metadata header describing what was run.
+  - With --no-compact: compact_all is skipped; output file paths are printed instead
+    and output files are preserved even after the scheduler exits.
+
+Performance notes (for ~500 concurrent processes):
+  - drain_and_print runs in a ThreadPoolExecutor so compact_all (which may take
+    seconds) never blocks the main poll loop or delays job respawning.
+  - The poll loop itself is O(n) syscalls per POLL_INTERVAL tick; with 500 jobs
+    and POLL_INTERVAL=0.3s this is well within budget on any modern kernel.
+  - The scheduler process itself is single-threaded in the poll loop; the worker
+    threads are only used for I/O-bound drain work.
+
+Grace-Hopper / Grace-Blackwell affinity (--gh-affinity):
+  On GH200/GB200 SoC nodes, each CPU die is NVLink-attached to one specific GPU.
+  Crossing that boundary (i.e., a rank running on the wrong CPU socket for its GPU)
+  causes all GPU↔CPU transfers to traverse the inter-socket fabric and can cut
+  effective bandwidth by 30-50%.  When --gh-affinity is set the scheduler appends
+  --gpu-bind=closest --cpu-bind=closest to every srun invocation.  These flags
+  instruct SLURM's topology layer to pin each rank to the CPU cores that are
+  NUMA-local to its assigned GPU, which is the correct behaviour on both Grace-Hopper
+  and Grace-Blackwell without requiring a hard-coded core map.
+  Requirements: SLURM ≥ 21.08 and that the node's NUMA/GPU topology is correctly
+  reported to SLURM (it is on well-configured Leonardo-class / Alps-class systems).
+  Do NOT combine with a manual --cpu-bind in --srun-extra; they will conflict.
 
 Usage:
     python slurm_scheduler.py -p pattern.json --nodelist node01,node02,... [options]
@@ -42,11 +65,10 @@ import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
-
-from compact_csv import compact_all
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 from utils.slurm import expand_slurm_nodelist
@@ -60,6 +82,10 @@ TASKS_PER_NODE  = 4   # For almost any system
 CPUS_PER_TASK   = 8   # For Leonardo
 POLL_INTERVAL   = 0.3 # seconds between status polls
 
+# Thread pool used for drain_and_print so compact_all never blocks the poll loop.
+# Size: enough to absorb bursts of simultaneous job completions without queueing.
+DRAIN_WORKERS   = 16
+
 DEBUG_ENABLED   = False
 
 # ---------------------------------------------------------------------------
@@ -68,6 +94,24 @@ DEBUG_ENABLED   = False
 
 def ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def run_tag() -> str:
+    """
+    A short string that uniquely identifies this scheduler invocation.
+    Incorporates the wall-clock time and the SLURM job ID when available,
+    so output files from repeated runs on the same JSON are trivially
+    distinguishable and sortable.
+
+    Example:  20260317_190909_slurm42731
+              20260317_190909_pid18234   (outside SLURM)
+    """
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    slurm_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("SLURM_JOBID")
+    suffix   = f"slurm{slurm_id}" if slurm_id else f"pid{os.getpid()}"
+    return f"{stamp}_{suffix}"
+
+# Computed once at startup so all files in one run share the same tag.
+RUN_TAG: str = ""
 
 def debug(msg: str) -> None:
     if DEBUG_ENABLED:
@@ -106,51 +150,38 @@ def _wait_for_pgroup(pgid: int, timeout: float) -> bool:
     """
     Poll /proc until no process in *pgid* remains, or *timeout* seconds elapse.
     Returns True if the group is empty before the deadline, False otherwise.
-
-    We cannot use waitpid(-pgid, ...) because the workers are not children of
-    this process — they are grandchildren of mpirun/srun.  /proc is the only
-    portable way to observe them on Linux.
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            # os.killpg with signal 0 checks existence without sending a signal
             os.killpg(pgid, 0)
         except ProcessLookupError:
-            return True   # group is gone
+            return True
         except PermissionError:
-            return True   # group exists but we can't signal it — treat as gone
+            return True
         time.sleep(0.1)
-    return False   # still running after timeout
+    return False
 
 
 def _graceful_kill(proc: subprocess.Popen, sig: signal.Signals, timeout: float = 30.0) -> None:
     """
     Send *sig* to the entire process group of *proc*, wait for every process in
-    the group to exit (not just the mpirun/srun parent), then fall back to
-    SIGKILL if they haven't all gone within *timeout* seconds.
-
-    Why wait for the whole group and not just proc:
-      mpirun/srun may exit (making proc.wait() return) while worker ranks are
-      still running their signal handler and writing final output.  Reading the
-      output files before those writes complete produces truncated or empty data.
+    the group to exit, then fall back to SIGKILL if they haven't gone within
+    *timeout* seconds.
     """
     pgid = os.getpgid(proc.pid)
 
     try:
         os.killpg(pgid, sig)
     except ProcessLookupError:
-        pass  # already gone
+        pass
 
-    # Wait for mpirun/srun itself first (updates proc.returncode)
     try:
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         pass
 
-    # Now wait for every worker in the process group to finish writing and exit
     if not _wait_for_pgroup(pgid, timeout=timeout):
-        # Workers are still alive after the full timeout — escalate to SIGKILL
         log(f"WARNING: process group {pgid} did not exit within {timeout}s after "
             f"{sig.name}; sending SIGKILL.")
         try:
@@ -159,7 +190,6 @@ def _graceful_kill(proc: subprocess.Popen, sig: signal.Signals, timeout: float =
             pass
         _wait_for_pgroup(pgid, timeout=5.0)
 
-    # Ensure proc.returncode is populated even if wait() timed out earlier
     proc.poll()
 
 def _close_handles(proc: subprocess.Popen) -> None:
@@ -180,10 +210,11 @@ def launch_job(
     repetition: int,
     command: str,
     strategy: str,
-    assigned_resources: list,   # node names (srun) or device IDs as strings (mpirun)
+    assigned_resources: list,
     bind_to_device: bool,
     gpus_per_node: int,
     extra_srun_flags: list[str],
+    gh_affinity: bool,
     out_dir: Path,
     tasks_per_node: int,
     cpus_per_task: int,
@@ -192,8 +223,15 @@ def launch_job(
     """
     Build and launch one job. Returns the Popen handle with metadata attributes.
 
+    Output files are named:
+        <job_name>_rep<repetition>_<RUN_TAG>.stdout / .stderr
+
+    This naming scheme ensures files from different scheduler invocations on the
+    same JSON are non-overlapping and can be correlated back to a specific SLURM
+    job / wall-clock time without any external index.
+
     Metadata attributes attached to the proc object:
-      .uid              – unique run identifier  (job_name + repetition counter)
+      .uid              – unique run identifier
       .job_name         – original job key from the JSON
       .repetition       – how many times this job has been launched (0-indexed)
       .strategy         – strategy string from the JSON
@@ -204,14 +242,13 @@ def launch_job(
       .stderr_path      – Path to stderr file
       .start_ts         – launch timestamp string
     """
-    uid = f"{job_name}_rep{repetition}"
+    uid = f"{job_name}_rep{repetition}_{RUN_TAG}"
     stdout_path = out_dir / f"{uid}.stdout"
     stderr_path = out_dir / f"{uid}.stderr"
 
     if bind_to_device:
-        # resources are device IDs (integers stored as strings)
-        device_ids   = ",".join(str(d) for d in assigned_resources)
-        num_ranks    = len(assigned_resources)
+        device_ids = ",".join(str(d) for d in assigned_resources)
+        num_ranks  = len(assigned_resources)
         # cmd = [
         #     "mpirun",
         #     "-np", str(num_ranks),
@@ -231,7 +268,6 @@ def launch_job(
             "-d", device_ids,
         ]
     else:
-        # resources are node hostnames
         nodelist_str = ",".join(assigned_resources)
         num_nodes    = len(assigned_resources)
         cmd = [
@@ -240,15 +276,19 @@ def launch_job(
             "--export=ALL",
             f"--nodelist={nodelist_str}",
             f"--nodes={num_nodes}",
-            f"--ntasks={num_nodes*tasks_per_node}",
+            f"--ntasks={num_nodes * tasks_per_node}",
             f"--ntasks-per-node={tasks_per_node}",
-            # f"--gres=gpu:{tasks_per_node}",
             f"--cpus-per-task={cpus_per_task}",
             f"--job-name={uid}",
-            # f"--gpu-bind=closest",
             *extra_srun_flags,
-            *command.split(),
         ]
+        # Grace-Hopper / Grace-Blackwell CPU-GPU affinity.
+        # Injected just before the user command so it cannot be accidentally
+        # overridden by extra_srun_flags (which precede it in the list above).
+        # See module docstring for the rationale.
+        if gh_affinity:
+            cmd += ["--gpu-bind=closest", "--cpu-bind=closest"]
+        cmd += command.split()
 
     start = ts()
     debug(f"Launching [{uid}]: {' '.join(cmd)}")
@@ -256,17 +296,17 @@ def launch_job(
 
     proc = _start_process(cmd, stdout_path, stderr_path)
 
-    proc.uid         = uid           # type: ignore[attr-defined]
-    proc.job_name    = job_name      # type: ignore[attr-defined]
-    proc.repetition  = repetition    # type: ignore[attr-defined]
-    proc.strategy    = strategy      # type: ignore[attr-defined]
-    proc.resources   = assigned_resources  # type: ignore[attr-defined]
-    proc.bind_to_device  = bind_to_device    # type: ignore[attr-defined]
-    proc.app         = command       # type: ignore[attr-defined]
-    proc.stdout_path = stdout_path   # type: ignore[attr-defined]
-    proc.stderr_path = stderr_path   # type: ignore[attr-defined]
-    proc.start_ts    = start         # type: ignore[attr-defined]
-    proc.gpus_per_node = gpus_per_node  # type: ignore[attr-defined]
+    proc.uid             = uid                  # type: ignore[attr-defined]
+    proc.job_name        = job_name             # type: ignore[attr-defined]
+    proc.repetition      = repetition           # type: ignore[attr-defined]
+    proc.strategy        = strategy             # type: ignore[attr-defined]
+    proc.resources       = assigned_resources   # type: ignore[attr-defined]
+    proc.bind_to_device  = bind_to_device       # type: ignore[attr-defined]
+    proc.app             = command              # type: ignore[attr-defined]
+    proc.stdout_path     = stdout_path          # type: ignore[attr-defined]
+    proc.stderr_path     = stderr_path          # type: ignore[attr-defined]
+    proc.start_ts        = start                # type: ignore[attr-defined]
+    proc.gpus_per_node   = gpus_per_node        # type: ignore[attr-defined]
     return proc
 
 # ---------------------------------------------------------------------------
@@ -278,27 +318,32 @@ METADATA_FIELDS = [
     "resources", "bind_to_device", "app", "start_ts",
 ]
 
-def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
-                    log_path: Optional[Path]) -> None:
+def drain_and_print(
+    proc: subprocess.Popen,
+    exit_code: Optional[int],
+    log_path: Optional[Path],
+    no_compact: bool,
+    keep_files: bool,
+) -> None:
     """
-    Flush file handles, then emit a single self-contained block to stdout
-    (and optionally log_path) with the following structure:
+    Flush file handles, then emit a self-contained block to stdout.
 
-        ========================================================================
-        JOB OUTPUT  uid=<uid>
-        --- metadata ---
-          key: value
-          ...
-        --- stdout ---
-        <transformed stdout content>
-        --- stderr ---
-        <stderr content>
-        ========================================================================
+    When no_compact=True:
+      - compact_all is never called (avoids potentially multi-second stalls).
+      - stdout/stderr file *paths* are printed instead of their contents.
+      - Files are not deleted (keep_files is implicitly True in this mode).
+
+    When no_compact=False (default):
+      - compact_all is applied to stdout; raw stderr is printed.
+      - Files are deleted afterwards unless keep_files=True.
+
+    This function is designed to be called from a thread pool so that the
+    potentially slow compact_all transform never blocks the main poll loop.
     """
     _close_handles(proc)
 
-    uid = proc.uid  # type: ignore[attr-defined]
-    end = ts()
+    uid      = proc.uid   # type: ignore[attr-defined]
+    end      = ts()
 
     meta_lines = [f"  {k}: {getattr(proc, k, 'N/A')}" for k in METADATA_FIELDS]
     meta_lines.append(f"  exit_code: {exit_code}")
@@ -307,35 +352,48 @@ def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
 
     sep = "=" * 72
 
-    def _read_stream(path_attr: str, transform) -> str:
-        fpath: Optional[Path] = getattr(proc, path_attr, None)
-        if fpath is None:
-            return "  <no output file>\n"
-        try:
-            raw = fpath.read_text(errors="replace")
-        except FileNotFoundError:
-            return f"  <output file not found: {fpath}>\n"
-        if transform:
-            if exit_code != 0:
-                try:
-                    return transform(raw)
-                except Exception as exc:
-                    return (
-                        f"  <transform on stdout failed with exit_code={exit_code}: {exc}>\n"
-                        f"  Raw output follows:\n{raw}"
-                    )
-            return transform(raw)
-        return raw
+    if no_compact:
+        stdout_section = (
+            f"  stdout: {proc.stdout_path}\n"    # type: ignore[attr-defined]
+            f"  stderr: {proc.stderr_path}\n"    # type: ignore[attr-defined]
+        )
+        stderr_section = ""
+    else:
+        def _read_and_transform(path: Path, transform) -> str:
+            try:
+                raw = path.read_text(errors="replace")
+            except FileNotFoundError:
+                return f"  <output file not found: {path}>\n"
+            if transform:
+                if exit_code != 0:
+                    try:
+                        return transform(raw)
+                    except Exception as exc:
+                        return (
+                            f"  <transform failed with exit_code={exit_code}: {exc}>\n"
+                            f"  Raw output follows:\n{raw}"
+                        )
+                return transform(raw)
+            return raw
 
-    stdout_content = _read_stream("stdout_path", compact_all)
-    stderr_content = _read_stream("stderr_path", None)
+        from compact_csv import compact_all  # local import so --no-compact avoids the import entirely
+
+        stdout_section = _read_and_transform(proc.stdout_path, compact_all)   # type: ignore[attr-defined]
+        stderr_section = _read_and_transform(proc.stderr_path, None)          # type: ignore[attr-defined]
+
+        if not keep_files:
+            for p in (proc.stdout_path, proc.stderr_path):                    # type: ignore[attr-defined]
+                try:
+                    p.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     block = (
         f"\n{sep}\n"
         f"JOB OUTPUT  uid={uid}\n"
         f"--- metadata ---\n{meta_block}\n"
-        f"--- stdout ---\n{stdout_content}\n"
-        f"--- stderr ---\n{stderr_content}"
+        f"--- stdout ---\n{stdout_section}\n"
+        f"--- stderr ---\n{stderr_section}"
         f"{sep}\n"
     )
 
@@ -351,25 +409,27 @@ def drain_and_print(proc: subprocess.Popen, exit_code: Optional[int],
 class PlacementOracle:
     """
     Thin wrapper around the external placement oracle program.
-
-    Queried once per experiment in hardcoded mode.  If unreachable, a stub is
-    used that always returns infeasible so every experiment file is still written.
     """
 
     def __init__(
         self,
         system: str,
         reserved_nodes: list,
+        use_topo_files: bool = False,
     ) -> None:
-        debug(f"PlacementOracle init for system='{system}'")
+        debug(f"PlacementOracle init for system='{system}', use_topo_files={use_topo_files}")
         self.program = '../common/JobPlacer/target/release/job_placer_placement_classes'
-        self.oracle = JobPlacer(
+
+        kwargs: dict = dict(
             system=system,
-            topology_file=f'../common/JobPlacer/{system}_topo.txt', # FIXME
-            sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt', # FIXME
             nodelist=reserved_nodes,
-            binary=self.program
+            binary=self.program,
         )
+        if use_topo_files:
+            kwargs["topology_file"] = f'../common/JobPlacer/{system}_topo.txt'
+            kwargs["sinfo_file"]    = f'../common/JobPlacer/{system}_sinfo.txt'
+
+        self.oracle = JobPlacer(**kwargs)
         self.system = system
         self.reserved_nodes: list = reserved_nodes or []
         self._available = self._probe()
@@ -410,7 +470,13 @@ class PlacementOracle:
         return res
 
 
-def assign_resources(pattern: dict, available_resources: list, use_devices: bool, system: Union[str, None] = None) -> dict:
+def assign_resources(
+    pattern: dict,
+    available_resources: list,
+    use_devices: bool,
+    system: Union[str, None] = None,
+    use_topo_files: bool = False,
+) -> dict:
     """
     Read the pattern JSON, apply the placement strategy, and return:
 
@@ -418,9 +484,6 @@ def assign_resources(pattern: dict, available_resources: list, use_devices: bool
       "small": { "job_key": {"strategy": ..., "resources": [...], "command": ..., "gpus": ...}, ... },
       "large": { ... }
     }
-
-    When use_devices=True the resource key means GPU count (integers → device IDs).
-    When use_devices=False the resource key means node count (strings → hostnames).
     """
     placement = pattern.get("placement", "linear").lower()
 
@@ -428,13 +491,11 @@ def assign_resources(pattern: dict, available_resources: list, use_devices: bool
 
     pool = available_resources.copy()
 
-    # ---- collect all jobs and their resource requirements ----
     all_groups = [
         ("small", pattern.get("small_jobs", {})),
         ("large", pattern.get("large_jobs", {})),
     ]
 
-    # For oracle / random we need the full list upfront
     oracle_payload = []
     for group_label, jobs_dict in all_groups:
         for job_key, job_info in jobs_dict.items():
@@ -452,9 +513,7 @@ def assign_resources(pattern: dict, available_resources: list, use_devices: bool
             f"Jobs require {total_needed} resources but only {len(pool)} are available."
         )
 
-    # ---- resolve assignments ----
     if placement == "device":
-        # same as linear but with integer IDs
         assignments = {}
         for item in oracle_payload:
             assignments[item["job_id"]] = [pool.pop(0) for _ in range(item["req"])]
@@ -480,7 +539,11 @@ def assign_resources(pattern: dict, available_resources: list, use_devices: bool
             assignments[item["job_id"]] = [pool.pop(0) for _ in range(item["req"])]
 
     elif placement == "runtime":
-        oracle = PlacementOracle(system=system, reserved_nodes=available_resources)
+        oracle = PlacementOracle(
+            system=system,
+            reserved_nodes=available_resources,
+            use_topo_files=use_topo_files,
+        )
         assignments = oracle.find_placement(oracle_payload)
         if not assignments.ok:
             sys.exit(100)
@@ -489,7 +552,6 @@ def assign_resources(pattern: dict, available_resources: list, use_devices: bool
     else:
         raise ValueError(f"Unknown placement strategy: '{placement}'")
 
-    # ---- build result dict ----
     result = {"small": {}, "large": {}}
     for group_label, jobs_dict in all_groups:
         for job_key, job_info in jobs_dict.items():
@@ -518,36 +580,53 @@ def run_scheduler(
     kill_signal: signal.Signals,
     tasks_per_node: int,
     cpus_per_task: int,
+    gh_affinity: bool,
+    no_compact: bool,
+    keep_files: bool,
     log_path: Optional[Path],
 ) -> None:
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # repetition counters per job name
     rep_counter: dict[str, int] = {}
+
+    # Drain futures: we track them so we can wait for all of them before exit.
+    drain_futures: list[Future] = []
+    executor = ThreadPoolExecutor(max_workers=DRAIN_WORKERS)
+
+    def _submit_drain(proc: subprocess.Popen, exit_code: Optional[int]) -> None:
+        """
+        Submit drain_and_print to the thread pool.
+        This returns immediately so the poll loop is never blocked by
+        compact_all or file I/O.
+        """
+        fut = executor.submit(
+            drain_and_print, proc, exit_code, log_path, no_compact, keep_files
+        )
+        drain_futures.append(fut)
 
     def _launch(job_key: str, group: str) -> subprocess.Popen:
         info = jobs[group][job_key]
         rep  = rep_counter.get(job_key, 0)
         rep_counter[job_key] = rep + 1
         return launch_job(
-            job_name         = job_key,
-            repetition       = rep,
-            command          = info["command"],
-            strategy         = info["strategy"],
+            job_name           = job_key,
+            repetition         = rep,
+            command            = info["command"],
+            strategy           = info["strategy"],
             assigned_resources = info["resources"],
-            bind_to_device   = bind_to_device,
-            gpus_per_node    = gpus_per_node,
-            extra_srun_flags = extra_flags,
-            out_dir          = out_dir,
-            tasks_per_node   = tasks_per_node,
-            cpus_per_task    = cpus_per_task,
-            log_path         = log_path,
+            bind_to_device     = bind_to_device,
+            gpus_per_node      = gpus_per_node,
+            extra_srun_flags   = extra_flags,
+            gh_affinity        = gh_affinity,
+            out_dir            = out_dir,
+            tasks_per_node     = tasks_per_node,
+            cpus_per_task      = cpus_per_task,
+            log_path           = log_path,
         )
 
     have_large_jobs = bool(jobs["large"])
 
-    # Launch everything
     small_procs: list[subprocess.Popen] = [_launch(k, "small") for k in jobs["small"]]
     large_procs: list[subprocess.Popen] = [_launch(k, "large") for k in jobs["large"]]
 
@@ -560,12 +639,12 @@ def run_scheduler(
 
         time.sleep(POLL_INTERVAL)
 
-        # -- check walltime (only relevant when there are no large jobs) --
+        # -- check walltime --
         if not have_large_jobs and time.time() > deadline:
             log(f"Walltime of {walltime}s reached. Terminating all jobs.", log_path)
             for p in small_procs:
                 _graceful_kill(p, kill_signal)
-                drain_and_print(p, p.returncode, log_path)
+                _submit_drain(p, p.returncode)
             break
 
         # -- poll large jobs --
@@ -576,7 +655,7 @@ def run_scheduler(
                 still_large.append(p)
             else:
                 log(f"FINISH (large) [{p.uid}]  exit_code={rc}", log_path)
-                drain_and_print(p, rc, log_path)
+                _submit_drain(p, rc)
         large_procs = still_large
 
         # -- early-exit when all large jobs are done --
@@ -584,10 +663,12 @@ def run_scheduler(
             log("All large jobs finished. Terminating remaining small jobs.", log_path)
             for p in small_procs:
                 _graceful_kill(p, kill_signal)
-                drain_and_print(p, p.returncode, log_path)
+                _submit_drain(p, p.returncode)
             break
 
         # -- poll small jobs and respawn finished ones --
+        # Drain is submitted to thread pool; respawn happens immediately after,
+        # so compact_all on the old process never delays the new one launching.
         still_small = []
         for p in small_procs:
             rc = p.poll()
@@ -595,17 +676,29 @@ def run_scheduler(
                 still_small.append(p)
             else:
                 log(f"FINISH (small) [{p.uid}]  exit_code={rc}", log_path)
-                drain_and_print(p, rc, log_path)
-                # Respawn: same job key, reusing the same resource assignment
+                _submit_drain(p, rc)
                 still_small.append(_launch(p.job_name, "small"))  # type: ignore[attr-defined]
         small_procs = still_small
 
-    # cleanup
-    try:
-        shutil.rmtree(out_dir)
-        log(f"Removed temporary output directory: {out_dir}", log_path)
-    except Exception as exc:
-        log(f"WARNING: could not remove {out_dir}: {exc}", log_path)
+    # Wait for all background drain tasks to complete before touching the directory.
+    log("Waiting for drain tasks to complete…", log_path)
+    executor.shutdown(wait=True)
+
+    # Reap any drain exceptions so they surface rather than disappearing silently.
+    for fut in drain_futures:
+        exc = fut.exception()
+        if exc:
+            log(f"WARNING: drain task raised: {exc}", log_path)
+
+    # Only remove the output directory when we are not preserving files.
+    if no_compact or keep_files:
+        log(f"Output files preserved in: {out_dir}", log_path)
+    else:
+        try:
+            shutil.rmtree(out_dir)
+            log(f"Removed temporary output directory: {out_dir}", log_path)
+        except Exception as exc:
+            log(f"WARNING: could not remove {out_dir}: {exc}", log_path)
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -626,9 +719,10 @@ def parse_args() -> argparse.Namespace:
                                 help="Number of GPU devices available (device IDs will be 0..N-1).")
 
     p.add_argument("--output-dir", default=None, metavar="DIR",
-                   help="Directory for per-job stdout/stderr files (cleaned up on exit).")
+                   help="Directory for per-job stdout/stderr files (cleaned up on exit "
+                        "unless --no-compact or --keep-files is set).")
     p.add_argument("--srun-extra", default="", metavar="FLAGS",
-                   help='Extra flags appended to every srun/mpirun invocation, e.g. "--mem=4G".')
+                   help='Extra flags appended to every srun invocation, e.g. "--mem=4G".')
     p.add_argument("--walltime", type=int, default=120, metavar="SECONDS",
                    help="Max run time in seconds (used when there are no large jobs). Default: 120.")
     p.add_argument("--tasks-per-node", type=int, default=TASKS_PER_NODE,
@@ -640,30 +734,49 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--kill-signal", default="SIGTERM", metavar="SIGNAL",
                    help="Signal used to terminate jobs gracefully. Default: SIGTERM.")
     p.add_argument("--system", type=str, default=None,
-                   help="The system topology to query. Required if placement=runtime")
+                   help="The system topology to query. Required if placement=runtime.")
+
+    # --- new flags ---
+    p.add_argument("--use-topo-files", action="store_true", default=False,
+                   help="Pass topology_file and sinfo_file to JobPlacer "
+                        "(requires the corresponding <system>_topo.txt / _sinfo.txt files). "
+                        "By default these files are NOT passed.")
+    p.add_argument("--gh-affinity", action="store_true", default=False,
+                   help="Append --gpu-bind=closest --cpu-bind=closest to srun for "
+                        "correct CPU-GPU NUMA affinity on Grace-Hopper / Grace-Blackwell nodes. "
+                        "Has no effect when bind_to_device=True (device placement). "
+                        "Do not combine with a manual --cpu-bind in --srun-extra.")
+    p.add_argument("--no-compact", action="store_true", default=False,
+                   help="Skip the compact_all transform on job stdout. "
+                        "Prints output file paths instead of content, and preserves all files.")
+    p.add_argument("--keep-files", action="store_true", default=False,
+                   help="Keep per-job stdout/stderr files after the scheduler exits "
+                        "(even when --no-compact is not set).")
+
     p.add_argument("--debug", action="store_true",
                    help="Enable verbose debug output.")
-    
-    
-    
+
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
 
-    global DEBUG_ENABLED
+    global DEBUG_ENABLED, RUN_TAG
     DEBUG_ENABLED = args.debug
+    RUN_TAG       = run_tag()
+
+    log(f"Run tag: {RUN_TAG}")
 
     with open(args.pattern) as f:
         pattern = json.load(f)
 
     placement = pattern.get("placement", "linear").lower()
     bind_to_device = (placement == "device")
-    gpus_per_node = pattern.get("gpus_per_node", 1)
-    
+    gpus_per_node  = pattern.get("gpus_per_node", 1)
+
     if placement == 'runtime' and args.system is None:
-        print("If placement == 'runtime', --system must be set")
+        print("ERROR: If placement == 'runtime', --system must be set.", file=sys.stderr)
         sys.exit(1)
 
     if bind_to_device:
@@ -679,10 +792,16 @@ def main() -> None:
 
     debug(f"Available resources: {available}")
 
-    jobs = assign_resources(pattern, available, use_devices=bind_to_device, system=args.system)
+    jobs = assign_resources(
+        pattern,
+        available,
+        use_devices=bind_to_device,
+        system=args.system,
+        use_topo_files=args.use_topo_files,
+    )
 
-    pid = os.getpid()
-    out_dir = Path(args.output_dir) if args.output_dir else Path(f"workerpool_out_{pid}")
+    pid     = os.getpid()
+    out_dir = Path(args.output_dir) if args.output_dir else Path(f"workerpool_out_{RUN_TAG}")
 
     extra_flags = args.srun_extra.split() if args.srun_extra.strip() else []
     log_path    = Path(args.output_log) if args.output_log else None
@@ -697,16 +816,19 @@ def main() -> None:
         sys.exit(1)
 
     run_scheduler(
-        jobs            = jobs,
-        out_dir         = out_dir,
-        extra_flags     = extra_flags,
-        walltime        = args.walltime,
-        bind_to_device  = bind_to_device,
-        gpus_per_node   = gpus_per_node,
-        kill_signal     = kill_signal,
-        tasks_per_node  = args.tasks_per_node,
-        cpus_per_task   = args.cpus_per_task,
-        log_path        = log_path,
+        jobs           = jobs,
+        out_dir        = out_dir,
+        extra_flags    = extra_flags,
+        walltime       = args.walltime,
+        bind_to_device = bind_to_device,
+        gpus_per_node  = gpus_per_node,
+        kill_signal    = kill_signal,
+        tasks_per_node = args.tasks_per_node,
+        cpus_per_task  = args.cpus_per_task,
+        gh_affinity    = args.gh_affinity,
+        no_compact     = args.no_compact,
+        keep_files     = args.keep_files,
+        log_path       = log_path,
     )
 
 
