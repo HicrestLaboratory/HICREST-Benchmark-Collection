@@ -7,8 +7,7 @@ variables:
   cpus_per_task: [8]
 
   # -- Change as needed --
-  experiment: "experiments_nvl72/"
-  # experiment: "experiments_testino/"
+  experiment: "testini_belli/"
   # experiment: "experiments/"
 
   walltime: [90]

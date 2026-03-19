@@ -22,7 +22,7 @@ import io
 import sys
 from pathlib import Path
 from typing import Any
-
+import re
 import pandas as pd
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
@@ -44,21 +44,53 @@ def _parse_csv(stdout: str) -> dict[str, pd.DataFrame] | None:
     text = stdout.strip()
     if not text:
         return None
-    try:
-        dfs = {}
-        for block in text.split("\n###\n"):
-            lines = block.strip().splitlines()
-            if not lines:
-                continue
-            df_name = lines[0].replace("###", "").strip()
-            csv_content = "\n".join(lines[1:])
-            df = pd.read_csv(io.StringIO(csv_content))
-            if not df.empty:
-                dfs[df_name] = df
-        return dfs if dfs else None
-    except Exception:
-        return None
 
+    dfs = {}
+    current_name = None
+    current_lines = []
+
+    def flush():
+        nonlocal current_name, current_lines
+        if current_name is not None and current_lines:
+            csv_content = "\n".join(current_lines).strip()
+            if csv_content:
+                try:
+                    # Replace commas outside of {} dict literals with a safe separator
+                    def replace_commas(line: str) -> str:
+                        result = []
+                        depth = 0
+                        for ch in line:
+                            if ch == '{':
+                                depth += 1
+                            elif ch == '}':
+                                depth -= 1
+                            if ch == ',' and depth == 0:
+                                result.append('\t')
+                            else:
+                                result.append(ch)
+                        return ''.join(result)
+
+                    safe_lines = [replace_commas(l) for l in csv_content.splitlines()]
+                    safe_content = "\n".join(safe_lines)
+                    df = pd.read_csv(io.StringIO(safe_content), sep='\t')
+                    if not df.empty:
+                        dfs[current_name] = df
+                except Exception as e:
+                    print(f"Failed to parse section '{current_name}': {e}")
+        current_name = None
+        current_lines = []
+
+    for line in text.splitlines():
+        if line.startswith("###"):
+            flush()
+            name = line.replace("###", "").strip()
+            current_name = name if name else None
+            current_lines = []
+        elif current_name is not None:
+            current_lines.append(line)
+
+    flush()
+    return dfs if dfs else None
 
 # ---------------------------------------------------------------------------
 # Metadata extraction
@@ -178,14 +210,16 @@ def main() -> None:
                 # (the scheduler already fell back to raw on transform errors)
 
             # --- parse CSV from stdout ---
-            df = _parse_csv(run["stdout"])
+            dict_df = _parse_csv(run["stdout"])
 
             if run["stdout"].strip() == "":
                 n_no_data += 1
                 issues.append((str(sbm_job.job_id), str(sbm_job.tag), uid, OUTCOME_NO_DATA, "stdout is empty"))
                 continue
 
-            if df is None:
+            if dict_df is None:
+                print(f"\033[92mUID: {uid}\033[0m")
+                print(run['stdout'])
                 n_bad_csv += 1
                 issues.append((
                     str(sbm_job.job_id), str(sbm_job.tag), uid, OUTCOME_BAD_CSV,
@@ -199,7 +233,8 @@ def main() -> None:
                 total_ok += 1
 
             meta = _build_metadata(sbm_job, run)
-            pairs.append((meta, {"measurements": df}))
+            for key in dict_df.keys():
+                pairs.append((meta, {key: dict_df[key]}))
 
         job_summaries.append({
             "sbm_job_id": sbm_job.job_id,

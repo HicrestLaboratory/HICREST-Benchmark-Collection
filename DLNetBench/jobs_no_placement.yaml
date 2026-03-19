@@ -17,7 +17,7 @@ variables:
 
   # The number of nodes can be incremented to have a better chance to satisfy the placement 
   nodes: [4]
-  dp_model: ['vit_h_16_bfloat16'] # 16 indicate the local batch size, you can change to 32, 64 or 128
+  dp_model: ['vit_h_128_bfloat16'] # 16 indicate the local batch size, you can change to 32, 64 or 128
   fsdp_model: ['llama3_8b_16_bfloat16']
   hybrid2d_model: ['minerva_7b_16_bfloat16']
   hybrid3d_model: ['llama3_70b_16_bfloat16']
@@ -36,23 +36,23 @@ jobs:
       - tag: "dp_{dp_model}_{comm_lib}_test"
         variables:
           num_buckets: [50]
-        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench -r 3 -w 4"
+        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/dp {dp_model} {num_buckets} ./DLNetBench -r 3 -w 3"
       
       - tag: "fsdp_{fsdp_model}_{comm_lib}_test"
         variables:
           num_units: [16]
-          sharding_factor: [4]
-        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/fsdp {fsdp_model} {num_units} {sharding_factor} ./DLNetBench -w 1"
+          sharding_factor: [8]
+        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/data_parallel/fsdp {fsdp_model} {num_units} {sharding_factor} ./DLNetBench -w 3 -r 3"
       
       - tag: "hybrid2d_{hybrid2d_model}_{comm_lib}_test"
         variables: 
           num_stages: [4]
           num_microbatches: [16]
-        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench -w 1"
+        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_2d {hybrid2d_model} {num_stages} {num_microbatches} ./DLNetBench -w 2"
       - tag: "hybrid3d_moe_{hybrid3d_moe_model}_{comm_lib}_test"
         variables:
           experts_shards: [8]
           num_stages: [8]
           num_microbatches: [16]
           nodes: [16]
-        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_3d_moe {hybrid3d_moe_model} {num_stages} {num_microbatches} {experts_shards} ./DLNetBench -r 1 -w 1"       
+        command: "srun -N {nodes} ./DLNetBench/bin/{comm_lib}/cpp/hybrid_parallel/hybrid_3d_moe {hybrid3d_moe_model} {num_stages} {num_microbatches} {experts_shards} ./DLNetBench -r 2 -w 2"       

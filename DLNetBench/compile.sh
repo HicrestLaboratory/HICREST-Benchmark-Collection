@@ -15,7 +15,7 @@ system="$1"
 validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
 
 # Setup JobPlacer
-#. ../common/compile/setup_job_placer.sh
+. ../common/compile/setup_job_placer.sh
 
 check_ccutils_installation
 
