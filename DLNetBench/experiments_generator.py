@@ -43,13 +43,29 @@ Sorted output
 -------------
 The final experiment list is sorted so that running experiments in order
 and stopping early (due to a crash or time limit) still yields maximally
-varied results.  The sort key cycles through:
+varied results.
 
-  flat:        entropy_bin (low → medium → high) × pattern_family × pattern
-  hierarchical: placement_bin × entropy_bin × pattern_family × pattern
+For flat experiments the sort key cycles through:
+  entropy_bin (low → medium → high) × pattern_family × pattern
 
-This gives a striped layout: the first third of the list covers all three
-entropy bins at low placement locality, the second third covers medium, etc.
+For hierarchical experiments the sort key cycles through the JOINT
+(placement_bin × entropy_bin) grid in a diagonal / round-robin stripe:
+
+  combined_bin_index = placement_bin_idx * 3 + entropy_bin_idx
+
+  i.e. the nine cells are visited in this order:
+    (low-P, low-H)   → index 0
+    (low-P, med-H)   → index 1
+    (low-P, high-H)  → index 2
+    (med-P, low-H)   → index 3
+    …
+    (high-P, high-H) → index 8
+
+  Secondary: pattern_family → pattern slots (for determinism)
+
+This guarantees that stopping at any prefix always covers all entropy bins
+across all placement bins, rather than exhausting one placement bin before
+moving to the next.
 
 Per-strategy placement classes
 -------------------------------
@@ -440,6 +456,7 @@ AllocationPattern = tuple[int, ...]
 class TaggedPattern:
     slots: AllocationPattern
     family: str
+    pattern_id: str = ""   # e.g. "A1", "E3" – assigned by build_pattern_set
 
     def __len__(self) -> int:
         return len(self.slots)
@@ -661,14 +678,17 @@ def build_pattern_set(
     generate_stochastic: bool,
 ) -> list[TaggedPattern]:
     seen: set[AllocationPattern] = set()
-    patterns: list[TaggedPattern] = []
+    # Collect raw (un-named) patterns first, grouped by family so we can
+    # assign sequential per-family IDs (A1, A2, …, E1, E2, …) and then
+    # interleave families for uniform sampling.
+    by_family: dict[str, list[TaggedPattern]] = {f: [] for f in FAMILY_NAMES}
 
     def add(tp: TaggedPattern) -> bool:
         actual_util = sum(tp.slots) / g_total
         if (tp.slots not in seen and sum(tp.slots) <= g_total
                 and util_min <= actual_util <= util_max):
             seen.add(tp.slots)
-            patterns.append(tp)
+            by_family[tp.family].append(tp)
             return True
         return False
 
@@ -702,6 +722,30 @@ def build_pattern_set(
                 feasible_gpu_counts, n_stochastic_patterns, rng, utilization=rho,
             ):
                 add(tp)
+
+    # Assign per-family sequential IDs: A1, A2, …, E1, E2, …
+    named: dict[str, list[TaggedPattern]] = {}
+    for fam, raw_list in by_family.items():
+        named[fam] = []
+        for idx, tp in enumerate(raw_list, start=1):
+            named[fam].append(TaggedPattern(
+                slots=tp.slots,
+                family=tp.family,
+                pattern_id=f"{fam}{idx}",
+            ))
+
+    # Interleave families round-robin so that if patterns are later capped
+    # the resulting subset covers all families uniformly (e.g. A1, B1, C1,
+    # E1, A2, B2, … rather than all A's first, then all B's, etc.)
+    patterns: list[TaggedPattern] = []
+    queues = [named[f] for f in FAMILY_NAMES if named[f]]
+    any_left = True
+    while any_left:
+        any_left = False
+        for q in queues:
+            if q:
+                any_left = True
+                patterns.append(q.pop(0))
 
     return patterns
 
@@ -1151,19 +1195,42 @@ def build_hierarchical_experiment_set(
     budget: Optional[ExperimentBudget] = None,
 ) -> list[HierarchicalExperiment]:
     """
-    Build E_hier with round-robin placement-bin interleaving and hard budget cap.
+    Build E_hier with round-robin interleaving across *both* entropy bins and
+    placement bins, enforcing a hard budget cap.
 
-    For each flat experiment we collect up to n_placement_samples_per_bin
-    vectors per placement bin, then emit them round-robin across bins so that
-    the global cap yields a balanced slice across all three locality levels.
+    The key insight: if we feed flat experiments to the per-experiment
+    placement sampler in their raw (generation) order, the budget cap fires
+    before we reach experiments from under-represented entropy bins.  We
+    therefore first reorder the flat list round-robin by entropy bin so that
+    each successive group of experiments covers all available H-bins before
+    repeating any.  Within each flat experiment we then emit placement vectors
+    round-robin across placement bins, giving a joint (H-bin × P-bin) stripe
+    that maximises variety under early truncation.
     """
     if budget is None:
         budget = ExperimentBudget(None)
 
+    # ── Step 1: interleave flat experiments by entropy bin ───────────────────
+    # This ensures the hierarchical builder sees alternating H-bins so that
+    # the budget cap produces a balanced H-bin distribution.
+    by_hbin: dict[str, list[Experiment]] = {b: [] for b in ENTROPY_BIN_NAMES}
+    for exp in flat_experiments:
+        by_hbin[exp.entropy_bin].append(exp)
+    interleaved: list[Experiment] = []
+    hbin_queues = [by_hbin[b] for b in ENTROPY_BIN_NAMES]
+    any_left = True
+    while any_left:
+        any_left = False
+        for q in hbin_queues:
+            if q:
+                any_left = True
+                interleaved.append(q.pop(0))
+
+    # ── Step 2: for each flat experiment emit placement vectors round-robin ──
     hier_experiments: list[HierarchicalExperiment] = []
     seed_ctr = base_seed
 
-    for exp in flat_experiments:
+    for exp in interleaved:
         if budget.exhausted:
             break
 
@@ -1226,6 +1293,44 @@ def build_hierarchical_experiment_set(
 _BIN_ORDER = {"low": 0, "medium": 1, "high": 2}
 _FAMILY_ORDER = {f: i for i, f in enumerate(FAMILY_NAMES)}
 
+# ---------------------------------------------------------------------------
+# Joint (placement × entropy) bin grid for hierarchical sort
+# ---------------------------------------------------------------------------
+# We map the 3×3 grid to a single stripe index that cycles through all nine
+# cells before repeating any.  Two orderings are useful:
+#
+#   "diagonal" (default) – cycles placement and entropy simultaneously:
+#     index 0: (low-P,  low-H)    index 3: (low-P,  med-H)   …
+#     produces maximum joint diversity at every prefix length.
+#
+#   "row-major" – exhausts all entropy bins per placement bin:
+#     index 0: (low-P,  low-H)    index 1: (low-P,  med-H)   …
+#     equivalent to the old behaviour (NOT used).
+#
+# The diagonal ordering is constructed by interleaving the two axes:
+#   combined_idx = p_idx + e_idx * 3   (column-major in a 3×3 table)
+# This maps the nine cells to indices 0-8 so that incrementing by 1
+# moves across placement bins before advancing the entropy level.
+# ---------------------------------------------------------------------------
+
+def _combined_bin_index(placement_bin_label: str, entropy_bin_label: str) -> int:
+    """
+    Combined sort index for the joint (placement × entropy) grid.
+
+    Layout (combined_idx → (P-bin, H-bin)):
+      0 → (low,  low)    3 → (low,  med)    6 → (low,  high)
+      1 → (med,  low)    4 → (med,  med)    7 → (med,  high)
+      2 → (high, low)    5 → (high, med)    8 → (high, high)
+
+    Iterating 0→8 visits every placement bin at each entropy level before
+    advancing to the next entropy level, ensuring full entropy coverage
+    within the first 3 experiments, full (P × H) coverage within the
+    first 9, etc.
+    """
+    p_idx = _BIN_ORDER[placement_bin_label]
+    e_idx = _BIN_ORDER[entropy_bin_label]
+    return p_idx + e_idx * 3
+
 
 def _sort_key_flat(exp: Experiment) -> tuple:
     """
@@ -1249,17 +1354,19 @@ def _sort_key_hier(he: HierarchicalExperiment) -> tuple:
     """
     Sort key for hierarchical experiments.
 
-    Primary: placement bin (low → medium → high)
-    Secondary: entropy bin  (low → medium → high)
-    Tertiary: pattern family
-    Quaternary: pattern slots
+    Primary: combined (placement × entropy) bin index – cycles through all
+             nine cells of the 3×3 grid so that stopping early always yields
+             full entropy variety across all placement bins.
+    Secondary: pattern family (A → B → C → D → E)
+    Tertiary:  pattern slots (for determinism)
 
-    This stripes first across placement bins, then entropy bins, so the
-    first N experiments span the full (placement × entropy) grid.
+    Old behaviour (placement-bin as primary, entropy as secondary) caused
+    early truncation to exhaust low-placement experiments first, leaving
+    the full entropy range invisible in the output.  The combined index
+    fixes this by interleaving both axes simultaneously.
     """
     return (
-        _BIN_ORDER[he.placement_bin_label],
-        _BIN_ORDER[he.base.entropy_bin],
+        _combined_bin_index(he.placement_bin_label, he.base.entropy_bin),
         _FAMILY_ORDER.get(he.base.pattern.family, 99),
         he.base.pattern.slots,
     )
@@ -1319,7 +1426,7 @@ def print_patterns(cfg: argparse.Namespace, patterns: list[TaggedPattern]) -> No
     print(f"{'='*PRINTS_SEP_WIDTH}\033[0m")
     for tp in patterns:
         s = sum(tp.slots)
-        print(f"  [{tp.family}] {str(tp.slots):<80}  totGPUs={s:<4}  util={int(s/cfg.G*100):<3}%  k={len(tp.slots)}")
+        print(f"  [{tp.pattern_id:4s}] {str(tp.slots):<80}  totGPUs={s:<4}  util={int(s/cfg.G*100):<3}%  k={len(tp.slots)}")
 
 
 def print_experiment_set(
@@ -1443,6 +1550,7 @@ def _config_to_dict(c: Config) -> dict:
 
 def _experiment_to_dict(exp: Experiment) -> dict:
     return {
+        "pattern_id": exp.pattern.pattern_id,
         "pattern": list(exp.pattern.slots),
         "pattern_family": exp.pattern.family,
         "pattern_sum": sum(exp.pattern.slots),
@@ -1537,7 +1645,8 @@ def build_json_output(
         "strategies": [_strategy_to_dict(s) for s in strategies],
         "baseline_set": [_single_run_to_dict(r) for r in baseline],
         "pattern_set": [
-            {"slots": list(tp.slots), "k": len(tp.slots),
+            {"pattern_id": tp.pattern_id,
+             "slots": list(tp.slots), "k": len(tp.slots),
              "total_gpus": sum(tp.slots),
              "utilization": round(sum(tp.slots) / cfg.G, 6),
              "family": tp.family}

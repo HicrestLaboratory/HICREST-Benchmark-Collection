@@ -69,7 +69,7 @@ Small vs. large job classification
 Default (no flags):  ALL jobs are classified as small.
 
 --small-job-threshold N
-  Jobs with node_count > N → large; all others → small.
+  Jobs with node_count >= N → large; all others → small.
 
 --split-large-small
   Exactly ONE job is large – the one requiring the most nodes
@@ -142,6 +142,7 @@ import argparse
 import json
 import math
 import os
+from pprint import pprint
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -191,103 +192,6 @@ RUNTIME_ESTIMATES = {
 MIN_CONCURRENT_RUNTIME = 105 # FIXME
 
 # ---------------------------------------------------------------------------
-# Global JSON templates
-# ---------------------------------------------------------------------------
-# These dicts define the *default* shape of global_config.json.
-# Edit them here to permanently change the output format.
-#
-# Recognised placeholder strings (replaced at runtime):
-#   "__PPN__"         → str(args.gpus_per_node)
-#   "__EXPERIMENTS__" → auto-generated experiments dict (see build_global_config)
-#
-# Any key whose value is "__EXPERIMENTS__" will be replaced by the generated
-# experiments mapping.  Other placeholder strings are substituted in-place.
-# Nested dicts are traversed recursively.
-
-GLOBAL_TEMPLATE_UNIFORM: dict = {
-    "global_options": {
-        "numnodes":        "__NUMNODES__",
-        "ppn":             "__PPN__",
-        "allocationmode":  "p",
-        "partitionlayout": "i",
-        "minruns":         "1",
-        "maxruns":         "1",
-        "timeout":         "1200.0",
-        "outformat":       "csv",
-        "extrainfo":       "AI-training-analysis",
-        "sbatch_directives": {
-            "time":      "00:20:00",
-            "job-name":  "AI-training-analysis",
-            "exclusive": True,
-        },
-    },
-    "experiments": "__EXPERIMENTS__",
-}
-
-GLOBAL_TEMPLATE_HIERARCHICAL: dict = {
-    "global_options": {
-        "numnodes":        "__NUMNODES__",
-        "ppn":             "__PPN__",
-        "allocationmode":  "p",
-        "partitionsplit":  "35:65",
-        "allocationsplit": "100-100",
-        "partitionlayout": "i",
-        "minruns":         "1",
-        "maxruns":         "1",
-        "timeout":         "1200.0",
-        "outformat":       "csv",
-        "extrainfo":       "AI-training-analysis",
-        "sbatch_directives": {
-            "time":      "00:20:00",
-            "job-name":  "AI-training-analysis",
-            "exclusive": True,
-        },
-    },
-    "experiments": "__EXPERIMENTS__",
-}
-
-
-# ---------------------------------------------------------------------------
-# Per-experiment app entry builders
-# ---------------------------------------------------------------------------
-# These functions define the "apps" sub-structure inside each experiment entry
-# of the global config.
-# Edit here if the runtime scheduler's expected schema changes.
-
-def _build_uniform_apps(exp_filepath: str, results_dir: str) -> dict:
-    """App entries for a uniform interconnect experiment."""
-    return {
-        "0": {
-            "path":    "workerpool.py",
-            "args":    f"--pattern={exp_filepath} --output-dir={results_dir}",
-            "collect": False,
-            "start":   "0",
-            "end":     "f",
-        },
-    }
-
-
-def _build_hierarchical_apps(exp_filepath: str, results_dir: str) -> dict:
-    """App entries for a hierarchical interconnect experiment."""
-    return {
-        "0": {
-            "path":    "workerpool.py",
-            "args":    f"--pattern={exp_filepath} --output-dir={results_dir}",
-            "collect": False,
-            "start":   "0",
-            "end":     "f",
-        },
-        "1": {
-            "path":    "launch_large.py",
-            "args":    f"--pattern={exp_filepath}",
-            "collect": True,
-            "start":   "0",
-            "end":     "",
-        },
-    }
-
-
-# ---------------------------------------------------------------------------
 # Placement Oracle  (hardcoded mode only)
 # ---------------------------------------------------------------------------
 
@@ -301,17 +205,27 @@ class PlacementOracle:
 
     def __init__(
         self,
-        program: str = DEFAULT_ORACLE_PROGRAM,
-        system: str = "",
-        reserved_nodes: Optional[list] = None,
+        program: str,
+        system: str,
+        reserved_nodes: Optional[list],
+        use_placer_files: bool
     ) -> None:
+        topology_file=None
+        sinfo_file=None
+        if use_placer_files:
+            topology_file=f'../common/JobPlacer/{system}_topo.txt'
+            sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt'
+        if system.lower() == 'alps':
+            topology_file=f'../common/JobPlacer/systems/{system.upper()}.toml'
+            sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt'
+            
         self.oracle = JobPlacer(
             system=system,
-            topology_file=f'../common/JobPlacer/{system}_topo.txt', # FIXME
-            sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt', # FIXME
-            all_nodes=reserved_nodes is None,
+            topology_file=topology_file,
+            sinfo_file=sinfo_file,
+            topology_scontrol=not topology_file,
             nodelist=reserved_nodes,
-            binary='../common/JobPlacer/target/release/job_placer_placement_classes'
+            verbose=False,
         )
         self.system = system
         self.reserved_nodes: list = reserved_nodes or []
@@ -335,18 +249,45 @@ class PlacementOracle:
         """Query the oracle for one experiment's node assignments."""        
         oracle_jobs = {}
         for j in jobs:
-            oracle_jobs[f'training_{j["job_id"]}'] = JobRequest(
+            oracle_jobs[j["job_name"]] = JobRequest(
                 num_nodes=j['node_count'],
-                job_kind='FIXME',
                 placement_class=str(j['placement_class']).lower()
             )
-            
-        return self.oracle.place(
+        
+        tot_nodes_asked = sum([int(j["node_count"]) for j in jobs])
+        print(f'[oracle] Finding placement for {",".join([j["job_name"] for j in jobs])}. Total required nodes: {tot_nodes_asked}')
+        print(f'[oracle] Pattern: [{",".join([str(j["node_count"]) for j in jobs])}]')
+        res = self.oracle.place(
             oracle_jobs,
             seed=seed,
             timeout=timeout,
             svg_out=svg_out,
         )
+        print(f'[oracle] {"OK" if res.ok else "FAILED"}')
+        if res.placements:
+            used_nodes = set()
+            # pprint(res.placements)
+            tot_placed = sum([len(p) for p in res.placements.values()])
+            print((f"[oracle] Tot placed nodes: {tot_placed}"))
+            assert tot_placed == tot_nodes_asked
+            for j in jobs:
+                job_nodes = set(res.placements[j["job_name"]])
+                prev_used_nodes_len = len(used_nodes)
+                assert len(res.placements[j["job_name"]]) == len(job_nodes)
+                # print(f'{used_nodes=}')
+                # print(f'{job_nodes=}')
+                used_nodes.update(job_nodes)
+                # print(prev_used_nodes_len + len(job_nodes), len(used_nodes))
+                assert prev_used_nodes_len + len(job_nodes) == len(used_nodes)
+                # print(j['node_count'], len(res.placements[j["job_name"]]))
+                if j['node_count'] != len(res.placements[j["job_name"]]):
+                    print(j)
+                    print(res.placements[j["job_name"]])
+                    exit(15)
+                
+        print()
+        
+        return res
 
 # ---------------------------------------------------------------------------
 # Placement summary  (hardcoded mode only)
@@ -414,19 +355,6 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def _fill_placeholders(obj, ppn: int,
-                        experiments_block: dict):
-    """Recursively substitute __PLACEHOLDER__ strings in a template."""
-    if isinstance(obj, dict):
-        return {k: _fill_placeholders(v, ppn, experiments_block)
-                for k, v in obj.items()}
-    if obj == "__PPN__":
-        return str(ppn)
-    if obj == "__EXPERIMENTS__":
-        return experiments_block
-    return obj
-
-
 def _extract_records(doc: dict) -> tuple[list, list, str]:
     """
     Return (records, interconnect_type).
@@ -446,27 +374,32 @@ def _gpus_to_nodes(gpus: int, gpus_per_node: int) -> int:
     return math.ceil(gpus / gpus_per_node) if gpus_per_node is not None else 1
 
 
+def get_job_name(strategy, gpus, nodes, placement, idx) -> str:
+    return f"{strategy}_g{gpus}_n{nodes}_{placement}_{idx}"
+
+def get_concurrent_run_descriptor(pattern_id, entropy_bin: str, placement_score: float) -> str:
+    return f"patt{pattern_id}_ent{entropy_bin.capitalize()}_plac{int(placement_score*100.0)}"
+
+
 def _classify_jobs(
     runs: list,
-    gpus_per_node: int,
     small_threshold: Optional[int],
     force_single_large: bool,
 ) -> list:
     """
     Return [(run_dict, is_large: bool), ...].
 
-    force_single_large=True  → exactly one job (largest by nodes) is large.
+    force_single_large=True  → exactly one job (largest by gpus) is large.
     small_threshold is None  → all jobs are small.
-    small_threshold is int   → jobs with node_count > threshold are large.
+    small_threshold is int   → jobs with gpu_count > threshold are large.
     """
-    # FIXME ensure works for different
-    node_counts = [_gpus_to_nodes(r["gpus"], gpus_per_node) for r in runs]
+    gpu_counts = [r["gpus"] for r in runs]
     if force_single_large:
-        large_idx = node_counts.index(max(node_counts))
+        large_idx = gpu_counts.index(max(gpu_counts))
         return [(run, i == large_idx) for i, run in enumerate(runs)]
     if small_threshold is None:
         return [(run, False) for run in runs]
-    return [(run, node_counts[i] > small_threshold)
+    return [(run, gpu_counts[i] >= small_threshold)
             for i, run in enumerate(runs)]
 
 
@@ -486,6 +419,7 @@ def build_experiment_json(
     force_single_large: bool,
     include_design_meta: bool,
     idx: int,
+    out_dir: Path,
 ) -> dict:
     """
     Build and return the dict for a single experiment JSON file.
@@ -502,7 +436,7 @@ def build_experiment_json(
     pcv  = rec.get("placement_class_vector", [])  # per-job class (hierarchical)
     seed = rec.get('placement_seed')
 
-    classified = _classify_jobs(runs, gpus_per_node, small_threshold,
+    classified = _classify_jobs(runs, small_threshold,
                                 force_single_large)
 
     # ── Oracle query (hardcoded mode) ────────────────────────────────────────
@@ -511,7 +445,7 @@ def build_experiment_json(
         assert oracle is not None, "Oracle must be set for hardcoded mode"
         payload = [
             {
-                "job_id":          i,
+                "job_name":        get_job_name(run['strategy'], run['gpus'], _gpus_to_nodes(run["gpus"], gpus_per_node), pcv[i], i),
                 "node_count":      _gpus_to_nodes(run["gpus"], gpus_per_node),
                 "placement_class": pcv[i] if i < len(pcv) else "random",
             }
@@ -519,12 +453,14 @@ def build_experiment_json(
         ]
         svg_out = None
         # svg_out = '_'.join([f'{r["strategy"]}-{int(r["gpus"]/4)}' for r, _ in classified])
-        # svg_out = str(idx)
-        # svg_out = Path(f'topos/{svg_out}.svg')
+        # can be commented
+        svg_out = str(idx).zfill(2)
+        svg_out = Path(out_dir / f'_topos/topo_{svg_out}_{get_concurrent_run_descriptor(rec.get("pattern_id"), rec.get("entropy_bin"), rec.get("placement_score"))}.svg')
+        svg_out.parent.mkdir(exist_ok=True, parents=True)
         oracle_result = oracle.find_placement(payload, seed=seed, svg_out=svg_out)
-        print(oracle_result)
-        print()
-        print()
+        # print(oracle_result)
+        # print()
+        # print()
         if placement_summary is not None:
             classes = [pcv[i] if i < len(pcv) else "random"
                        for i in range(len(classified))]
@@ -544,9 +480,9 @@ def build_experiment_json(
             "command":          get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=False),
             "nodes":            nodes,
             "gpus":             gpus,
-            "seed":             seed,
-            # "replicate_index":  run.get('replicate_index', 0),
         }
+        
+        placement = 'na'
 
         # Placement-mode-specific fields
         if placement_mode in ("device", "random", "linear"):
@@ -556,13 +492,15 @@ def build_experiment_json(
         elif placement_mode == "runtime":
             # placement_class comes from the design vector
             entry["placement_class"] = pcv[i] if i < len(pcv) else "random"
+            placement = entry["placement_class"]
 
         elif placement_mode == "hardcoded":
+            job_name = get_job_name(run['strategy'], gpus, nodes, pcv[i], i)
             if oracle_result is not None and oracle_result.ok and oracle_result.placements is not None:
-                nodelist = oracle_result.placements.get(f'training_{i}')
+                nodelist = oracle_result.placements.get(job_name)
                 if nodelist:
                     entry["nodelist"] = nodelist
-                    entry["placement_class"] = oracle_result.raw.get('placements').get(f'training_{i}').get('placement_class')
+                    entry["placement_class"] = pcv[i]
                 else:
                     # Oracle said feasible but returned no list for this job
                     entry["placement_class"] = "hardcoded_partial"
@@ -570,11 +508,14 @@ def build_experiment_json(
                 entry["placement_class"] = "hardcoded_infeasible"
                 if oracle_result and oracle_result.reason:
                     entry["infeasible_reason"] = oracle_result.reason
+                    
+            placement = entry["placement_class"]
 
+        job_name = get_job_name(run['strategy'], gpus, nodes, placement, i)
         if is_large:
-            large_jobs[f"{run['strategy']}_g{gpus}_n{nodes}_{lc}"] = entry; lc += 1
+            large_jobs[job_name] = entry; lc += 1
         else:
-            small_jobs[f"{run['strategy']}_g{gpus}_n{nodes}_{sc}"] = entry; sc += 1
+            small_jobs[job_name] = entry; sc += 1
 
     # ── Top-level placement ──────────────────────────────────────────────────
     if placement_mode == "hardcoded":
@@ -593,10 +534,10 @@ def build_experiment_json(
     inner: dict = {
         "placement":     top_placement,
         "gpus_per_node": gpus_per_node if gpus_per_node else total_gpus,
-        # "n_total_gpus":  total_gpus,
-        # "n_small_jobs":  len(small_jobs),
-        # "n_large_jobs":  len(large_jobs),
-        # "n_total_jobs":  len(classified),
+        "n_total_gpus":  total_gpus,
+        "n_small_jobs":  len(small_jobs),
+        "n_large_jobs":  len(large_jobs),
+        "n_total_jobs":  len(classified),
     }
     if small_jobs:
         inner["small_jobs"] = small_jobs
@@ -604,58 +545,17 @@ def build_experiment_json(
         inner["large_jobs"] = large_jobs
     if include_design_meta:
         inner["_meta"] = {
-            "pattern":         rec.get("pattern"),
-            "pattern_family":  rec.get("pattern_family"),
-            "entropy_bin":     rec.get("entropy_bin"),
-            "placement_bin":   rec.get("placement_bin"),
-            "placement_score": rec.get("placement_score"),
-            "placement_seed":  seed,
+            "pattern":          rec.get("pattern"),
+            "pattern_family":   rec.get("pattern_family"),
+            "pattern_id":       rec.get("pattern_id"),
+            "entropy_bin":      rec.get("entropy_bin"),
+            "placement_bin":    rec.get("placement_bin"),
+            "placement_vector": pcv,
+            "placement_score":  rec.get("placement_score"),
+            "placement_seed":   seed,
         }
 
     return inner
-
-
-# ---------------------------------------------------------------------------
-# Global config builder
-# ---------------------------------------------------------------------------
-
-def build_global_config(
-    interconnect: str,
-    gpus_per_node: int,
-    exp_filenames: list,          # ordered list of bare filenames
-    exp_output_dir: str,          # folder where experiment files live
-    results_dir: str,
-    user_template: Optional[dict],
-) -> dict:
-    """
-    Build and return the global_config dict.
-
-    1. Select built-in template by interconnect type.
-    2. Deep-merge user_template on top if supplied (user keys win).
-    3. Fill __PLACEHOLDER__ strings.
-    """
-    base = (GLOBAL_TEMPLATE_UNIFORM.copy()
-            if interconnect == "uniform"
-            else GLOBAL_TEMPLATE_HIERARCHICAL.copy())
-
-    if user_template:
-        base = _deep_merge(base, user_template)
-
-    app_builder = (_build_uniform_apps
-                   if interconnect == "uniform"
-                   else _build_hierarchical_apps)
-
-    # Build the experiments mapping
-    experiments_block: dict = {}
-    for i, fname in enumerate(exp_filenames, start=1):
-        exp_path = str(Path(exp_output_dir) / fname)
-        experiments_block[f"exp{i}"] = {
-            "description": f"DDL Congestion Run {i}",
-            "apps":        app_builder(exp_path, results_dir),
-        }
-
-    return _fill_placeholders(base, gpus_per_node, experiments_block)
-
 
 # ---------------------------------------------------------------------------
 # Main
@@ -689,6 +589,8 @@ def main(args: argparse.Namespace) -> None:
         print(f"{'-'*72}")
         print(f"  Baseline times   (seconds): {estimates['baseline_times']}")
         print(f"  Concurrent times (seconds): {estimates['concurrent_times'][0]} and {len(estimates['concurrent_times'])-1} more")
+        print(f"{'-'*72}")
+        print()
 
     # ── Resolve placement mode ───────────────────────────────────────────────
     if args.placement_mode is None:
@@ -728,19 +630,16 @@ def main(args: argparse.Namespace) -> None:
             reserved = expand_slurm_nodelist(args.reserved_nodes)
             preview = ", ".join(reserved[:10]) + ("…" if len(reserved) > 10 else "")
             print(f"[oracle] Reserved nodes ({len(reserved)}): {preview}")
-        oracle  = PlacementOracle(args.oracle_program, args.system, reserved)
+        oracle  = PlacementOracle(
+            args.oracle_program,
+            args.system,
+            reserved,
+            args.use_placer_files
+        )
         summary = PlacementSummary()
         print(f"[oracle] System: {args.system!r}  "
               f"Program: {args.oracle_program!r}  "
               f"Available: {oracle._available}")
-
-    # ── User global-config template ──────────────────────────────────────────
-    # FIXME
-    user_template: Optional[dict] = None
-    if args.global_template:
-        with open(args.global_template, encoding="utf-8") as fh:
-            user_template = json.load(fh)
-        print(f"[expand] Loaded global template: {args.global_template}")
 
     # ── Output directory ─────────────────────────────────────────────────────
     out_dir = Path(args.output_dir)
@@ -764,26 +663,14 @@ def main(args: argparse.Namespace) -> None:
             force_single_large=args.split_large_small,
             include_design_meta=args.include_design_meta,
             idx=idx,
+            out_dir=out_dir,
         )
-        fname = f"experiment_{str(idx).zfill(n_digits)}.json"
+        fname = f"exp_{str(idx).zfill(n_digits)}_{get_concurrent_run_descriptor(rec.get("pattern_id"), rec.get("entropy_bin"), rec.get("placement_score"))}.json"
         fpath = out_dir / fname
         with open(fpath, "w", encoding="utf-8") as fh:
             json.dump(exp_doc, fh, indent=2, ensure_ascii=False)
         exp_files.append(fname)
         written.append(fpath)
-
-    # ── Write global config ──────────────────────────────────────────────────
-    # global_cfg = build_global_config(
-    #     interconnect=interconnect,
-    #     gpus_per_node=args.gpus_per_node,
-    #     exp_filenames=exp_files,
-    #     exp_output_dir=str(out_dir),
-    #     results_dir=args.results_dir,
-    #     user_template=user_template,
-    # )
-    # global_path = out_dir / GLOBAL_CONFIG_FILENAME
-    # with open(global_path, "w", encoding="utf-8") as fh:
-    #     json.dump(global_cfg, fh, indent=2, ensure_ascii=False)
 
     # ── Summary ──────────────────────────────────────────────────────────────
     print(f"\n\033[32m[expand] Wrote {len(written)} experiment files "
@@ -801,7 +688,7 @@ def main(args: argparse.Namespace) -> None:
     elif args.small_job_threshold is None:
         print("  Classification: all jobs small  (no threshold set)")
     else:
-        print(f"  Classification: threshold = {args.small_job_threshold} nodes")
+        print(f"  Classification: threshold = {args.small_job_threshold} gpus ({_gpus_to_nodes(args.small_job_threshold, args.gpus_per_node)} nodes)")
 
     if summary is not None:
         summary.print_report()
@@ -908,18 +795,18 @@ def build_parser() -> argparse.ArgumentParser:
              "(default: 'results').",
     )
     p.add_argument(
-        "--global-template", metavar="JSON_FILE", default=None,
-        help="Path to a JSON file deep-merged over the built-in global config "
-             "template (user keys win).  Useful for customising sbatch_directives, "
-             "timeouts, etc. without editing this script.",
-    )
-    p.add_argument(
         "--no-design-meta", dest="include_design_meta",
         action="store_false", default=True,
         help=(
             "Omit the '_design_meta' traceability block from output files "
             "(pattern, family, entropy_bin, placement_bin, placement_score, "
             "placement_seed).  Included by default."
+        ),
+    )
+    p.add_argument(
+        "--use-placer-files", action="store_true", default=False,
+        help=(
+            "If true, passes to JobPlacer the txt/toml topo and sinfo files"
         ),
     )
 
@@ -933,8 +820,6 @@ def _validate(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None
         parser.error("--small-job-threshold must be ≥ 1.")
     if args.placement_mode == "hardcoded" and not args.system:
         parser.error("--placement-mode hardcoded requires --system NAME.")
-    if args.global_template and not os.path.isfile(args.global_template):
-        parser.error(f"--global-template file not found: '{args.global_template}'.")
     if args.placement_mode != "device" and (args.gpus_per_node is None or args.gpus_per_node < 1):
         parser.error("--gpus-per-node must be ≥ 1.")
 
