@@ -216,7 +216,7 @@ def main(args: argparse.Namespace) -> None:
             gpu_model=args.gpu_model,
             num_warmup_override=0,
         )
-        command = f"mpirun -np {num_gpus} {command}"
+        command = f"srun -N {nodes} {command}"
 
         print(f"  nodelist : {nodelist}")
         print(f"  command  : {command}")
