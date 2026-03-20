@@ -28,7 +28,7 @@ _PARAMS: dict[str, callable] = {
     "DP":           lambda g: "vit-h 50 ./DLNetBench",
     "FSDP":         lambda g: f"llama3-8b 16 {g if g < 8 else 8} ./DLNetBench",
     "DP+PP":        lambda g: f"minerva-7b {2 if g <= 8 else 8} 16 ./DLNetBench",
-    "DP+PP+Expert": lambda g: "mixtral-8x7b 4 16 8 ./DLNetBench",
+    "DP+PP+Expert": lambda g: "mixtral-8x7b 8 16 8 ./DLNetBench",
     "DP+PP+TP":     lambda g: "llama3-70b 8 16 4 ./DLNetBench",
 }
 
