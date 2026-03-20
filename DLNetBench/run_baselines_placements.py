@@ -135,7 +135,7 @@ def main(args: argparse.Namespace) -> None:
     # oracle program comes from the JSON that generated this experiment set
     oracle_program = doc["meta"]["topology_program"]
 
-    print(f"\n[baseline] Input           : {args.input_json}")
+    print(f"\n[baseline] Input         : {args.input_json}")
     print(f"[baseline] System          : {args.system}")
     print(f"[baseline] GPUs per node   : {args.gpus_per_node}")
     print(f"[baseline] Comm lib        : {args.comm_lib}")
@@ -306,7 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="GPUs per physical node (derives node count from gpu count).",
     )
     p.add_argument(
-        "--nodelist", metavar="NODELIST", default=None,
+        "--nodelist", metavar="NODELIST", required=True,
         help="SLURM nodelist expression of nodes available for placement (e.g. 'node[001-340]'). Required when running outside a SLURM allocation.",
     )
     p.add_argument(
