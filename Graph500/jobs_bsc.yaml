@@ -1,0 +1,26 @@
+sequential: true
+
+variables:
+  bin:
+   - "graph500_bfs_2KiB"
+   - "graph500_bfs_256KiB"
+   - "graph500_bfs_8MiB"
+  scale: [18]
+  edgefactor: [16]
+
+command: "mpirun -np {nodes} ./bin/{bin} {scale} {edgefactor}"
+
+jobs:
+  - config: "{partition}__{nodes}_nodes"
+    variables:
+      nodes: [1, 2, 4]
+      partition: ['pioneer', 'arriesgado']
+    config_jobs:
+      - tag: "NetGraph500_{bin}_s{scale}_ef{edgefactor}_n{nodes}_{partition}"
+
+  - config: "{partition}__{nodes}_nodes"
+    variables:
+      nodes: [1, 2, 4, 8]
+      partition: ['bananaf3']
+    config_jobs:
+      - tag: "NetGraph500_{bin}_s{scale}_ef{edgefactor}_n{nodes}_{partition}"

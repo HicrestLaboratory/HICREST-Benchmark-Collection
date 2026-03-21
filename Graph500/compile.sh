@@ -31,6 +31,6 @@ mv graph500_reference_bfs $BIN_DIR/graph500_bfs_256KiB
 # Benchmarks that flushes the buffer even less often
 make clean
 CFLAGS="-DBENCHPIN" PREPROCESSOR_FLAGS="-DAGGR_intra=8388608 -DAGGR=8388608" make graph500_reference_bfs
-mv graph500_reference_bfs $BIN_DIR/bin/graph500_bfs_8MiB
+mv graph500_reference_bfs $BIN_DIR/graph500_bfs_8MiB
 
 echo "INFO: currently only BFS implements custom metric correctly."

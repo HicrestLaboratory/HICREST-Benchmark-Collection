@@ -1,5 +1,45 @@
 variables:
   nodes: [1, 2, 4, 8, 16, 32, 64, 128]
+  pioneer_nodes: [1, 2, 4]
+  bananaf3_nodes: [1, 2, 4, 8]
+  arriesgado_nodes: [1, 2, 4]
+
+hca:
+  scheduler: slurm
+
+  default_conf:
+    exclusive: true
+    time: "00:30:00" 
+    custom_headers:
+      - "#SBATCH --ntasks-per-node=1"
+    env:
+      - "SKIP_VALIDATION=1"
+      - "OMP_PROC_BIND=true"
+      - "LD_LIBRARY_PATH=\"$LD_LIBRARY_PATH:/apps/riscv/openmpi/4.1.6_llvm1.0_native+cross/lib:/apps/riscv/llvm/EPI/development/lib\""
+      - "PATH=\"$PATH:/apps/riscv/openmpi/4.1.6_llvm1.0_native+cross/bin-native:/apps/riscv/llvm/EPI/development/bin:\""
+      
+  configs:
+    - name: "pioneer__{pioneer_nodes}_nodes"
+      ntasks: "{pioneer_nodes}"
+      partition: "pioneer"
+      cpus_per_task: 64
+      env: 
+        - "OMP_NUM_THREADS=64"
+
+    - name: "arriesgado__{arriesgado_nodes}_nodes"
+      ntasks: "{arriesgado_nodes}"
+      partition: "arriesgado-jammy"
+      cpus_per_task: 4
+      env: 
+        - "OMP_NUM_THREADS=4"
+
+    - name: "bananaf3__{bananaf3_nodes}_nodes"
+      ntasks: "{bananaf3_nodes}"
+      partition: "bananaf3"
+      cpus_per_task: 8
+      env: 
+        - "OMP_NUM_THREADS=8"
+        
 
 leonardo:
   scheduler: slurm

@@ -128,10 +128,14 @@ def main():
         status=[sbm.Status.COMPLETED], from_active=True, from_archived=False
     )
     cluster_name = sbm.get_cluster_name()
+    
+    for j in jobs:
+        print(f'[runtime] tag: {j.tag} runtime[s]: {j.get_run_time()}')
+    print()
 
     meta_df_pairs = [parse_job(j) for j in jobs]
     out_file = OUT_DIR / f"graph500_{cluster_name}_data.parquet"
-    import_export.describe_pairs_content(meta_df_pairs, verbose=True)
+    # import_export.describe_pairs_content(meta_df_pairs, verbose=True)
     import_export.write_multiple_to_parquet(meta_df_pairs, out_file)
 
 

@@ -28,6 +28,7 @@ CLUSTER_NAMES_MAP = {
   'nanjing-inter': 'NJ',
   'nanjing-intra': 'NJ',
   'haicgu': 'HAICGU',
+  'hca': 'BSC',
   'leonardo': 'Leonardo',
   'local': 'local',
 }
@@ -38,6 +39,9 @@ PARTITION_NAMES_MAP = {
   'nanjing-inter': 'inter',
   'nanjing-intra': 'intra',
   'boost_usr_prod': 'booster',
+  'pioneer': 'pioneer',
+  'arriesgado': 'arriesgado',
+  'bananaf3': 'bananaf3',
   # Debug
   'test': 'test',
   'other': 'other',

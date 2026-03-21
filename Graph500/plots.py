@@ -21,7 +21,7 @@ from utils.plots import (
     format_bytes,
     parse_bytes,
 )
-from utils.utils import query_meta_df_dict_pairs
+
 import import_export
 
 FONT_AXES = 20
@@ -589,7 +589,7 @@ def main():
     for (nodes, scale, ef), _ in meta_df.groupby(["nodes", "scale", "edgefactor"]):
         if nodes <= 1:
             continue
-        pairs = query_meta_df_dict_pairs(
+        pairs = import_export.query_meta_df_dict_pairs(
             meta_df_dict_pairs, [("nodes", nodes), ("scale", scale), ("edgefactor", ef)]
         )
         experiments = {
@@ -605,7 +605,7 @@ def main():
     ):
         if nodes <= 1:
             continue
-        pairs = query_meta_df_dict_pairs(
+        pairs = import_export.query_meta_df_dict_pairs(
             meta_df_dict_pairs,
             [
                 ("nodes", nodes),
