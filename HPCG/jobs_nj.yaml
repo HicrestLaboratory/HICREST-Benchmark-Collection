@@ -1,0 +1,17 @@
+# Sequential is mandatory
+sequential: true
+
+variables:
+  nodes: [1, 2, 4, 8]
+
+  partition: ['nanjing-inter', 'nanjing-intra']
+
+  grid_size: [128]
+  min_runtime: [0] # In seconds
+
+command: "mpirun --allow-run-as-root --map-by node -x PATH -x LD_LIBRARY_PATH -np {nodes} --hostfile /root/hpc/tpasquali/HPC-benchmarks/NJ/{nodes}hosts_{partition} ./xhpcg --nx={grid_size} --ny={grid_size} --nz={grid_size} --rt={min_runtime}"
+
+jobs:
+  - config: "{partition}_{nodes}nodes"
+    config_jobs:
+      - tag: "hpcg_{partition}"

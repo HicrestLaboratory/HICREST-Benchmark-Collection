@@ -1,0 +1,95 @@
+variables:
+  nodes: [1, 2, 4, 8]
+  pioneer_nodes: [1, 2, 4]
+  bananaf3_nodes: [1, 2, 4, 8]
+  arriesgado_nodes: [1, 2, 4]
+
+  partition: ["ib", "eth"]
+
+hca:
+  scheduler: slurm
+
+  default_conf:
+    exclusive: true
+    time: "00:30:00" 
+    custom_headers:
+      - "#SBATCH --ntasks-per-node=1"
+    env:
+      - "OMP_PROC_BIND=true"
+      - "LD_LIBRARY_PATH=\"$LD_LIBRARY_PATH:/apps/riscv/openmpi/4.1.6_llvm1.0_native+cross/lib:/apps/riscv/llvm/EPI/development/lib\""
+      - "PATH=\"$PATH:/apps/riscv/openmpi/4.1.6_llvm1.0_native+cross/bin-native:/apps/riscv/llvm/EPI/development/bin:\""
+      
+  configs:
+    - name: "pioneer__{pioneer_nodes}_nodes"
+      ntasks: "{pioneer_nodes}"
+      partition: "pioneer"
+      cpus_per_task: 64
+      env: 
+        - "OMP_NUM_THREADS=64"
+
+    - name: "arriesgado__{arriesgado_nodes}_nodes"
+      ntasks: "{arriesgado_nodes}"
+      partition: "arriesgado-jammy"
+      cpus_per_task: 4
+      env: 
+        - "OMP_NUM_THREADS=4"
+
+    - name: "bananaf3__{bananaf3_nodes}_nodes"
+      ntasks: "{bananaf3_nodes}"
+      partition: "bananaf3"
+      cpus_per_task: 8
+      env: 
+        - "OMP_NUM_THREADS=8"
+
+haicgu:
+  scheduler: slurm
+
+  default_conf:
+    #reservation: "dcn_6"
+    account: "dcn"
+    cpus_per_task: 128
+    gpus: 0
+    time: "01:00:00"
+    modules: 
+      - "GCC/14.1.0"
+      - "OpenMPI/5.0.3"
+      - "OpenBLAS/0.3.27"
+    # SLURM does not like this
+    # env:
+    #   - "OMP_PROC_BIND=true"
+    #   - "OMP_NUM_THREADS=128"
+    # These have been fixed
+    # exclude:
+    #   - cn17
+    #   - cn19
+    custom_headers:
+      - "#SBATCH --ntasks-per-node=1"
+
+  configs:
+    - name: "{partition}_{nodes}nodes"
+      partition: "cn-{partition}"
+      nodes: "{nodes}"
+      ntasks: "{nodes}"
+
+leonardo:
+  scheduler: slurm
+
+  default_conf:
+    account: "try25_HNS"
+    cpus_per_task: 32
+    gpus: 0
+    time: "00:05:00"
+    partition: "boost_usr_prod"
+    qos: "normal"
+    modules: 
+      - "gcc/12.2.0"
+      - "openmpi/4.1.6--gcc--12.2.0-cuda-12.2"
+    env:
+      - "OMP_PROC_BIND=true"
+      - "OMP_NUM_THREADS=32"
+
+  configs:
+    - name: "boost_usr_prod_{nodes}nodes"
+      nodes: "{nodes}"
+      ntasks: "{nodes}"
+

@@ -1,0 +1,16 @@
+variables:
+  nodes: [1, 2, 4, 8]
+  partition: ["nanjing-inter", "nanjing-intra"]
+
+nanjing:
+  scheduler: local
+
+  default_conf:
+    env:
+      - "OMP_PROC_BIND=true"
+      - "OMP_NUM_THREADS=128"
+      - "PATH=/root/hpc/build/gcc/bin:/root/hpc/build/bin:$PATH"
+      - "LD_LIBRARY_PATH=/root/hpc/build/gcc/lib64:/root/hpc/build/lib:$LD_LIBRARY_PATH"
+
+  configs:
+    - name: "{partition}_{nodes}nodes"

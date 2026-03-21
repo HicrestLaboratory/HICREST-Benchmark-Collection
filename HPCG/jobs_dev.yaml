@@ -1,0 +1,16 @@
+# Sequential is mandatory
+sequential: true
+
+variables:
+  nodes: [4]
+  partition: ["ib"]
+
+  grid_size: [32]
+  min_runtime: [20] # In seconds
+
+command: "mpirun -np {nodes} ./xhpcg --nx={grid_size} --ny={grid_size} --nz={grid_size} --rt={min_runtime}"
+
+jobs:
+  - config: "{partition}_{nodes}nodes"
+    config_jobs:
+      - tag: "hpcg_{partition}"
