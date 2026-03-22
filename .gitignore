@@ -22,3 +22,4 @@ parquets/
 DLNetBench/experiments*/
 DLNetBench/topos*/
 DLNetBench/**.json
+DLNetBench/**.dot
