@@ -214,7 +214,6 @@ def launch_job(
     strategy: str,
     assigned_resources: list,
     bind_to_device: bool,
-    gpus_per_node: int,
     extra_srun_flags: list[str],
     gh_affinity: bool,
     out_dir: Path,
@@ -236,9 +235,7 @@ def launch_job(
       .uid              – unique run identifier
       .job_name         – original job key from the JSON
       .repetition       – how many times this job has been launched (0-indexed)
-      .strategy         – strategy string from the JSON
       .resources        – list of assigned nodes or device IDs
-      .bind_to_device   – bool
       .app              – command string
       .stdout_path      – Path to stdout file
       .stderr_path      – Path to stderr file
@@ -302,14 +299,11 @@ def launch_job(
     proc.uid             = uid                  # type: ignore[attr-defined]
     proc.job_name        = job_name             # type: ignore[attr-defined]
     proc.repetition      = repetition           # type: ignore[attr-defined]
-    proc.strategy        = strategy             # type: ignore[attr-defined]
     proc.resources       = assigned_resources   # type: ignore[attr-defined]
-    proc.bind_to_device  = bind_to_device       # type: ignore[attr-defined]
     proc.app             = command              # type: ignore[attr-defined]
     proc.stdout_path     = stdout_path          # type: ignore[attr-defined]
     proc.stderr_path     = stderr_path          # type: ignore[attr-defined]
     proc.start_ts        = start                # type: ignore[attr-defined]
-    proc.gpus_per_node   = gpus_per_node        # type: ignore[attr-defined]
     return proc
 
 # ---------------------------------------------------------------------------
@@ -317,8 +311,8 @@ def launch_job(
 # ---------------------------------------------------------------------------
 
 METADATA_FIELDS = [
-    "uid", "job_name", "repetition", "strategy",
-    "resources", "bind_to_device", "app", "start_ts",
+    "uid", "job_name", "repetition",
+    "resources", "app", "start_ts",
 ]
 
 def drain_and_print(
@@ -466,6 +460,7 @@ class PlacementOracle:
         )
         if not res.ok:
             print("Placement could not be satisfied", file=sys.stderr)
+            print("Reason: " + str(res.reason), file=sys.stderr)
             print("Available nodes:", file=sys.stderr)
             print(self.reserved_nodes, file=sys.stderr)
             print("Request:", file=sys.stderr)
@@ -621,7 +616,6 @@ def run_scheduler(
             strategy           = info["strategy"],
             assigned_resources = info["resources"],
             bind_to_device     = bind_to_device,
-            gpus_per_node      = gpus_per_node,
             extra_srun_flags   = extra_flags,
             gh_affinity        = gh_affinity,
             out_dir            = out_dir,

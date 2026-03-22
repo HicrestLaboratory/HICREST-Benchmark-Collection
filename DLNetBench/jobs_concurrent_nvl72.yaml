@@ -10,7 +10,7 @@ variables:
   experiment: "experiments_nvl72/"
   # experiment: "experiments/"
 
-  extra_flags: ["--debug --keep-files --no-compact"]
+  extra_flags: ["--gh-affinity --debug --keep-files --no-compact"]
 
   walltime: [150]
 
