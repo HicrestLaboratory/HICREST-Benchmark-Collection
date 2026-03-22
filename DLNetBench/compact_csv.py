@@ -52,7 +52,7 @@ def _iqr_outliers_np(vals: np.ndarray, ranks: list) -> dict:
     q1, q3 = np.percentile(vals, [25, 75])
     iqr = q3 - q1
     mask = (vals < q1 - 1.5 * iqr) | (vals > q3 + 1.5 * iqr)
-    return {f"r{r}": float(v) for r, v, m in zip(ranks, vals, mask) if m}
+    return str({f"r{r}": float(v) for r, v, m in zip(ranks, vals, mask) if m})
 
 
 def compact_csv(csv_string: str, strategy_name: str, df_name: str) -> dict:
