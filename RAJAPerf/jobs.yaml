@@ -1,0 +1,56 @@
+variables:
+  pioneer_ncpus: [1, 2] #, 4, 8, 16, 32, 64]
+  bananaf3_ncpus: [1, 2, 4, 8]
+  arriesgado_ncpus: [1, 2, 4]
+
+jobs:
+  - config: "pioneer_{pioneer_ncpus}cpus"
+    command: >
+      $PWD/RAJAPerf/build/bin/raja-perf.exe
+      -v Base_Seq Base_OpenMP RAJA_Seq RAJA_OpenMP
+      --outdir $PWD/results/run_{pioneer_ncpus}cpus
+      --outfile $PWD/results/run_{pioneer_ncpus}cpus/rajaperf_{pioneer_ncpus}cpus
+    config_jobs:
+      - tag: "rajaperf_{pioneer_ncpus}cpus"
+
+  # - config: "arriesgado_{arriesgado_ncpus}cpus"
+  #   command: >
+  #     $HOME/RISC_TACO/RAJAPerf/build/bin/raja-perf.exe
+  #     -v Base_Seq Base_OpenMP RAJA_Seq RAJA_OpenMP
+  #     --outdir $HOME/RISC_TACO/RAJAPerf/results/run_{arriesgado_ncpus}cpus
+  #     --outfile rajaperf_{arriesgado_ncpus}cpus
+  #   config_jobs:
+  #     - tag: "rajaperf_{arriesgado_ncpus}cpus"
+
+  # - config: "bananaf3_{bananaf3_ncpus}cpus"
+  #   command: >
+  #     $HOME/RISC_TACO/RAJAPerf/build/bin/raja-perf.exe
+  #     -v Base_Seq Base_OpenMP RAJA_Seq RAJA_OpenMP
+  #     --outdir $HOME/RISC_TACO/RAJAPerf/results/run_{bananaf3_ncpus}cpus
+  #     --outfile rajaperf_{bananaf3_ncpus}cpus
+  #   config_jobs:
+  #     - tag: "rajaperf_{bananaf3_ncpus}cpus"
+
+
+
+
+# variables:
+#   pioneer_ncpus: [1, 2, 4, 8, 16, 32, 64]
+#   bananaf3_ncpus: [1, 2, 4, 8]
+#   arriesgado_ncpus: [1, 2, 4]
+
+# jobs:
+#   - config: "pioneer_{pioneer_ncpus}cpus"
+#     command: "$HOME/RISC_TACO/RAJAPerf/build/bin/raja-perf.exe -v Base_Seq Base_OpenMP RAJA_Seq RAJA_OpenMP"
+#     config_jobs:
+#       - tag: "rajaperf_{pioneer_ncpus}cpus"
+
+#   - config: "arriesgado_{arriesgado_ncpus}cpus"
+#     command: "$HOME/RISC_TACO/RAJAPerf/build/bin/raja-perf.exe -v Base_Seq Base_OpenMP RAJA_Seq RAJA_OpenMP"
+#     config_jobs:
+#       - tag: "rajaperf_{arriesgado_ncpus}cpus"
+
+#   - config: "bananaf3_{bananaf3_ncpus}cpus"
+#     command: "$HOME/RISC_TACO/RAJAPerf/build/bin/raja-perf.exe -v Base_Seq Base_OpenMP RAJA_Seq RAJA_OpenMP"
+#     config_jobs:
+#       - tag: "rajaperf_{bananaf3_ncpus}cpus"

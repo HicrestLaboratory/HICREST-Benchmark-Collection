@@ -15,3 +15,6 @@
 [submodule "DLNetBench"]
 	path = DLNetBench/DLNetBench
 	url = git@github.com:HicrestLaboratory/DLNetBench.git
+[submodule "RAJAPerf"]
+	path = RAJAPerf/RAJAPerf
+	url = https://github.com/llnl/RAJAPerf
