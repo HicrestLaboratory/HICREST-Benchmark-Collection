@@ -189,17 +189,19 @@ RUNTIME_ESTIMATES = {
     'leonardo__DP+PP+Expert__512__A100':    214.022749,
     'leonardo__DP+PP+Expert__1024__A100':   221.582458,
     
-    # {'alps__DP+PP__16__H200': 23.598698, 'alps__DP__16__H200': 17.387984, 'alps__FSDP__16__H200': 34.149995, 'alps__DP__8__H200': 15.139591, 'alps__FSDP__32__H200': 35.57791}
     # Alps (daint)
-    # 'alps__DP__8__H200':                    19.203147,
-    # 'alps__DP__16__H200':                   20.718195,
+    # 'alps__DP__8__H200':                    15.139591,
+    # 'alps__DP__16__H200':                   17.387984,
     
-    # 'alps__DP+PP__16__H200':                29.634537,
-    # 'alps__DP+PP__32__H200':                35.132769,
-    # 'alps__DP+PP__64__H200':                52.206712,
+    # 'alps__FSDP__16__H200':                 34.149995,
+    # 'alps__FSDP__32__H200':                 35.57791
     
-    # 'alps__DP+PP+TP__224__H200':            85.261597,
-    # 'alps__DP+PP+TP__256__H200':            82.937161,
+    # 'alps__DP+PP__16__H200':                23.598698,
+    # 'alps__DP+PP__32__H200':                ,
+    # 'alps__DP+PP__64__H200':                ,
+    
+    # 'alps__DP+PP+TP__224__H200':            72.094135,
+    # 'alps__DP+PP+TP__256__H200':            72.666106,
 }
 
 MIN_CONCURRENT_RUNTIME = 105 # FIXME

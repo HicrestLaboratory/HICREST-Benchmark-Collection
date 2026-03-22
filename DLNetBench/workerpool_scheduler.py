@@ -261,7 +261,7 @@ def launch_job(
         # ]
         cmd = [
             "srun",
-            "--ntasks=", str(num_ranks),
+            f"--ntasks={num_ranks}",
             f"--cpus-per-task={cpus_per_task}",
             "--gpus-per-task=1",
             f"--job-name={uid}",
@@ -806,7 +806,7 @@ def main() -> None:
     )
 
     pid     = os.getpid()
-    out_dir = Path(args.output_dir) if args.output_dir else Path(f"workerpool_out_{RUN_TAG}")
+    out_dir = Path(args.output_dir) if args.output_dir else Path("workerpool_out") / RUN_TAG
 
     extra_flags = args.srun_extra.split() if args.srun_extra.strip() else []
     log_path    = Path(args.output_log) if args.output_log else None

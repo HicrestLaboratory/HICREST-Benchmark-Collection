@@ -10,6 +10,11 @@ from typing import Optional, Union
 sys.path.append(str(Path(__file__).parent.parent / "common" / "ccutils" / "parser"))
 from ccutils_parser import MPIOutputParser
 
+def stdout_file_to_csv_multi(stdout_path: Path):
+    """Read a stdout file and parse it with stdout_to_csv_multi."""
+    content = stdout_path.read_text(errors="replace")
+    return stdout_to_csv_multi(content)
+
 def stdout_to_csv_multi(stdout_content):
     """
     Parse ccutils stdout and convert to multiple CSV format strings.
@@ -42,7 +47,7 @@ def stdout_to_csv_multi(stdout_content):
     strategy_name = list(parser_output.keys())[0]
     section = parser_output[strategy_name]
     
-    print(f"Detected strategy: {strategy_name}")
+    # print(f"Detected strategy: {strategy_name}")
     
     result_dfs = {}
     
