@@ -393,6 +393,8 @@ def get_job_name(strategy, gpus, nodes, placement, idx) -> str:
     return f"{strategy}_g{gpus}_n{nodes}_{placement}_{idx}"
 
 def get_concurrent_run_descriptor(pattern_id, entropy_bin: str, placement_score: float) -> str:
+    if not placement_score:
+        return f"patt{pattern_id}_ent{entropy_bin.capitalize()}_placNA"
     return f"patt{pattern_id}_ent{entropy_bin.capitalize()}_plac{int(placement_score*100.0)}"
 
 
