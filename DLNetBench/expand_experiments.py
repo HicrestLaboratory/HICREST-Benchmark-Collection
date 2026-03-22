@@ -682,7 +682,7 @@ def main(args: argparse.Namespace) -> None:
             idx=idx,
             out_dir=out_dir,
         )
-        fname = f"exp_{str(idx).zfill(n_digits)}_{get_concurrent_run_descriptor(rec.get("pattern_id"), rec.get("entropy_bin"), rec.get("placement_score"))}.json"
+        fname = f'exp_{str(idx).zfill(n_digits)}_{get_concurrent_run_descriptor(rec.get("pattern_id"), rec.get("entropy_bin"), rec.get("placement_score"))}.json'
         fpath = out_dir / fname
         with open(fpath, "w", encoding="utf-8") as fh:
             json.dump(exp_doc, fh, indent=2, ensure_ascii=False)
