@@ -1,15 +1,16 @@
 variables:
-  pioneer_ncpus: [1, 2] #, 4, 8, 16, 32, 64]
+  system: ['leonardo-dcgp'] # pioneer
+
+  pioneer_ncpus: [64] # 1, 2, 4, 8, 16, 32, 64]
   bananaf3_ncpus: [1, 2, 4, 8]
   arriesgado_ncpus: [1, 2, 4]
 
 jobs:
-  - config: "pioneer_{pioneer_ncpus}cpus"
+  - config: "{system}_{pioneer_ncpus}cpus"
     command: >
-      $PWD/RAJAPerf/build/bin/raja-perf.exe
+      ./RAJAPerf/build/bin/raja-perf.exe
       -v Base_Seq Base_OpenMP RAJA_Seq RAJA_OpenMP
-      --outdir $PWD/results/run_{pioneer_ncpus}cpus
-      --outfile $PWD/results/run_{pioneer_ncpus}cpus/rajaperf_{pioneer_ncpus}cpus
+      --outdir ./results/{pioneer_ncpus}cpus
     config_jobs:
       - tag: "rajaperf_{pioneer_ncpus}cpus"
 
