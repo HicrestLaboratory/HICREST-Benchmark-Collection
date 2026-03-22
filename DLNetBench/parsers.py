@@ -482,9 +482,7 @@ def parse_scheduler_output(text: str) -> tuple[list[dict], list[str]]:
         uid: ...
         job_name: ...
         repetition: ...
-        strategy: ...
         resources: ...
-        bind_to_device: ...
         app: ...
         start_ts: ...
         exit_code: ...
@@ -505,9 +503,7 @@ def parse_scheduler_output(text: str) -> tuple[list[dict], list[str]]:
             "uid":         str,                 # e.g. "job_1_rep2"
             "job_name":    str,                 # JSON key, e.g. "job_1"
             "repetition":  int,
-            "strategy":    str,
             "resources":   list[str],           # nodes or device IDs
-            "bind_to_device":  bool,
             "app":         str,                 # command string
             "start_ts":    str,
             "exit_code":   int | None,          # None if the field was missing
@@ -612,9 +608,7 @@ def parse_scheduler_output(text: str) -> tuple[list[dict], list[str]]:
             "uid":         uid,
             "job_name":    block.meta.get("job_name", "N/A"),
             "repetition":  block.meta.get("repetition", None),
-            "strategy":    block.meta.get("strategy", ""),
             "resources":   block.meta.get("resources", []),
-            "bind_to_device":  block.meta.get("bind_to_device", False),
             "app":         block.meta.get("app", ""),
             "start_ts":    block.meta.get("start_ts", ""),
             "exit_code":   block.meta.get("exit_code", None),

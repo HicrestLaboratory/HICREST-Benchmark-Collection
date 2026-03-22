@@ -65,9 +65,9 @@ import import_export
 #    Change these to switch how slowdown is extracted and aggregated.
 # ===========================================================================
 
-# Which column in dfs['measurements'] to use as the throughput proxy.
+# Which column in dfs['main'] to use as the throughput proxy.
 # Must be a higher-is-better metric (slowdown = T0 / T).
-SLOWDOWN_METRIC: str = "throughput"
+SLOWDOWN_METRIC: str = "throughput_mean"
 
 # How to reduce per-rank/iteration rows to a single scalar for one run.
 # Options: "mean" | "median" | "max" | "min"
@@ -81,12 +81,12 @@ SLOWDOWN_AGG: str = "mean"
 OUT_DIR = Path("plots") / "concurrent"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-METRICS = ["throughput", "runtime", "commtime"]
+METRICS = ["throughput_mean", "runtime_mean", "commtime"]
 
 METRIC_LABELS = {
-    "throughput": "Throughput (img/s)",
-    "runtime":    "Runtime (s)",
-    "commtime":   "Comm. time (s)",
+    "throughput_mean": "Throughput (samples/s)",
+    "runtime_mean":    "Runtime (s)",
+    "commtime":   "Comm. time (s)", # TODO fix
 }
 
 _PALETTE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
@@ -251,7 +251,7 @@ def _group_by_sbm_job(
     """Returns { sbm_job_id -> [(meta, df), ...] } sorted by (job_name, repetition)."""
     groups: dict[str, list[tuple[dict, pd.DataFrame]]] = defaultdict(list)
     for meta, dfs in mapping:
-        df = dfs.get("measurements")
+        df = dfs.get("main")
         if df is None or df.empty:
             continue
         groups[str(meta["sbm_job_id"])].append((meta, df))
@@ -261,7 +261,7 @@ def _group_by_sbm_job(
 
     return groups
 
-
+# FIXME TUNE exclude_first_n
 def _build_baseline_table_from_mapping(
     mapping: list[tuple[dict, dict[str, pd.DataFrame]]],
     metric: str,
@@ -283,7 +283,7 @@ def _build_baseline_table_from_mapping(
     counts:   dict[tuple[str, int], int]   = defaultdict(int)
 
     for meta, dfs in mapping:
-        df = dfs.get("measurements")
+        df = dfs.get("main")
         if df is None or df.empty:
             continue
 
@@ -294,6 +294,10 @@ def _build_baseline_table_from_mapping(
             strategy = uid.split('_')[0]
         if not gpus and uid:
             gpus = int(uid.split('_')[1][1:])
+            
+        # FIXME
+        if metric not in df.columns:
+            metric = metric.split('_')[0]
             
         if metric not in df.columns:
             print(f"  [baseline] metric '{metric}' not found in job {meta.get('sbm_job_id')} ({strategy=} / {gpus=}), skipping.")
@@ -413,6 +417,7 @@ def _compute_slowdowns(
         if t_conc <= 0:
             continue
 
+        # TODO ensure same compute
         result[jname][rep] = t0 / t_conc
 
     for key in missing_keys:

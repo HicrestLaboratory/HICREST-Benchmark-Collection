@@ -19,16 +19,19 @@ Summary printed to stdout:
 from __future__ import annotations
 
 import io
+from pprint import pprint
 import sys
 from pathlib import Path
 from typing import Any
 import re
+from warnings import warn
 import pandas as pd
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
+from compact_csv import compact_all
 import import_export
 import sbatchman as sbm
-from parsers import parse_scheduler_output
+from parsers import parse_scheduler_output, stdout_file_to_csv_multi
 
 # ---------------------------------------------------------------------------
 # Where to write the result
@@ -111,9 +114,7 @@ def _build_metadata(sbm_job: sbm.Job, run: dict[str, Any]) -> dict[str, Any]:
         "uid":           run["uid"],
         "job_name":      run["job_name"],
         "repetition":    run["repetition"],
-        "strategy":      run["strategy"],
         "resources":     ",".join(str(r) for r in run["resources"]),
-        "bind_to_device":run["bind_to_device"],
         "app":           run["app"],
         "start_ts":      run["start_ts"],
         "finished_at":   run["finished_at"],
@@ -150,7 +151,7 @@ def main() -> None:
     # walltime = 600
     # print(f"Found {len(jobs)} completed job(s) in sbatchman.  Filtering for walltime={walltime} seconds and excluding baselines...")
     jobs = [j for j in jobs if not j.tag.startswith('baseline')]
-    print(f"{len(jobs)} job(s) remain after baseline filtering.")
+    print(f"{len(jobs)} job(s) remain after excluding job tags that start with 'baseline'.")
     # jobs = [j for j in jobs if j.variables.get('walltime') == walltime]
     # print(f"{len(jobs)} job(s) remain after walltime filtering.")
     # for j in jobs:
@@ -178,6 +179,13 @@ def main() -> None:
 
         try:
             runs, log_lines = parse_scheduler_output(raw_stdout)
+            REQUIRED_RUN_KEYS = {"uid", "job_name", "repetition", "resources",
+                     "app", "start_ts", "finished_at", "exit_code",
+                     "success", "stdout", "stderr"}
+            for run in runs:
+                missing = REQUIRED_RUN_KEYS - run.keys()
+                if missing:
+                    warn(f"Run dict missing keys: {missing}")
         except Exception as exc:
             issues.append((str(sbm_job.job_id), str(sbm_job.tag), "<all>", OUTCOME_EXCEPTION,
                            f"parse_scheduler_output raised: {exc}"))
@@ -209,13 +217,31 @@ def main() -> None:
                 # Still attempt to parse whatever data was written before the failure
                 # (the scheduler already fell back to raw on transform errors)
 
-            # --- parse CSV from stdout ---
-            dict_df = _parse_csv(run["stdout"])
-
-            if run["stdout"].strip() == "":
+            stdout = str(run["stdout"]).strip()
+            
+            if stdout == "":
                 n_no_data += 1
                 issues.append((str(sbm_job.job_id), str(sbm_job.tag), uid, OUTCOME_NO_DATA, "stdout is empty"))
                 continue
+            
+            if stdout.startswith('stdout: '):
+                # This is a path to raw output file
+                stdout_lines = stdout.splitlines()
+                stdout_path = Path(stdout_lines[0].strip().removeprefix('stdout: '))
+                # TODO check stderr
+                # stderr_path = Path(stdout_lines[1].strip().removeprefix('stderr: '))
+                stdout = compact_all(stdout_path.read_text(errors="replace"))
+                
+                # dict_df = {}
+                # for k, v in dict_tmp.items():
+                #     df = pd.read_csv(io.StringIO(v))
+                #     if not df.empty:
+                #         dict_df[k] = df
+                
+            # TODO handle non compressed case
+            
+            dict_df = _parse_csv(stdout)
+
 
             if dict_df is None:
                 print(f"\033[92mUID: {uid}\033[0m")
@@ -233,8 +259,10 @@ def main() -> None:
                 total_ok += 1
 
             meta = _build_metadata(sbm_job, run)
-            for key in dict_df.keys():
-                pairs.append((meta, {key: dict_df[key]}))
+            pairs.append((meta, dict_df))
+            # for key in dict_df.keys():
+                # print(key)
+                # pairs.append((meta, {key: dict_df[key]}))
 
         job_summaries.append({
             "sbm_job_id": sbm_job.job_id,
@@ -319,6 +347,11 @@ def main() -> None:
         return
 
     print(f"Writing {len(pairs)} run(s) to {out_file} ...")
+    # for i in range(10):
+    #     print(pairs[i][0])
+    #     for k in pairs[i][1].keys():
+    #         print(f'{k} --> {pairs[i][1][k].columns} (len {len(pairs[i][1][k])})')
+    #     print()
     import_export.write_multiple_to_parquet(pairs, out_file)
     print(f"Done.  Output: {out_file.resolve()}")
     print()
