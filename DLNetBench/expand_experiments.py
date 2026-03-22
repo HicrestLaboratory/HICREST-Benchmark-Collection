@@ -171,6 +171,7 @@ VALID_PLACEMENTS: dict = {
 
 # In seconds
 RUNTIME_ESTIMATES = {
+    # Leonardo
     'leonardo__DP__8__A100':                5.935904,
     'leonardo__DP__16__A100':               7.114242,
     
@@ -187,6 +188,18 @@ RUNTIME_ESTIMATES = {
     
     'leonardo__DP+PP+Expert__512__A100':    214.022749,
     'leonardo__DP+PP+Expert__1024__A100':   221.582458,
+    
+    # {'alps__DP+PP__16__H200': 23.598698, 'alps__DP__16__H200': 17.387984, 'alps__FSDP__16__H200': 34.149995, 'alps__DP__8__H200': 15.139591, 'alps__FSDP__32__H200': 35.57791}
+    # Alps (daint)
+    # 'alps__DP__8__H200':                    19.203147,
+    # 'alps__DP__16__H200':                   20.718195,
+    
+    # 'alps__DP+PP__16__H200':                29.634537,
+    # 'alps__DP+PP__32__H200':                35.132769,
+    # 'alps__DP+PP__64__H200':                52.206712,
+    
+    # 'alps__DP+PP+TP__224__H200':            85.261597,
+    # 'alps__DP+PP+TP__256__H200':            82.937161,
 }
 
 MIN_CONCURRENT_RUNTIME = 105 # FIXME
@@ -211,19 +224,19 @@ class PlacementOracle:
         use_placer_files: bool
     ) -> None:
         topology_file=None
+        topology_toml_file=None
         sinfo_file=None
         if use_placer_files:
             topology_file=f'../common/JobPlacer/{system}_topo.txt'
             sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt'
         if system.lower() == 'alps':
-            topology_file=f'../common/JobPlacer/systems/{system.upper()}.toml'
-            sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt'
+            topology_toml_file=f'../common/JobPlacer/systems/{system.upper()}.toml'
             
         self.oracle = JobPlacer(
             system=system,
             topology_file=topology_file,
+            topology_toml_file=topology_toml_file,
             sinfo_file=sinfo_file,
-            topology_scontrol=not topology_file,
             nodelist=reserved_nodes,
             verbose=False,
         )
@@ -261,7 +274,7 @@ class PlacementOracle:
             oracle_jobs,
             seed=seed,
             timeout=timeout,
-            svg_out=svg_out,
+            extra_args=['--out-svg', str(svg_out)] if svg_out else None,
         )
         print(f'[oracle] {"OK" if res.ok else "FAILED"}')
         if res.placements:

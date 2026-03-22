@@ -68,9 +68,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
+from command_map import EXTRA_SRUN_FLAGS
 from utils.slurm import expand_slurm_nodelist
 from JobPlacer.cli_wrapper import JobPlacer, JobRequest, PlacementResult
 
@@ -206,6 +207,7 @@ def _close_handles(proc: subprocess.Popen) -> None:
 # ---------------------------------------------------------------------------
 
 def launch_job(
+    system: str,
     job_name: str,
     repetition: int,
     command: str,
@@ -281,6 +283,7 @@ def launch_job(
             f"--cpus-per-task={cpus_per_task}",
             f"--job-name={uid}",
             *extra_srun_flags,
+            *EXTRA_SRUN_FLAGS.get(system, [])
         ]
         # Grace-Hopper / Grace-Blackwell CPU-GPU affinity.
         # Injected just before the user command so it cannot be accidentally
@@ -418,18 +421,19 @@ class PlacementOracle:
         use_topo_files: bool = False,
     ) -> None:
         debug(f"PlacementOracle init for system='{system}', use_topo_files={use_topo_files}")
-        self.program = '../common/JobPlacer/target/release/job_placer_placement_classes'
-
-        kwargs: dict = dict(
+        topology_toml_file=None
+        if system.lower() == 'alps':
+            topology_toml_file=f'../common/JobPlacer/systems/{system.upper()}.toml'
+            
+        self.oracle = JobPlacer(
             system=system,
+            topology_file=None,
+            topology_toml_file=topology_toml_file,
+            sinfo_file=None,
             nodelist=reserved_nodes,
-            binary=self.program,
+            verbose=False,
         )
-        if use_topo_files:
-            kwargs["topology_file"] = f'../common/JobPlacer/{system}_topo.txt'
-            kwargs["sinfo_file"]    = f'../common/JobPlacer/{system}_sinfo.txt'
-
-        self.oracle = JobPlacer(**kwargs)
+        self.program = self.oracle._binary
         self.system = system
         self.reserved_nodes: list = reserved_nodes or []
         self._available = self._probe()
@@ -453,7 +457,6 @@ class PlacementOracle:
         for j in jobs:
             oracle_jobs[j['job_id']] = JobRequest(
                 num_nodes=j['req'],
-                job_kind=j['job_id'],
                 placement_class=str(j['placement_class']).lower()
             )
         res = self.oracle.place(
@@ -474,7 +477,7 @@ def assign_resources(
     pattern: dict,
     available_resources: list,
     use_devices: bool,
-    system: Union[str, None] = None,
+    system: str,
     use_topo_files: bool = False,
 ) -> dict:
     """
@@ -571,6 +574,7 @@ def assign_resources(
 # ---------------------------------------------------------------------------
 
 def run_scheduler(
+    system: str,
     jobs: dict,
     out_dir: Path,
     extra_flags: list[str],
@@ -610,6 +614,7 @@ def run_scheduler(
         rep  = rep_counter.get(job_key, 0)
         rep_counter[job_key] = rep + 1
         return launch_job(
+            system             = system,
             job_name           = job_key,
             repetition         = rep,
             command            = info["command"],
@@ -731,9 +736,9 @@ def parse_args() -> argparse.Namespace:
                    help=f"CPUs per task. Default: {CPUS_PER_TASK}.")
     p.add_argument("--output-log", default=None, metavar="FILE",
                    help="File to mirror scheduler log lines into (in addition to stdout).")
-    p.add_argument("--kill-signal", default="SIGTERM", metavar="SIGNAL",
-                   help="Signal used to terminate jobs gracefully. Default: SIGTERM.")
-    p.add_argument("--system", type=str, default=None,
+    p.add_argument("--kill-signal", default="SIGUSR1", metavar="SIGNAL",
+                   help="Signal used to terminate jobs gracefully. Default: SIGUSR1.")
+    p.add_argument("--system", type=str, default='',
                    help="The system topology to query. Required if placement=runtime.")
 
     # --- new flags ---
@@ -775,7 +780,7 @@ def main() -> None:
     bind_to_device = (placement == "device")
     gpus_per_node  = pattern.get("gpus_per_node", 1)
 
-    if placement == 'runtime' and args.system is None:
+    if placement == 'runtime' and not args.system:
         print("ERROR: If placement == 'runtime', --system must be set.", file=sys.stderr)
         sys.exit(1)
 
@@ -816,6 +821,7 @@ def main() -> None:
         sys.exit(1)
 
     run_scheduler(
+        system         = args.system,
         jobs           = jobs,
         out_dir        = out_dir,
         extra_flags    = extra_flags,

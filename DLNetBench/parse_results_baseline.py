@@ -110,7 +110,7 @@ OUTCOME_BAD_CSV = "bad_csv"
 
 
 def main() -> None:
-    cluster_name = "leonardo"#sbm.get_cluster_name()
+    cluster_name = sbm.get_cluster_name()
     OUT_DIR.mkdir(exist_ok=True, parents=True)
     out_file = OUT_DIR / f"DLNetBenchBaseline_{cluster_name}_data.parquet"
 
@@ -195,7 +195,6 @@ def main() -> None:
         out = job.get_stdout()
         start_time = time.time()
         compacted = compact_all(out)
-        print(compacted)
         elapsed = time.time() - start_time
         jobs_stdout_compaction_time[job_key] = elapsed
         jobs_stdout_size_compact[job_key] = len(compacted)
@@ -219,7 +218,6 @@ def main() -> None:
     print('--- Assuming 1 compact run of ALL (generous upperbound) ---')
     print(format_bytes(sum([int(s) for s in jobs_stdout_size_compact.values()])))
     print()
-    exit() # FIXME
 
     # ------------------------------------------------------------------
     # Summary table

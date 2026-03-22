@@ -198,10 +198,10 @@ PLACEMENT_CLASS_DEFS: list[tuple[str, str, float]] = [
     ("INTRA_L1_RANDOM",           "intra-l1",                1.0),
     ("INTRA_GROUP_RANDOM",        "intra-group",             2.0),
     ("INTER_GROUP_RANDOM",        "inter-group",             3.0),
-    ("INTRA_GROUP_SAME_L1_2",     "intra-group-same-l1-2",   1.5),
-    ("INTRA_GROUP_SAME_L1_4",     "intra-group-same-l1-4",   1.3),
-    ("INTER_GROUP_SAME_L1_2",     "inter-group-same-l1-2",   2.5),
-    ("INTER_GROUP_SAME_L1_4",     "inter-group-same-l1-4",   2.3),
+    ("INTRA_GROUP_SAME_L1_2",     "intra-group-same-l1-2",   1.5), 
+    ("INTRA_GROUP_SAME_L1_4",     "intra-group-same-l1-4",   1.2), 
+    ("INTER_GROUP_SAME_L1_2",     "inter-group-same-l1-2",   2.5), 
+    ("INTER_GROUP_SAME_L1_4",     "inter-group-same-l1-4",   2.25),
 ]
 
 # ---------------------------------------------------------------------------
@@ -230,10 +230,12 @@ STRATEGY_PLACEMENT_MAP: dict[str, list[str]] = {
 
     "DP+PP":         ["INTRA_L1_RANDOM",
                       "INTRA_GROUP_SAME_L1_2",
-                      "INTER_GROUP_SAME_L1_2"],
+                      "INTER_GROUP_SAME_L1_2",
+                      "INTER_GROUP_RANDOM"],
 
     "DP+PP+TP":      ["INTRA_GROUP_SAME_L1_4",
-                      "INTER_GROUP_SAME_L1_4"],
+                      "INTER_GROUP_SAME_L1_4",
+                      "INTER_GROUP_RANDOM"],
 
     "DP+PP+Expert":  ["INTRA_GROUP_RANDOM",
                       "INTER_GROUP_RANDOM"],
@@ -1724,7 +1726,7 @@ def main(cfg: argparse.Namespace) -> None:
         "B": False,
         "C": False,
         "D": False,
-        "E": True,
+        "E": cfg.n_stochastic_patterns > 0,
     }
 
     patterns = build_pattern_set(
@@ -1898,7 +1900,7 @@ examples:
                     help=f"Max utilization (default: {UTIL_MAX}).")
     pg.add_argument("--util-steps", type=_positive_int, default=UTIL_STEPS, metavar="N",
                     help=f"Utilization grid steps (default: {UTIL_STEPS}).")
-    pg.add_argument("--n-stochastic-patterns", type=_positive_int,
+    pg.add_argument("--n-stochastic-patterns", type=int,
                     default=N_STOCHASTIC_PATTERNS, metavar="N",
                     help=f"Family-E patterns to generate (default: {N_STOCHASTIC_PATTERNS}).")
 

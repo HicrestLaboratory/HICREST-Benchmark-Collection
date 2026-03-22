@@ -6,20 +6,6 @@ Launches single-node baseline experiments using sbatchman.
 Reads the baseline_set from experiments.json, filters runs that fit on a
 single node (gpus <= gpus_per_node), and launches them sequentially via
 sbatchman.launch_job — each job waits for the previous one to complete.
-
-Usage
------
-  python run_baselines_no_placement.py experiments.json \\
-      --config-name my_config \\
-      --comm-lib nccl \\
-      --gpus-per-node 72
-
-  # dry run (does not actually submit jobs)
-  python run_baselines_no_placement.py experiments.json \\
-      --config-name my_config \\
-      --comm-lib nccl \\
-      --gpus-per-node 72 \\
-      --dry-run
 """
 
 import argparse
@@ -32,9 +18,8 @@ import sbatchman as sbm
 
 
 sys.path.append(str(Path(__file__).parent))
-from command_map import get_command, FEASIBLE_GPU_COUNTS
+from command_map import EXTRA_SRUN_FLAGS, get_command
 from collections import Counter
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -81,7 +66,10 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
 
         command = get_command(strategy, num_gpus, args.comm_lib, args.gpu_model, num_warmup_override=0, use_dgx=(args.dgx == "DGX_A100"))
 
-        command = f"mpirun -np {num_gpus} {command}"
+        if args.use_mpirun:
+            command = f"mpirun -np {num_gpus} {command}"
+        else:
+            command = f"srun {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} -N{nodes} -n{num_gpus} {command}"
 
         print(f"[{i:02d}/{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
         print(f"        command: {command}")
@@ -97,7 +85,8 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
                 tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
                 previous_job_id  = previous_job_id,
                 dry_run          = args.dry_run,
-                variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes, 'comm_lib': args.comm_lib, 'gpu_model': args.gpu_model},
+                variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes, 'comm_lib': args.comm_lib, 'gpu_model': args.gpu_model, 'placement': 'na'},
+                ignore_archived  = True
             )
             previous_job_id = job.job_id
             print(f"        → job_id={job.job_id}\n")
@@ -125,6 +114,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dgx", required=False, help="Use DGX-A100 node.", choices=["DGX_A100"], default=None)
 
     p.add_argument(
+        "--system", required=True, metavar="SYSTEM", choices=['leonardo', 'jupiter', 'alps', 'nvl72', 'baldo'],
+        help="The name of the system",
+    )
+    p.add_argument(
         "--comm-lib", required=True, metavar="LIB",
         help="Communication library (e.g. 'nccl', 'mpi'). Injected into the command path.",
     )
@@ -134,7 +127,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--gpus-per-node", type=int, default=4, metavar="N",
-        help="GPUs per physical node. Runs with gpus > N are skipped (default: 72).",
+        help="GPUs per physical node. Runs with gpus > N are skipped (default: 4).",
     )
     p.add_argument(
         "--dry-run", action="store_true", default=False,
@@ -143,6 +136,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--config-prefix", type=str, default="nodes", metavar="PREFIX",
         help="Prefix for config names (default: 'nodes'). If set to 'gpus', config names will be based on GPU count instead of node count.",
+    )
+    p.add_argument(
+        "--use-mpirun", action="store_true", default=False,
+        help="If set, mpirun will be used instead of srun.",
     )
     return p
 

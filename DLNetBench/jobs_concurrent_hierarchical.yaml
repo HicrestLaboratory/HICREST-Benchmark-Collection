@@ -1,20 +1,22 @@
 sequential: true
 
 variables:
-  nodes: [18]          # Ensure these are enough for the experiments that will run
-  system: ['nvl72']    # Does not matter if placement != runtime
+  nodes: [64] # 18          # Ensure these are enough for the experiments that will run
+  system: ['alps'] # nvl72      # Does not matter if placement != runtime
   tasks_per_node: [4]
-  cpus_per_task: [8]
+  cpus_per_task: [72] # 8
 
   # -- Change as needed --
-  experiment: "testini_belli/"
+  experiment: "experiments_alps_debug_test_64/"
   # experiment: "experiments/"
 
-  walltime: [90]
+  extra_flags: ["--debug --keep-files --no-compact"]
+
+  walltime: [105]
 
 jobs:
   - config: "{nodes}_nodes"
     config_jobs:
       - tag: "{experiment_filename}"
         preprocess: "echo \"Allocated nodes: $SLURM_JOB_NODELIST\""
-        command: "python workerpool_scheduler.py --walltime {walltime} --nodelist \"$SLURM_JOB_NODELIST\" --tasks-per-node {tasks_per_node} --cpus-per-task {cpus_per_task} --system {system} --debug -p {experiment}"
+        command: "python workerpool_scheduler.py --walltime {walltime} --nodelist \"$SLURM_JOB_NODELIST\" --tasks-per-node {tasks_per_node} --cpus-per-task {cpus_per_task} --system {system} -p {experiment} {extra_flags}"

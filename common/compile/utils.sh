@@ -24,11 +24,17 @@ validate_argument() {
 }
 
 check_alps_uenv() {
-    if [[ ! -d "/user-environment/linux-sles15-neoverse_v2" ]]; then
-        echo "Please pull the uenv image: 'uenv image pull prgenv-gnu/24.7:v3'"
-        echo "Then, start a new session with that image: 'uenv start prgenv-gnu/24.7:v3 --view=modules'"
+    if [[ ! -d "/user-environment/linux-neoverse_v2" ]]; then
+        echo "Please pull the uenv image: 'uenv image pull prgenv-gnu-openmpi/25.12:v1'"
+        echo "Then, start a new session with that image: 'uenv start --view=modules prgenv-gnu-openmpi/25.12:v1'"
+        echo "Then, load modules: 'ml gcc/14.3.0 cuda/12.9.1 nccl/2.28.9-1 openmpi/5.0.9 python/3.14.0 libfabric/2.3.1 aws-ofi-nccl/1.17.1'"
         exit 2
     fi
+    # if [[ ! -d "/user-environment/linux-sles15-neoverse_v2" ]]; then
+    #     echo "Please pull the uenv image: 'uenv image pull prgenv-gnu/24.7:v3'"
+    #     echo "Then, start a new session with that image: 'uenv start prgenv-gnu/24.7:v3 --view=modules'"
+    #     exit 2
+    # fi
 }
 
 check_ccutils_installation() {

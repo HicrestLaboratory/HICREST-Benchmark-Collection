@@ -8,6 +8,10 @@ from __future__ import annotations
 from typing import Union
 from experiments_generator import STRATEGY_DEFS, STRATEGY_DEFS_DGX_A100
 
+EXTRA_SRUN_FLAGS = {
+    'alps': ['--mpi=pmix', '--cpu-bind=cores', '--accel-bind=g']
+}
+
 FEASIBLE_GPU_COUNTS: dict[str, frozenset[int]] = {
     strategy[0]: frozenset(strategy[1]) for strategy in STRATEGY_DEFS
 }
@@ -48,7 +52,7 @@ _STRATEGIES_NUM_RUNS_B200: dict[str, tuple[int, int]] = {
     "DP+PP+TP":     (1, 2),  # 23s  * 3 = 1m 9s
 }
 
-def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model:str = "B200", num_warmup_override: Union[int, None]=None, use_dgx:bool=False) -> str:
+def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model: str, num_warmup_override: Union[int, None]=None, use_dgx:bool=False) -> str:
     if strategy not in _PARAMS:
         raise ValueError(f"Unknown strategy '{strategy}'. Valid: {sorted(_PARAMS)}")
     
@@ -85,4 +89,4 @@ if __name__ == "__main__":
     print(f"{'Strategy':<15} {'GPUs':>5}  Command")
     print("-" * 100)
     for s, g in tests:
-        print(f"{s:<15} {g:>5}  {get_command(s, g, 'nccl')}")
+        print(f"{s:<15} {g:>5}  {get_command(s, g, 'nccl', 'H200')}")
