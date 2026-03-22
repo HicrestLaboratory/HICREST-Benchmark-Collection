@@ -1,3 +1,4 @@
+from pathlib import Path
 import re
 import pandas as pd
 import sbatchman as sbm
@@ -60,7 +61,7 @@ def parse_npb_outputs(jobs):
                     verify = m.group(1)
 
         records.append({
-            "device": device,
+            "system": device,
             "benchmark": benchmark,
             "class": cls,
             "cores": cores,
@@ -79,8 +80,8 @@ def parse_npb_outputs(jobs):
 # ---------------------------
 
 if __name__ == "__main__":
-
     jobs = sbm.jobs_list(status=[sbm.Status.COMPLETED])
+    system = sbm.get_cluster_name()
 
     df = parse_npb_outputs(jobs)
 
@@ -90,6 +91,8 @@ if __name__ == "__main__":
 
     df.sort_values(["benchmark", "cores"], inplace=True)
 
-    df.to_csv("npb_results.csv", index=False)
+    out_path = Path('results') / f"npb_{system}_results.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_path, index=False)
 
-    print("Saved: npb_results.csv")
+    print(f"Saved to: {out_path.resolve().absolute()}")

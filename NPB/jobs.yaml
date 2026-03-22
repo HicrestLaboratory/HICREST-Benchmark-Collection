@@ -1,4 +1,6 @@
 variables:
+  system: ['leonardo-dcgp'] # pioneer
+
   pioneer_ncpus: [1, 2, 4, 8, 16, 32, 64]
   bananaf3_ncpus: [1, 2, 4, 8]
   arriesgado_ncpus: [1, 2, 4]
@@ -12,11 +14,11 @@ variables:
     - "lu.C.x"
     - "sp.C.x"
     - "is.C.x"
-
-command: "./NPB3.4/NPB3.4-OMP/bin/{npb_exec}"
+    
+command: "./NPB/NPB3.4/NPB3.4-OMP/bin/{npb_exec}"
 
 jobs:
-  - config: "pioneer_{pioneer_ncpus}cpus"
+  - config: "{system}_{pioneer_ncpus}cpus"
     config_jobs:
       - tag: "{npb_exec}_{pioneer_ncpus}cpus"
 
