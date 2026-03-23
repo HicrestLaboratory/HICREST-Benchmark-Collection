@@ -69,7 +69,7 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
         if args.use_mpirun:
             command = f"mpirun -np {num_gpus} {command}"
         else:
-            command = f"srun {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} -N{nodes} -n{num_gpus} {command}"
+            command = f"srun -N{nodes} -n{num_gpus} --ntasks-per-node={args.gpus_per_node} --cpus-per-task={args.cpus_per_task} {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} {command}"
 
         print(f"[{i:02d}/{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
         print(f"        command: {command}")
@@ -126,8 +126,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="The GPU model to emulate compute time (sleep)", choices=["B200", "H200", "A100"]
     )
     p.add_argument(
-        "--gpus-per-node", type=int, default=4, metavar="N",
-        help="GPUs per physical node. Runs with gpus > N are skipped (default: 4).",
+        "--gpus-per-node", type=int, required=True, metavar="N",
+        help="GPUs per physical node.",
+    )
+    p.add_argument(
+        "--cpus-per-task", type=int, required=True, metavar="C",
+        help="CPUs per task",
     )
     p.add_argument(
         "--dry-run", action="store_true", default=False,
