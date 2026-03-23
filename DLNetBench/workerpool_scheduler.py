@@ -446,7 +446,7 @@ class PlacementOracle:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
 
-    def find_placement(self, jobs: list[dict]) -> PlacementResult:
+    def find_placement(self, jobs: list[dict], seed: int = 0) -> PlacementResult:
         oracle_jobs = {}
         for j in jobs:
             oracle_jobs[j['job_id']] = JobRequest(
@@ -455,7 +455,7 @@ class PlacementOracle:
             )
         res = self.oracle.place(
             oracle_jobs,
-            seed=jobs[0]['seed'],
+            seed=seed,
             timeout=5.0,
         )
         if not res.ok:
@@ -542,7 +542,7 @@ def assign_resources(
             reserved_nodes=available_resources,
             use_topo_files=use_topo_files,
         )
-        assignments = oracle.find_placement(oracle_payload)
+        assignments = oracle.find_placement(oracle_payload, pattern.get('placement_seed', 0))
         if not assignments.ok:
             sys.exit(100)
         assignments = assignments.placements

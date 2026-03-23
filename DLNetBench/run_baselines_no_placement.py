@@ -86,7 +86,8 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
                 previous_job_id  = previous_job_id,
                 dry_run          = args.dry_run,
                 variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes, 'comm_lib': args.comm_lib, 'gpu_model': args.gpu_model, 'placement': 'na'},
-                ignore_archived  = True
+                ignore_archived  = True,
+                ignore_commands_in_dup_check = True,
             )
             previous_job_id = job.job_id
             print(f"        → job_id={job.job_id}\n")
