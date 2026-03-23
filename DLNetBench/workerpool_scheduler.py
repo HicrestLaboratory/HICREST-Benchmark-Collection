@@ -412,6 +412,7 @@ class PlacementOracle:
         self,
         system: str,
         reserved_nodes: list,
+        nodes_blacklist: str,
         use_topo_files: bool = False,
     ) -> None:
         debug(f"PlacementOracle init for system='{system}', use_topo_files={use_topo_files}")
@@ -425,6 +426,7 @@ class PlacementOracle:
             topology_toml_file=topology_toml_file,
             sinfo_file=None,
             nodelist=reserved_nodes,
+            nodes_blacklist=nodes_blacklist,
             verbose=False,
         )
         self.program = self.oracle._binary
@@ -473,6 +475,7 @@ def assign_resources(
     available_resources: list,
     use_devices: bool,
     system: str,
+    nodes_blacklist: str,
     use_topo_files: bool = False,
 ) -> dict:
     """
@@ -540,6 +543,7 @@ def assign_resources(
         oracle = PlacementOracle(
             system=system,
             reserved_nodes=available_resources,
+            nodes_blacklist=nodes_blacklist,
             use_topo_files=use_topo_files,
         )
         assignments = oracle.find_placement(oracle_payload, pattern.get('placement_seed', 0))
@@ -560,7 +564,7 @@ def assign_resources(
                 "command": job_info["command"],
                 "gpus": job_info.get("gpus"),
             }
-            debug(f"Assigned {full_id} → {assignments[full_id]}")
+            log(f"Assigned {full_id} → {assignments[full_id]}")
 
     return result
 
@@ -734,8 +738,6 @@ def parse_args() -> argparse.Namespace:
                    help="Signal used to terminate jobs gracefully. Default: SIGUSR1.")
     p.add_argument("--system", type=str, default='',
                    help="The system topology to query. Required if placement=runtime.")
-
-    # --- new flags ---
     p.add_argument("--use-topo-files", action="store_true", default=False,
                    help="Pass topology_file and sinfo_file to JobPlacer "
                         "(requires the corresponding <system>_topo.txt / _sinfo.txt files). "
@@ -751,6 +753,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--keep-files", action="store_true", default=False,
                    help="Keep per-job stdout/stderr files after the scheduler exits "
                         "(even when --no-compact is not set).")
+    p.add_argument("--nodes-blacklist", type=str, default=None,
+                   help="Nodes (in SLURM format) blacklist to pass to JobPlacer")
 
     p.add_argument("--debug", action="store_true",
                    help="Enable verbose debug output.")
@@ -796,6 +800,7 @@ def main() -> None:
         available,
         use_devices=bind_to_device,
         system=args.system,
+        nodes_blacklist=args.nodes_blacklist,
         use_topo_files=args.use_topo_files,
     )
 

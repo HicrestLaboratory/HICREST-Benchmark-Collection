@@ -11,6 +11,7 @@ Before compiling be sure to have the modules loaded. Look at the `configs.yaml` 
 Supported systems:
 - `leonardo`
 - `alps`
+- `jupiter`
 - `lumi`
 - `baldo`
 - `cpu` -> it is just a way to use the benchmarks using CPU-only MPI

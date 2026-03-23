@@ -10,7 +10,8 @@ variables:
   experiment: "experiments_alps_debug_test_64/"
   # experiment: "experiments/"
 
-  extra_flags: ["--debug --keep-files --no-compact"]
+  extra_flags: ["--debug --keep-files --no-compact"] 
+  # Add if needed:    --nodes-blacklist <list in SLURM format>
 
   walltime: [105]
 

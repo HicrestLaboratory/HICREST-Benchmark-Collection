@@ -241,6 +241,7 @@ def main(args: argparse.Namespace) -> None:
         try:
             job = sbm.launch_job(
                 config_name     = config_name,
+                preprocess      = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
                 command         = command,
                 tag             = (
                     f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes"

@@ -63,6 +63,10 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
         strategy = run["strategy"]
         num_gpus = int(run["gpus"])
         nodes = int(num_gpus / args.gpus_per_node) if num_gpus > args.gpus_per_node else 1
+        
+        if args.max_n_nodes and nodes > args.max_n_nodes:
+            print(f'Skipping job {strategy} @ {nodes} nodes. Limit is {args.max_n_nodes}.')
+            continue
 
         command = get_command(strategy, num_gpus, args.comm_lib, args.gpu_model, num_warmup_override=0, use_dgx=(args.dgx == "DGX_A100"))
 
@@ -81,6 +85,7 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
         try:
             job = sbm.launch_job(
                 config_name      = config_name,
+                preprocess       = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
                 command          = command,
                 tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
                 previous_job_id  = previous_job_id,
@@ -145,6 +150,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--use-mpirun", action="store_true", default=False,
         help="If set, mpirun will be used instead of srun.",
+    )
+    p.add_argument(
+        "--max-n-nodes", type=int, default=None,
+        help="If set, it will only launch jobs that need at most --max-n-nodes nodes.",
     )
     return p
 

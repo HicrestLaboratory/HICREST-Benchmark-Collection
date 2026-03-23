@@ -109,6 +109,11 @@ def _cluster_linestyles(clusters: List[str]) -> Dict[str, str]:
     styles = ['-', '--', '-.', ':']
     return {c: styles[i % len(styles)] for i, c in enumerate(sorted(set(clusters)))}
 
+def _cluster_colors(clusters: List[str]) -> Dict[str, str]:
+    """Assign a consistent color per cluster."""
+    palette = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    return {c: palette[i % len(palette)] for i, c in enumerate(sorted(set(clusters)))}
+
 
 # ---------------------------------------------------------------------------
 # 1) Scaling plot
@@ -151,6 +156,7 @@ def plot_scaling(
 
     strat_styles = _strategy_styles(df['strategy'].unique())
     clust_ls     = _cluster_linestyles(df['cluster'].unique())
+    clust_color  = _cluster_colors(df['cluster'].unique())
 
     # Track what we've added to the legend to avoid duplicates
     legend_handles = {}
@@ -159,6 +165,7 @@ def plot_scaling(
         grp = grp.sort_values('gpus')
         style = strat_styles[strategy]
         ls    = clust_ls[cluster]
+        color = clust_color[cluster]
         label = f"{strategy} — {cluster}"
 
         line = ax.errorbar(
@@ -166,7 +173,7 @@ def plot_scaling(
             grp['throughput_mean'],
             yerr=grp['throughput_std'],
             label=label,
-            color=style['color'],
+            color=color, # style['color'],
             marker=style['marker'],
             linestyle=ls,
             linewidth=2,
