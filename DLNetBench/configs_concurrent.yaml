@@ -122,3 +122,26 @@ alps:
   configs:
     - name: "{nodes}_nodes"
       nodes: "{nodes}"
+
+
+jupiter:
+  scheduler: slurm
+
+  default_conf:
+    account: "exalab"
+    cpus_per_task: 72
+    gpus: 4
+    exclusive: true
+    time: "00:05:00"
+    partition: "booster"
+    modules:
+      - "CUDA/13"
+      - "nvidia-compilers/25.9-CUDA-13"
+      - "NCCL/default-CUDA-13"
+      - "OpenMPI/5.0.8"
+    custom_headers:
+      - "#SBATCH --ntasks-per-node=4"
+
+  configs:
+    - name: "{nodes}_nodes"
+      nodes: "{nodes}"

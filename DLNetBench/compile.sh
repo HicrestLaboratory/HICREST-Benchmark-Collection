@@ -4,7 +4,7 @@ set -e
 
 source ../common/compile/utils.sh
 
-SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps" "isarco")
+SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps" "isarco" "jupiter")
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <system>"
