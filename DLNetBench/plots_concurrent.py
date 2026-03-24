@@ -50,6 +50,8 @@ from pathlib import Path
 from typing import Callable
 
 import matplotlib
+
+import command_map
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -266,7 +268,9 @@ def _build_baseline_table_from_mapping(
     mapping: list[tuple[dict, dict[str, pd.DataFrame]]],
     metric: str,
     agg: str,
-    exclude_first_n: int = 2
+    exclude_first_n: int = 1,
+    cyclic_warmup = True,
+    variance_warn_threshold = 0.05,  # 5% relative std
 ) -> tuple[dict[tuple[str, int], float], dict[tuple[str, int], int]]:
     """
     Build { (strategy, gpus) -> T0 } from an already-loaded mapping.
@@ -289,42 +293,83 @@ def _build_baseline_table_from_mapping(
 
         strategy = meta.get("strategy")
         gpus     = meta.get("gpus")
-        uid      = meta.get("uid")
+        uid      = meta.get("sbm_tag")
+
         if not strategy and uid:
             strategy = uid.split('_')[0]
         if not gpus and uid:
-            gpus = int(uid.split('_')[1][1:])
-            
-        # FIXME
-        if metric not in df.columns:
-            metric = metric.split('_')[0]
-            
-        if metric not in df.columns:
+            try:
+                gpus = int(uid.split('_')[1][1:])
+            except Exception:
+                gpus = None
+
+        # Try fallback metric name
+        current_metric = metric
+        if current_metric not in df.columns:
+            current_metric = current_metric.split('_')[0]
+
+        if current_metric not in df.columns:
             print(f"  [baseline] metric '{metric}' not found in job {meta.get('sbm_job_id')} ({strategy=} / {gpus=}), skipping.")
             continue
-            
+
         if strategy is None or gpus is None:
             print(f"  [baseline] missing 'strategy' or 'gpus' or 'uid' in meta {meta}, skipping.")
             continue
 
-        col = pd.to_numeric(df[metric], errors="coerce").dropna()
+        col = pd.to_numeric(df[current_metric], errors="coerce").dropna()
+
+        nruns = command_map._STRATEGIES_NUM_RUNS[strategy]
+        nruns = nruns[0] + nruns[1]
+        
+        # print(f'{uid=}  {current_metric=}  {agg=}  {nruns=}  {exclude_first_n=}  {[f"{v:.2f}" for v in list(col.values)][:20]}')
+
         if col.empty:
             continue
-        # Remove the first exclude_first_n values from col
-        if len(col) > exclude_first_n:
-            col = col.iloc[exclude_first_n:]
+
+        # -----------------------------
+        # Warmup removal
+        # -----------------------------
+        if cyclic_warmup:
+            kept_idx = []
+            total_len = len(col)
+
+            for start in range(0, total_len, int(nruns)):
+                chunk_idx = list(range(start, min(start + int(nruns), total_len)))
+
+                if len(chunk_idx) > exclude_first_n:
+                    kept_idx.extend(chunk_idx[exclude_first_n:])
+                else:
+                    print(f"  [baseline] cannot remove {exclude_first_n} warmup runs for chunk starting at {start} ({strategy=} / {gpus=} / {nruns=}), not enough values.")
+
+            kept_idx = sorted(kept_idx)
+            col = col.iloc[kept_idx]
         else:
-            print(f"  [baseline] cannot remove {exclude_first_n} warmup runs for {strategy=} / {gpus=}, not enough values.")
-        
-        # print(metric)
-        # print(agg)
-        # print(meta)
-        # print(df)        
-        # print(col)
-        # print('='*80)
+            if len(col) > exclude_first_n:
+                col = col.iloc[exclude_first_n:]
+            else:
+                print(f"  [baseline] cannot remove {exclude_first_n} warmup runs for {strategy=} / {gpus=} / {nruns=}, not enough values.")
+
+        # print(f'AFTER REMOVING WARMUP {uid=}  {current_metric=}  {agg=}  {exclude_first_n=}  {[f"{v:.2f}" for v in list(col.values)][:20]}')
         # print()
-        
-        counts[(strategy, int(gpus))] += len(col) 
+        # print()
+
+        # -----------------------------
+        # Variance check
+        # -----------------------------
+        if len(col) > 1:
+            mean = col.mean()
+            std = col.std()
+
+            if mean != 0:
+                rel_std = std / mean
+                if rel_std > variance_warn_threshold:
+                    print(f"  [warning] high variance after warmup removal "
+                        f"({rel_std:.2%}) for {strategy=} / {gpus=} / {uid=}")
+
+        # -----------------------------
+        # Accumulate
+        # -----------------------------
+        counts[(strategy, int(gpus))] += len(col)
         accumulator[(strategy, int(gpus))].append(agg_fn(col))
 
     baseline: dict[tuple[str, int], float] = {}
@@ -378,6 +423,9 @@ def _compute_slowdowns(
     baseline: dict[tuple[str, int], float],
     metric:   str,
     agg:      str,
+    cyclic_warmup = True,
+    exclude_first_n = 0,
+    variance_warn_threshold = 0.05,  # 5%
 ) -> dict[str, dict[int, float]] | None:
     """
     Returns { job_name -> { repetition -> σ_j } } or None if data is missing.
@@ -392,10 +440,22 @@ def _compute_slowdowns(
         rep      = meta["repetition"]
         strategy = meta.get("strategy")
         gpus     = meta.get("gpus")
+        nruns    = meta.get("nruns")
+
         if not strategy:
             strategy = jname.split('_')[0]
         if not gpus:
-            gpus = int(jname.split('_')[1][1:])
+            try:
+                gpus = int(jname.split('_')[1][1:])
+            except Exception:
+                gpus = None
+
+        # nruns fallback (if not explicitly present)
+        if not nruns:
+            try:
+                nruns = int(jname.split('_')[2][1:])
+            except Exception:
+                nruns = None
 
         if strategy is None or gpus is None:
             print(f"  [slowdown] missing 'strategy'/'gpus' for job {jname}, rep {rep} — skipping.")
@@ -407,17 +467,75 @@ def _compute_slowdowns(
             missing_keys.add(key)
             continue
 
-        if metric not in df.columns:
+        # Metric fallback logic
+        current_metric = metric
+        if current_metric not in df.columns:
+            current_metric = current_metric.split('_')[0]
+
+        if current_metric not in df.columns:
             continue
-        col = pd.to_numeric(df[metric], errors="coerce").dropna()
+
+        col = pd.to_numeric(df[current_metric], errors="coerce").dropna()
+
+        # print(f'[slowdown BEFORE] {jname=} {rep=} {current_metric=} {agg=} {exclude_first_n=} '
+        #       f'{[f"{v:.2f}" for v in list(col.values)][:20]}')
+
         if col.empty:
             continue
 
+        # -----------------------------
+        # Warmup removal (chunk-based with nruns)
+        # -----------------------------
+        if cyclic_warmup and nruns:
+            kept_idx = []
+            total_len = len(col)
+
+            for start in range(0, total_len, int(nruns)):
+                chunk_idx = list(range(start, min(start + int(nruns), total_len)))
+
+                if len(chunk_idx) > exclude_first_n:
+                    kept_idx.extend(chunk_idx[exclude_first_n:])
+                else:
+                    print(f"  [slowdown] cannot remove {exclude_first_n} warmup runs for chunk "
+                          f"starting at {start} ({strategy=} / {gpus=} / {nruns=}), not enough values.")
+
+            kept_idx = sorted(kept_idx)
+            # print(f'[slowdown] {kept_idx=}')
+            col = col.iloc[kept_idx]
+
+        else:
+            if len(col) > exclude_first_n:
+                col = col.iloc[exclude_first_n:]
+            else:
+                print(f"  [slowdown] cannot remove {exclude_first_n} warmup runs for {jname}, not enough values.")
+
+        # print(f'[slowdown AFTER] {jname=} {rep=} {current_metric=} {agg=} {exclude_first_n=} '
+        #       f'{[f"{v:.2f}" for v in list(col.values)][:20]}')
+        # print()
+
+        if col.empty:
+            continue
+
+        # -----------------------------
+        # Variance check
+        # -----------------------------
+        if len(col) > 1:
+            mean = col.mean()
+            std  = col.std()
+
+            if mean != 0:
+                rel_std = std / mean
+                if rel_std > variance_warn_threshold:
+                    print(f"  [slowdown WARNING] high variance after warmup removal "
+                          f"({rel_std:.2%}) for {jname=} / {strategy=} / {gpus=} / {nruns=} / {rep=}")
+
+        # -----------------------------
+        # Slowdown computation
+        # -----------------------------
         t_conc = agg_fn(col)
         if t_conc <= 0:
             continue
 
-        # TODO ensure same compute
         result[jname][rep] = t0 / t_conc
 
     for key in missing_keys:
@@ -786,8 +904,10 @@ def main() -> None:
         if not baseline_mapping:
             print("WARNING: no baseline data loaded — interference metrics disabled.")
         else:
-            print(f"\nBuilding T0 table from {len(baseline_mapping)} run(s)  [metric={metric}, agg={agg}]")
-            baseline, counts = _build_baseline_table_from_mapping(baseline_mapping, metric, agg)
+            agg_baselines = agg
+            agg_baselines = 'max' # FIXME 
+            print(f"\nBuilding T0 table from {len(baseline_mapping)} run(s)  [metric={metric}, agg={agg_baselines}]")
+            baseline, counts = _build_baseline_table_from_mapping(baseline_mapping, metric, agg_baselines)
             _print_baseline_table(baseline, metric, counts)
 
     # ------------------------------------------------------------------

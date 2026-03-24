@@ -297,21 +297,17 @@ def read_multiple_from_parquet(
             combined_result.append((meta, df_dict))
             metadata_records.append(meta)
 
-    # Try building metadata DataFrame if all dicts share keys & scalar values
+    # Build metadata DataFrame
     metadata_df = None
     if metadata_records:
-        keys = set(metadata_records[0].keys())
-        same_keys = all(set(d.keys()) == keys for d in metadata_records)
+        serialized_records = []
+        for d in metadata_records:
+            serialized_records.append({
+                k: json.dumps(v) if isinstance(v, (dict, list)) else v
+                for k, v in d.items()
+            })
 
-        if same_keys:
-            serialized_records = []
-            for d in metadata_records:
-                serialized_records.append({
-                    k: json.dumps(v) if isinstance(v, (dict, list)) else v
-                    for k, v in d.items()
-                })
-
-            metadata_df = pd.DataFrame(serialized_records)
+        metadata_df = pd.DataFrame(serialized_records)
 
     return combined_result, metadata_df
 

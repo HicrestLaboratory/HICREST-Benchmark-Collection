@@ -18,7 +18,9 @@ Placement strategies:
 Behaviour:
   - At least two small jobs are always present.
   - Small jobs are continuously re-spawned until the scheduler exits.
-  - If large jobs exist: scheduler exits when the last large job finishes (small jobs are killed).
+  - If large jobs exist: walltime is ignored. Each large job runs at least once and is
+    respawned on the same resources. The scheduler exits (killing all jobs) as soon as
+    every large job has completed its first run.
   - If no large jobs: scheduler exits when --walltime seconds have elapsed (small jobs are killed).
   - Killing is graceful: the process-group of each mpirun/srun is signalled so every
     spawned child receives the signal and can clean up before the scheduler moves on.
@@ -635,14 +637,18 @@ def run_scheduler(
 
     log(f"Launched {len(small_procs)} small + {len(large_procs)} large jobs.", log_path)
 
+    # Walltime deadline: only used when there are no large jobs.
     deadline = time.time() + walltime
+
+    # Track which large jobs have completed at least one run.
+    large_first_run_done: set[str] = set()
 
     # ---- main poll loop ----
     while True:
 
         time.sleep(POLL_INTERVAL)
 
-        # -- check walltime --
+        # -- check walltime (no-large-jobs path only) --
         if not have_large_jobs and time.time() > deadline:
             log(f"Walltime of {walltime}s reached. Terminating all jobs.", log_path)
             for p in small_procs:
@@ -650,21 +656,33 @@ def run_scheduler(
                 _submit_drain(p, p.returncode)
             break
 
-        # -- poll large jobs --
+        # -- poll large jobs: drain finished ones, respawn, track first-run completion --
         still_large = []
         for p in large_procs:
             rc = p.poll()
             if rc is None:
                 still_large.append(p)
-            else:
-                log(f"FINISH (large) [{p.uid}]  exit_code={rc}", log_path)
-                _submit_drain(p, rc)
+                continue
+
+            log(f"FINISH (large) [{p.uid}]  exit_code={rc}", log_path)
+            _submit_drain(p, rc)
+
+            job_key = p.job_name  # type: ignore[attr-defined]
+            large_first_run_done.add(job_key)
+
+            # Respawn on the same resources for subsequent runs.
+            still_large.append(_launch(job_key, "large"))
+
         large_procs = still_large
 
-        # -- early-exit when all large jobs are done --
-        if have_large_jobs and not large_procs:
-            log("All large jobs finished. Terminating remaining small jobs.", log_path)
-            for p in small_procs:
+        # -- exit once every large job has completed its first run --
+        if have_large_jobs and large_first_run_done == set(jobs["large"]):
+            log(
+                "All large jobs have completed their first run. "
+                "Terminating all remaining jobs.",
+                log_path,
+            )
+            for p in small_procs + large_procs:
                 _graceful_kill(p, kill_signal)
                 _submit_drain(p, p.returncode)
             break
@@ -727,7 +745,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--srun-extra", default="", metavar="FLAGS",
                    help='Extra flags appended to every srun invocation, e.g. "--mem=4G".')
     p.add_argument("--walltime", type=int, default=120, metavar="SECONDS",
-                   help="Max run time in seconds (used when there are no large jobs). Default: 120.")
+                   help="Max run time in seconds (used only when there are no large jobs). Default: 120.")
     p.add_argument("--tasks-per-node", type=int, default=TASKS_PER_NODE,
                    help=f"Tasks per node. Default: {TASKS_PER_NODE}.")
     p.add_argument("--cpus-per-task", type=int, default=CPUS_PER_TASK,
