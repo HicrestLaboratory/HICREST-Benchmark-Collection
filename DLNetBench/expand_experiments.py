@@ -208,7 +208,7 @@ RUNTIME_ESTIMATES = {
     'alps__DP+PP+Expert__1024__H200':       84.212112, # not real
 }
 
-MIN_CONCURRENT_RUNTIME = 105 # FIXME
+MIN_CONCURRENT_RUNTIME = 130 # FIXME
 
 # ---------------------------------------------------------------------------
 # Placement Oracle  (hardcoded mode only)
@@ -884,7 +884,7 @@ def estimate_experiment_times(records: list, baselines: list, profile_data: dict
         large_jobs_times = []
 
         for run in runs:
-            if run["gpus"] <= small_job_threshold:
+            if small_job_threshold and run["gpus"] <= small_job_threshold:
                 continue  # small job: runs in background, does not drive exit time
             time_per_iter = profile_data[f'{run["strategy"]}__{run["gpus"]}']
             large_jobs_times.append(time_per_iter)

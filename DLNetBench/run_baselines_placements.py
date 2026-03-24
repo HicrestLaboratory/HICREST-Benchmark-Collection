@@ -98,7 +98,7 @@ SYSTEM_CONFIGS: dict[str, dict] = {
     },
 }
 
-ORACLE_TIMEOUT_S: float = 5.0
+ORACLE_TIMEOUT_S: float = 30.0
 
 
 # ---------------------------------------------------------------------------

@@ -73,7 +73,7 @@ leonardo:
     time: "00:05:00"
     partition: "boost_usr_prod"
     # boost_qos_bprod
-    qos: "normal" 
+    qos: "boost_qos_bprod" #"normal" 
     exclusive: true
     custom_headers:
       - "#SBATCH --ntasks-per-node=4"
