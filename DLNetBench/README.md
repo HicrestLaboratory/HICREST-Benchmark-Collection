@@ -75,7 +75,7 @@ This configuration uses stochastic patterns to simulate a realistic powerlaw dis
 
 **1. Generate the experiment JSON:**
 ```bash
-python experiments_generator.py -G $((340*4)) \
+python experiments_generator.py -G $((510*4)) \
   --util-min 0.8 \
   --util-max 1.0 \
   --use-topology \
@@ -85,20 +85,19 @@ python experiments_generator.py -G $((340*4)) \
   --n-placement-samples-per-bin 1 \
   --k-max 200 \
   --placement-bin-med-hi 2.55 \
-  --output-json experiments_leonardo_2_groups_powerlaw.json
+  --output-json experiments_leonardo_3_groups_powerlaw.json
 ```
 
 **2. Expand for Leonardo:**
 ```bash
-python expand_experiments.py experiments_leonardo_2_groups_powerlaw.json \
-  --placement-mode hardcoded \
+python expand_experiments.py experiments_leonardo_3_groups_powerlaw.json \
+  --placement-mode runtime \
   --system leonardo \
-  --reserved-nodes "lrdn[2881-3060],lrdn[3061-3240]" \ (NOTE: this nodelist is to be replaced with the actual nodelist to use during reservation)
    --comm-lib nccl \
   --gpu-model A100 \
   --gpus-per-node 4 \
   --small-job-threshold $((128*4)) \
-  --output-dir experiments_leonardo_2_groups_powerlaw_hardcoded \
+  --output-dir experiments_leonardo_3_groups_powerlaw \
 ```
 
 #### Uniform Workload
@@ -106,31 +105,30 @@ This configuration disables stochastic patterns in favor of uniformly distribute
 
 **1. Generate the experiment JSON:**
 ```bash
-python experiments_generator.py -G $((340*4)) \
+python experiments_generator.py -G $((510*4)) \
   --util-min 0.8 \
   --util-max 1.0 \
+  --util-steps 8 \
   --use-topology \
   --n-stochastic-patterns 0 \
   --include-uniform-patterns \
-  --max-experiments 15 \
-  --n-samples-per-bin 2 \
-  --n-placement-samples-per-bin 1 \
+  --max-experiments 25 \
+  --n-samples-per-bin 1 \
+  --n-placement-samples-per-bin 2 \
   --k-max 300 \
-  --placement-bin-med-hi 2.55 \
-  --output-json experiments_leonardo_2_groups_uniform.json
+  --placement-bin-med-hi 2.35 \
+  --output-json experiments_leonardo_3_groups_uniform.json
 ```
 
 **2. Expand for Leonardo:**
 ```bash
-python expand_experiments.py experiments_leonardo_2_groups_uniform.json \
-  --placement-mode hardcoded \
+python expand_experiments.py experiments_leonardo_3_groups_uniform.json \
+  --placement-mode runtime \
   --system leonardo \
-  --reserved-nodes "lrdn[2881-3060],lrdn[3061-3240]" \ (NOTE: this nodelist is to be replaced with the actual nodelist to use during reservation)
   --comm-lib nccl \
   --gpu-model A100 \
   --gpus-per-node 4 \
-  --small-job-threshold $((128*4)) \
-  --output-dir experiments_leonardo_2_groups_uniform_hardcoded \
+  --output-dir experiments_leonardo_3_groups_uniform \
 ```
 
 ---
