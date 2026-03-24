@@ -45,6 +45,7 @@ _SCHEMA = {
     },
 }
 
+_VARIANCE_WARN_PCT = 15.0  # warn if std > 5% of mean
 
 def _iqr_outliers_np(vals: np.ndarray, ranks: list, fence: float = 3.0, min_iqr: float = 1e-6) -> dict:
     if len(vals) < 1:
