@@ -194,11 +194,11 @@ RUNTIME_ESTIMATES = {
     # 'alps__DP__16__H200':                   17.387984,
     
     # 'alps__FSDP__16__H200':                 34.149995,
-    # 'alps__FSDP__32__H200':                 35.57791
+    # 'alps__FSDP__32__H200':                 35.57791,
     
     # 'alps__DP+PP__16__H200':                23.598698,
-    # 'alps__DP+PP__32__H200':                ,
-    # 'alps__DP+PP__64__H200':                ,
+    # 'alps__DP+PP__32__H200':                70.0, # FIXME random estimate
+    # 'alps__DP+PP__64__H200':                70.0,
     
     # 'alps__DP+PP+TP__224__H200':            72.094135,
     # 'alps__DP+PP+TP__256__H200':            72.666106,
@@ -549,12 +549,13 @@ def build_experiment_json(
     total_gpus = sum(run["gpus"] for run, _ in classified)
 
     inner: dict = {
-        "placement":     top_placement,
-        "gpus_per_node": gpus_per_node if gpus_per_node else total_gpus,
-        "n_total_gpus":  total_gpus,
-        "n_small_jobs":  len(small_jobs),
-        "n_large_jobs":  len(large_jobs),
-        "n_total_jobs":  len(classified),
+        "placement":      top_placement,
+        "placement_seed": seed,
+        "gpus_per_node":  gpus_per_node if gpus_per_node else total_gpus,
+        "n_total_gpus":   total_gpus,
+        "n_small_jobs":   len(small_jobs),
+        "n_large_jobs":   len(large_jobs),
+        "n_total_jobs":   len(classified),
     }
     if small_jobs:
         inner["small_jobs"] = small_jobs

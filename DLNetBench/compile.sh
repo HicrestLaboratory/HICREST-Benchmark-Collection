@@ -4,7 +4,7 @@ set -e
 
 source ../common/compile/utils.sh
 
-SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps" "isarco")
+SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps" "isarco" "jupiter")
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <system>"
@@ -14,8 +14,12 @@ fi
 system="$1"
 validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
 
-# Setup JobPlacer
-. ../common/compile/setup_job_placer.sh
+# Setup JobPlacer (skip for nvidia and baldo)
+if [[ "$system" != "nvidia" && "$system" != "baldo" ]]; then
+    . ../common/compile/setup_job_placer.sh
+else
+    echo "Skipping JobPlacer for $system"
+fi
 
 check_ccutils_installation
 

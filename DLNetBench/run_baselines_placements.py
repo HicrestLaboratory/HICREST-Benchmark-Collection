@@ -41,7 +41,7 @@ from typing import Optional
 import sbatchman as sbm
 
 sys.path.append(str(Path(__file__).parent))
-from command_map import get_command
+from command_map import EXTRA_SRUN_FLAGS, get_command
 from expand_experiments import PlacementOracle
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
@@ -138,6 +138,7 @@ def main(args: argparse.Namespace) -> None:
     print(f"\n[baseline] Input         : {args.input_json}")
     print(f"[baseline] System          : {args.system}")
     print(f"[baseline] GPUs per node   : {args.gpus_per_node}")
+    print(f"[baseline] CPUs per task   : {args.cpus_per_task}")
     print(f"[baseline] Comm lib        : {args.comm_lib}")
     print(f"[baseline] GPU model       : {args.gpu_model}")
     print(f"[baseline] Oracle program  : {oracle_program}")
@@ -216,7 +217,7 @@ def main(args: argparse.Namespace) -> None:
             gpu_model=args.gpu_model,
             num_warmup_override=0,
         )
-        command = f"srun -N {nodes} {command}"
+        command = f"srun -N{nodes} -n{num_gpus} --ntasks-per-node={args.gpus_per_node} --cpus-per-task={args.cpus_per_task} {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} {command}"
 
         print(f"  nodelist : {nodelist}")
         print(f"  command  : {command}")
@@ -240,6 +241,7 @@ def main(args: argparse.Namespace) -> None:
         try:
             job = sbm.launch_job(
                 config_name     = config_name,
+                preprocess      = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
                 command         = command,
                 tag             = (
                     f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes"
@@ -304,6 +306,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--gpus-per-node", type=int, required=True, metavar="N",
         help="GPUs per physical node (derives node count from gpu count).",
+    )
+    p.add_argument(
+        "--cpus-per-task", type=int, required=True, metavar="C",
+        help="CPUs per task",
     )
     p.add_argument(
         "--nodelist", metavar="NODELIST", required=True,

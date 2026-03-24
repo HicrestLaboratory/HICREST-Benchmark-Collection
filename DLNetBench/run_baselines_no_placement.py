@@ -63,13 +63,17 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
         strategy = run["strategy"]
         num_gpus = int(run["gpus"])
         nodes = int(num_gpus / args.gpus_per_node) if num_gpus > args.gpus_per_node else 1
+        
+        if args.max_n_nodes and nodes > args.max_n_nodes:
+            print(f'Skipping job {strategy} @ {nodes} nodes. Limit is {args.max_n_nodes}.')
+            continue
 
         command = get_command(strategy, num_gpus, args.comm_lib, args.gpu_model, num_warmup_override=0, use_dgx=(args.dgx == "DGX_A100"))
 
         if args.use_mpirun:
             command = f"mpirun -np {num_gpus} {command}"
         else:
-            command = f"srun {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} -N{nodes} -n{num_gpus} {command}"
+            command = f"srun -N{nodes} -n{num_gpus} --ntasks-per-node={args.gpus_per_node} --cpus-per-task={args.cpus_per_task} {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} {command}"
 
         print(f"[{i:02d}/{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
         print(f"        command: {command}")
@@ -81,12 +85,14 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
         try:
             job = sbm.launch_job(
                 config_name      = config_name,
+                preprocess       = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
                 command          = command,
                 tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
                 previous_job_id  = previous_job_id,
                 dry_run          = args.dry_run,
                 variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes, 'comm_lib': args.comm_lib, 'gpu_model': args.gpu_model, 'placement': 'na'},
-                ignore_archived  = True
+                ignore_archived  = True,
+                ignore_commands_in_dup_check = True,
             )
             previous_job_id = job.job_id
             print(f"        → job_id={job.job_id}\n")
@@ -126,8 +132,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="The GPU model to emulate compute time (sleep)", choices=["B200", "H200", "A100"]
     )
     p.add_argument(
-        "--gpus-per-node", type=int, default=4, metavar="N",
-        help="GPUs per physical node. Runs with gpus > N are skipped (default: 4).",
+        "--gpus-per-node", type=int, required=True, metavar="N",
+        help="GPUs per physical node.",
+    )
+    p.add_argument(
+        "--cpus-per-task", type=int, required=True, metavar="C",
+        help="CPUs per task",
     )
     p.add_argument(
         "--dry-run", action="store_true", default=False,
@@ -140,6 +150,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--use-mpirun", action="store_true", default=False,
         help="If set, mpirun will be used instead of srun.",
+    )
+    p.add_argument(
+        "--max-n-nodes", type=int, default=None,
+        help="If set, it will only launch jobs that need at most --max-n-nodes nodes.",
     )
     return p
 

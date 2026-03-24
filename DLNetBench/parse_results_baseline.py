@@ -148,12 +148,24 @@ def main() -> None:
 
         print(f"  job_id={job.job_id}  tag={tag}  runtime={job.get_run_time()}")
 
-        if stdout.strip() == "":
+        if stdout is None or stdout.strip() == "":
             issues.append((str(job.job_id), tag, OUTCOME_NO_DATA, "stdout is empty"))
             job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_NO_DATA})
             continue
         
+        nodes_line = None 
         try:
+            # Extract and remove "Allocated nodes: <nodes>" line if present
+            if "Allocated nodes: " in stdout:
+                lines = stdout.splitlines()
+                filtered_lines = []
+                for line in lines:
+                    if line.startswith("Allocated nodes:"):
+                        nodes_line = line
+                    else:
+                        filtered_lines.append(line)
+                stdout = '\n'.join(filtered_lines)
+
             csv_dict,_ = stdout_to_csv_multi(stdout)
             dfs = _parse_csv_multi(csv_dict)
         except Exception as e:
@@ -185,6 +197,7 @@ def main() -> None:
             "nodes":       (job.variables or {}).get("nodes"),
             "comm_lib":    (job.variables or {}).get("comm_lib"),
             "gpu_model":   (job.variables or {}).get("gpu_model"),
+            "nodelist":    nodes_line.removeprefix("Allocated nodes: ") if nodes_line else None,
         }
 
         # Instead of wrapping in {"measurements": df}, pass the entire dfs dict
