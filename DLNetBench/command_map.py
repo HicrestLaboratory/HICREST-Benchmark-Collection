@@ -37,19 +37,19 @@ _PARAMS: dict[str, callable] = {
 }
 
 _STRATEGIES_NUM_RUNS: dict[str, tuple[int, int]] = {
-    "DP":           (0, 6), # 1.1s * 6 = 6.6s
-    "FSDP":         (0, 4), # 4s   * 4 = 16s
-    "DP+PP":        (0, 4), # 3s   * 4 = 12s
-    "DP+PP+Expert": (0, 3), # 45s  * 3 = 2m 15s
-    "DP+PP+TP":     (0, 3), # 23s  * 3 = 1m 9s
+    "DP":           (1, 5), # 1.1s * 6 = 6.6s
+    "FSDP":         (1, 3), # 4s   * 4 = 16s
+    "DP+PP":        (1, 3), # 3s   * 4 = 12s
+    "DP+PP+Expert": (1, 2), # 45s  * 3 = 2m 15s
+    "DP+PP+TP":     (1, 2), # 23s  * 3 = 1m 9s
 }
 
 _STRATEGIES_NUM_RUNS_B200: dict[str, tuple[int, int]] = {
-    "DP":           (0, 11), # 1.1s * 6 = 6.6s
-    "FSDP":         (0, 5),  # 4s   * 4 = 16s
-    "DP+PP":        (0, 5),  # 3s   * 4 = 12s
-    "DP+PP+Expert": (0, 4),  # 45s  * 3 = 2m 15s
-    "DP+PP+TP":     (0, 3),  # 23s  * 3 = 1m 9s
+    "DP":           (1, 10), # 1.1s * 6 = 6.6s
+    "FSDP":         (1, 4),  # 4s   * 4 = 16s
+    "DP+PP":        (1, 4),  # 3s   * 4 = 12s
+    "DP+PP+Expert": (1, 3),  # 45s  * 3 = 2m 15s
+    "DP+PP+TP":     (1, 2),  # 23s  * 3 = 1m 9s
 }
 
 def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model: str, num_warmup_override: Union[int, None]=None, use_dgx:bool=False) -> str:
