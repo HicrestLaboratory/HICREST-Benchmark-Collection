@@ -43,7 +43,41 @@ OUT_DIR = Path("results")
 # CSV parsing
 # ---------------------------------------------------------------------------
 
-def _parse_csv(stdout: str) -> dict[str, pd.DataFrame] | None:
+_VARIANCE_WARN_PCT = 15.0  # warn if std > 5% of mean
+
+def parse_outliers(cell: str) -> dict:
+    if not cell or (isinstance(cell, float) and pd.isna(cell)):
+        return {}
+    return {k: float(v) for k, v in (pair.split(":") for pair in cell.split(";"))}
+
+
+def _check_variance(df: pd.DataFrame, section_name: str, uid: str, warn_pct: float = _VARIANCE_WARN_PCT):
+    std_cols = [c for c in df.columns if c.endswith("_std")]
+    for std_col in std_cols:
+        base      = std_col.replace("_std", "")
+        mean_col  = f"{base}_mean"
+        n_col     = f"{base}_n"
+        warns_col = f"{base}_within_rank_warns"
+        if mean_col not in df.columns:
+            continue
+        for idx, row in df.iterrows():
+            mean_val = row[mean_col]
+            std_val  = row[std_col]
+            n        = int(row[n_col]) if n_col in df.columns else "?"
+            if mean_val and abs(mean_val) > 1e-9:
+                pct = abs(std_val / mean_val) * 100
+                if pct > warn_pct:
+                    print(f"  [WARNING] uid={uid} '{section_name}' row {idx}: {base} std is {pct:.1f}% of mean "
+                          f"(mean={mean_val:.4f}, std={std_val:.4f}, n={n})")
+
+            if warns_col in df.columns:
+                within = parse_outliers(row[warns_col])  # k:v format
+                if within:
+                    ranks_str = ", ".join(f"{r}={pct:.1f}%" for r, pct in within.items())
+                    print(f"  [WARNING] uid={uid} '{section_name}' row {idx}: {base} high within-rank variance: {ranks_str}")
+
+
+def _parse_csv(stdout: str, uid: str) -> dict[str, pd.DataFrame] | None:
     text = stdout.strip()
     if not text:
         return None
@@ -58,28 +92,12 @@ def _parse_csv(stdout: str) -> dict[str, pd.DataFrame] | None:
             csv_content = "\n".join(current_lines).strip()
             if csv_content:
                 try:
-                    # Replace commas outside of {} dict literals with a safe separator
-                    def replace_commas(line: str) -> str:
-                        result = []
-                        depth = 0
-                        for ch in line:
-                            if ch == '{':
-                                depth += 1
-                            elif ch == '}':
-                                depth -= 1
-                            if ch == ',' and depth == 0:
-                                result.append('\t')
-                            else:
-                                result.append(ch)
-                        return ''.join(result)
-
-                    safe_lines = [replace_commas(l) for l in csv_content.splitlines()]
-                    safe_content = "\n".join(safe_lines)
-                    df = pd.read_csv(io.StringIO(safe_content), sep='\t')
+                    df = pd.read_csv(io.StringIO(csv_content))
                     if not df.empty:
+                        _check_variance(df, current_name, uid)
                         dfs[current_name] = df
                 except Exception as e:
-                    print(f"Failed to parse section '{current_name}': {e}")
+                    print(f"  [ERROR] Failed to parse section '{current_name}': {e}")
         current_name = None
         current_lines = []
 
@@ -94,6 +112,7 @@ def _parse_csv(stdout: str) -> dict[str, pd.DataFrame] | None:
 
     flush()
     return dfs if dfs else None
+
 
 # ---------------------------------------------------------------------------
 # Metadata extraction
@@ -230,7 +249,11 @@ def main() -> None:
                 stdout_path = Path(stdout_lines[0].strip().removeprefix('stdout: '))
                 # TODO check stderr
                 # stderr_path = Path(stdout_lines[1].strip().removeprefix('stderr: '))
-                stdout = compact_all(stdout_path.read_text(errors="replace"))
+                # print(f'PARSING {run}')
+                try:
+                    stdout = compact_all(stdout_path.read_text(errors="replace"), warn_within_rank=True)
+                except:
+                    pass
                 
                 # dict_df = {}
                 # for k, v in dict_tmp.items():
@@ -240,12 +263,18 @@ def main() -> None:
                 
             # TODO handle non compressed case
             
-            dict_df = _parse_csv(stdout)
+            dict_df = _parse_csv(stdout, uid)
+            # print(f'DICTS')
+            # if dict_df:
+            #     for k, v in dict_df.items():
+            #         print(f'dict: {k}')
+            #         print(v)
+            #         print()
 
 
             if dict_df is None:
-                print(f"\033[92mUID: {uid}\033[0m")
-                print(run['stdout'])
+                # print(f"\033[93mUID: {uid}\033[0m")
+                # print(run['stdout'])
                 n_bad_csv += 1
                 issues.append((
                     str(sbm_job.job_id), str(sbm_job.tag), uid, OUTCOME_BAD_CSV,

@@ -207,7 +207,7 @@ def main() -> None:
         jobs_stdout_size[job_key] = job.get_stdout_path().stat().st_size
         out = job.get_stdout()
         start_time = time.time()
-        compacted = compact_all(out)
+        compacted = compact_all(out, warn_within_rank=True)
         elapsed = time.time() - start_time
         jobs_stdout_compaction_time[job_key] = elapsed
         jobs_stdout_size_compact[job_key] = len(compacted)

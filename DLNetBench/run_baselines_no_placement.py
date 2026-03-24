@@ -99,6 +99,7 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
         except Exception as e:
             previous_job_id = None
             print(e)
+        print()
 
     print(f"\n\033[32m[baseline] Done. {len(runs)} jobs launched.\033[0m")
 

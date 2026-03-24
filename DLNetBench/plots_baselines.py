@@ -75,6 +75,7 @@ def build_summary(meta_df: pd.DataFrame, pairs: List[Tuple[dict, dict]]) -> pd.D
             'sbm_job_id':      meta['sbm_job_id'],
             'sbm_tag':         meta['sbm_tag'],
             'cluster':         meta['cluster'],
+            'gpu_model':       meta['gpu_model'],
             'strategy':        meta['strategy'],
             'gpus':            meta['gpus'],
             'nodes':           meta['nodes'],
@@ -336,15 +337,15 @@ def main():
     # ------------------------------------------------------------------
     print("Loading data...")
     meta_df, pairs = load_data(args.parquet_files)
-    # FIXME
-    meta_df['cluster'] = meta_df['cluster'] #  + meta_df['gpu_model']
+    meta_df['cluster'] = meta_df['cluster'] + meta_df['gpu_model']
+    
     for p, _ in pairs:
         p['cluster'] = p['cluster'] # + p['gpu_model']
     print(meta_df.to_string(index=False))
 
     summary = build_summary(meta_df, pairs)
     print(f"\nSummary ({len(summary)} jobs):")
-    print(summary[['sbm_tag', 'cluster', 'strategy', 'gpus',
+    print(summary[['sbm_tag', 'cluster', 'gpu_model', 'strategy', 'gpus',
                     'throughput_mean', 'comm_pct', 'compute_pct']].to_string(index=False))
 
     strategies = args.strategies  # None = all
