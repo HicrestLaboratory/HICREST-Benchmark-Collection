@@ -14,7 +14,7 @@ Interconnect types
 The interconnect type is inferred from the master JSON:
 
   uniform        key "experiments"              → default placement: device
-  hierarchical   key "hierarchical_experiments" → default placement: linear
+  hierarchical   key "hierarchical_experiments" → default placement: runtime
 
 Placement modes
 ---------------
@@ -22,7 +22,7 @@ Exactly one placement value is written to the top-level "placement" key of
 every experiment file.  Allowed values differ by interconnect:
 
   uniform      → device | random | linear | hardcoded
-  hierarchical → random | linear | hardcoded
+  hierarchical → runtime | random | linear | hardcoded
 
   device   [uniform default]
     Top-level placement = "device".
@@ -35,6 +35,10 @@ every experiment file.  Allowed values differ by interconnect:
   linear
     Top-level placement = "linear".
     Job entries carry NO placement_class key.
+
+  runtime  [hierarchical default]
+    Top-level placement = "runtime".
+    Job entries carry placement_class from the design's placement_class_vector.
 
   hardcoded
     Requires --system NAME.  Queries the placement oracle once per experiment.
@@ -378,7 +382,7 @@ def _extract_records(doc: dict) -> tuple[list, list, str]:
 
 
 def _default_placement(interconnect: str) -> str:
-    return "device" if interconnect == "uniform" else "linear"
+    return "device" if interconnect == "uniform" else "runtime"
 
 
 def _gpus_to_nodes(gpus: int, gpus_per_node: int) -> int:
@@ -425,7 +429,7 @@ def build_experiment_json(
     gpu_model: str,
     gpus_per_node: int,
     comm_lib: str,
-    placement_mode: str,           # device|random|linear|hardcoded
+    placement_mode: str,           # device|random|linear|runtime|hardcoded
     oracle: Optional[PlacementOracle],
     placement_summary: Optional[PlacementSummary],
     small_threshold: Optional[int],
@@ -440,6 +444,7 @@ def build_experiment_json(
     Job-entry placement rules
     -------------------------
     device / random / linear  → no placement_class key on job entries
+    runtime                   → placement_class from placement_class_vector
     hardcoded (feasible)      → explicit nodelist on job entries
     hardcoded (infeasible)    → placement_class = "hardcoded_infeasible"
                                 + infeasible_reason
@@ -497,11 +502,11 @@ def build_experiment_json(
         placement = 'na'
 
         # Placement-mode-specific fields
-        if placement_mode in ("device"):
+        if placement_mode in ("device", "random", "linear"):
             # No extra key: placement is expressed at the top level only
             pass
 
-        elif placement_mode in ("random", "runtime"):
+        elif placement_mode == "runtime":
             # placement_class comes from the design vector
             entry["placement_class"] = pcv[i] if i < len(pcv) else "random"
             placement = entry["placement_class"]
@@ -537,7 +542,7 @@ def build_experiment_json(
             else "hardcoded_infeasible"
         )
     else:
-        # device | random | linear — written verbatim
+        # device | random | linear | runtime — written verbatim
         top_placement = placement_mode
 
     # ── n_total_gpus: sum of raw GPU counts (exact, no rounding) ─────────────
@@ -624,7 +629,7 @@ def main(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Warn if runtime requested but placement_class_vector is missing
-    if placement_mode in ("random", "linear"):
+    if placement_mode == "runtime":
         missing = sum(1 for r in records if "placement_class_vector" not in r)
         if missing:
             print(
@@ -743,16 +748,17 @@ def build_parser() -> argparse.ArgumentParser:
     pm = p.add_argument_group("placement mode")
     pm.add_argument(
         "--placement-mode",
-        choices=["device", "random", "linear", "hardcoded"],
+        choices=["device", "random", "linear", "runtime", "hardcoded"],
         default=None,
         metavar="MODE",
         help=(
             "Placement strategy written to every experiment file.  "
-            "Default: 'device' for uniform interconnects, 'linear' for hierarchical.  "
+            "Default: 'device' for uniform interconnects, 'runtime' for hierarchical.  "
             "Allowed values per interconnect — "
             "uniform: device, random, linear, hardcoded; "
-            "hierarchical: random, linear, hardcoded.  "
+            "hierarchical: runtime, random, linear, hardcoded.  "
             "device/random/linear: job entries carry NO placement_class.  "
+            "runtime: job entries carry placement_class from the design vector.  "
             "hardcoded: job entries carry explicit nodelists from the oracle."
         ),
     )
