@@ -190,18 +190,22 @@ RUNTIME_ESTIMATES = {
     'leonardo__DP+PP+Expert__1024__A100':   221.582458,
     
     # Alps (daint)
-    # 'alps__DP__8__H200':                    15.139591,
-    # 'alps__DP__16__H200':                   17.387984,
+    'alps__DP__8__H200':                    15.139591,
+    'alps__DP__16__H200':                   17.387984,
     
-    # 'alps__FSDP__16__H200':                 34.149995,
-    # 'alps__FSDP__32__H200':                 35.57791,
+    'alps__FSDP__16__H200':                 34.149995,
+    'alps__FSDP__32__H200':                 35.57791,
     
-    # 'alps__DP+PP__16__H200':                23.598698,
-    # 'alps__DP+PP__32__H200':                70.0, # FIXME random estimate
-    # 'alps__DP+PP__64__H200':                70.0,
+    'alps__DP+PP__16__H200':                23.598698,
+    'alps__DP+PP__32__H200':                26.867502,
+    'alps__DP+PP__64__H200':                23.234135,
     
-    # 'alps__DP+PP+TP__224__H200':            72.094135,
-    # 'alps__DP+PP+TP__256__H200':            72.666106,
+    'alps__DP+PP+TP__224__H200':            72.094135,
+    'alps__DP+PP+TP__256__H200':            72.666106,
+    'alps__DP+PP+TP__512__H200':            72.666106, # not real
+    
+    'alps__DP+PP+Expert__512__H200':        84.212112,
+    'alps__DP+PP+Expert__1024__H200':       84.212112, # not real
 }
 
 MIN_CONCURRENT_RUNTIME = 105 # FIXME
@@ -598,7 +602,7 @@ def main(args: argparse.Namespace) -> None:
         runtimes[f'{system}__{compute}'][f'{strategy}__{int(gpus)}'] = runtime
     
     for sys_compute, est_runtimes in runtimes.items():
-        estimates = estimate_experiment_times(records, baselines, est_runtimes, args.gpu_model)
+        estimates = estimate_experiment_times(records, baselines, est_runtimes, args.small_job_threshold)
         print(f"\n\033[36m{'='*72}")
         print(f"RUNTIME ESTIMATION for {sys_compute}")
         print(f"{'='*72}\033[0m")
@@ -856,43 +860,46 @@ def get_total_runs(strategy: str, gpu_model: str) -> int:
     # Total runs = min_runs + max_runs
     return runs_tuple[0] + runs_tuple[1]
 
-def estimate_experiment_times(records: list, baselines: list, profile_data: dict, gpu_model: str) -> dict:
+def estimate_experiment_times(records: list, baselines: list, profile_data: dict, small_job_threshold: int) -> dict:
     """
     Estimates the runtime of the baseline (sequential) vs concurrent placements.
-    profile_data: dict mapping strategy names to their single-iteration time in seconds.
+    profile_data: dict mapping '<strategy>__<gpus>' to single-iteration time in seconds.
+    small_job_threshold: jobs with gpus <= this value are small (background) jobs and
+                         do not determine the scheduler exit time.
     """
     baseline_secs = []
     total_baseline_secs = 0.0
     concurrent_secs = []
     total_concurrent_secs = 0.0
-    
+
     for bas in baselines:
         if 'run' in bas:
             bas = bas['run']
         time = profile_data[f'{bas["strategy"]}__{bas["gpus"]}']
         baseline_secs.append(time)
         total_baseline_secs += time
-    
+
     for rec in records:
         runs = rec["config"]["runs"]
-        job_times = []
-        
+        large_jobs_times = []
+
         for run in runs:
-            strat = run["strategy"]
-            gpus = run["gpus"]
-            
-            time_per_iter = profile_data[f'{strat}__{gpus}']
-            job_times.append(time_per_iter)
-        
-        if job_times:
-            concurrent_secs.append(job_times)
-            total_concurrent_secs += max(MIN_CONCURRENT_RUNTIME, max(job_times))
-            
+            if run["gpus"] <= small_job_threshold:
+                continue  # small job: runs in background, does not drive exit time
+            time_per_iter = profile_data[f'{run["strategy"]}__{run["gpus"]}']
+            large_jobs_times.append(time_per_iter)
+
+        # Runtime is determined by the slowest large job.
+        # If no large jobs exist, fall back to MIN_CONCURRENT_RUNTIME (walltime unknown here).
+        record_time = max(MIN_CONCURRENT_RUNTIME, max(large_jobs_times)) if large_jobs_times else MIN_CONCURRENT_RUNTIME
+        concurrent_secs.append(large_jobs_times)
+        total_concurrent_secs += record_time
+
     return {
         "concurrent_times": concurrent_secs,
         "baseline_times": baseline_secs,
         "concurrent_mins": total_concurrent_secs / 60.0,
-        "baseline_mins": total_baseline_secs / 60.0
+        "baseline_mins": total_baseline_secs / 60.0,
     }
 
 if __name__ == "__main__":
