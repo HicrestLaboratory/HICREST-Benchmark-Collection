@@ -313,6 +313,7 @@ def _save_or_show(fig, output_file: Optional[str], label: str = "Plot"):
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_file, dpi=300, bbox_inches='tight')
         print(f"  {label} saved to: {output_file}")
+        plt.close(fig)
     else:
         plt.show()
 

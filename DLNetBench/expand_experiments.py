@@ -204,6 +204,24 @@ RUNTIME_ESTIMATES = {
     
     'alps__DP+PP+Expert__512__H200':        84.212112,
     'alps__DP+PP+Expert__1024__H200':       84.212112, # not real
+    
+    # Jupiter
+    'jupiter__DP__8__H200':                 13.97558,
+    'jupiter__DP__16__H200':                14.720284,
+    
+    'jupiter__FSDP__16__H200':              27.420704,
+    'jupiter__FSDP__32__H200':              28.675755,
+    
+    'jupiter__DP+PP__16__H200':             17.272468,
+    'jupiter__DP+PP__32__H200':             18.960719,
+    'jupiter__DP+PP__64__H200':             19.19227,
+    
+    'jupiter__DP+PP+TP__224__H200':         33.82325,
+    'jupiter__DP+PP+TP__256__H200':         33.934512,
+    'jupiter__DP+PP+TP__512__H200':         39.810219,
+    
+    'jupiter__DP+PP+Expert__512__H200':     64.043106,
+    'jupiter__DP+PP+Expert__1024__H200':    64.043106, # not real
 }
 
 MIN_CONCURRENT_RUNTIME = 130 # FIXME
