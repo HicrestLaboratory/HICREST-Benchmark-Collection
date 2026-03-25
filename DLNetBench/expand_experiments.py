@@ -142,7 +142,6 @@ import argparse
 import json
 import math
 import os
-from pprint import pprint
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -160,7 +159,6 @@ from JobPlacer.cli_wrapper import JobPlacer, JobRequest, PlacementResult
 # ---------------------------------------------------------------------------
 
 DEFAULT_OUTPUT_DIR: str     = "experiments"
-DEFAULT_ORACLE_PROGRAM: str = "placement_oracle"
 GLOBAL_CONFIG_FILENAME: str = "global_config.json"
 
 # Valid placement modes per interconnect type
@@ -224,7 +222,6 @@ class PlacementOracle:
 
     def __init__(
         self,
-        program: str,
         system: str,
         reserved_nodes: Optional[list],
         use_placer_files: bool
@@ -251,7 +248,7 @@ class PlacementOracle:
         self._available = self._probe()
         if not self._available:
             print(
-                f"[PlacementOracle] '{program}' not found / not responding. "
+                f"[PlacementOracle] not found / not responding. "
                 "Using stub (all placements infeasible).",
                 file=sys.stderr,
             )
@@ -264,7 +261,7 @@ class PlacementOracle:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
 
-    def find_placement(self, jobs: list, seed=None, timeout=5.0, svg_out=None) -> PlacementResult:
+    def find_placement(self, jobs: list, seed=None, timeout=40.0, svg_out=None) -> PlacementResult:
         """Query the oracle for one experiment's node assignments."""        
         oracle_jobs = {}
         for j in jobs:
@@ -274,7 +271,7 @@ class PlacementOracle:
             )
         
         tot_nodes_asked = sum([int(j["node_count"]) for j in jobs])
-        print(f'[oracle] Finding placement for {",".join([j["job_name"] for j in jobs])}. Total required nodes: {tot_nodes_asked}')
+        print(f'[oracle] Finding placement for {",".join([j["job_name"] for j in jobs])}. Total required nodes: {tot_nodes_asked}. Seed: {seed}')
         print(f'[oracle] Pattern: [{",".join([str(j["node_count"]) for j in jobs])}]')
         res = self.oracle.place(
             oracle_jobs,
@@ -283,11 +280,15 @@ class PlacementOracle:
             extra_args=['--out-svg', str(svg_out)] if svg_out else None,
         )
         print(f'[oracle] {"OK" if res.ok else "FAILED"}')
+        if not res.ok:
+            print(f'[oracle] Fail reason: {res.reason}')
+            
         if res.placements:
             used_nodes = set()
             # pprint(res.placements)
             tot_placed = sum([len(p) for p in res.placements.values()])
             print((f"[oracle] Tot placed nodes: {tot_placed}"))
+            # print((f"[oracle] Placements: {res.placements}"))
             assert tot_placed == tot_nodes_asked
             for j in jobs:
                 job_nodes = set(res.placements[j["job_name"]])
@@ -653,14 +654,13 @@ def main(args: argparse.Namespace) -> None:
             preview = ", ".join(reserved[:10]) + ("…" if len(reserved) > 10 else "")
             print(f"[oracle] Reserved nodes ({len(reserved)}): {preview}")
         oracle  = PlacementOracle(
-            args.oracle_program,
             args.system,
             reserved,
             args.use_placer_files
         )
         summary = PlacementSummary()
         print(f"[oracle] System: {args.system!r}  "
-              f"Program: {args.oracle_program!r}  "
+              f"Program: {oracle.oracle._binary!r}  "
               f"Available: {oracle._available}")
 
     # ── Output directory ─────────────────────────────────────────────────────
@@ -773,12 +773,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--system", metavar="NAME", default=None,
         help="Target system name passed to the oracle.  "
              "REQUIRED with --placement-mode hardcoded.",
-    )
-    og.add_argument(
-        "--oracle-program", metavar="PATH", default=DEFAULT_ORACLE_PROGRAM,
-        help=f"Oracle executable (default: '{DEFAULT_ORACLE_PROGRAM}').  "
-             "Must read JSON from stdin and write JSON to stdout.  "
-             "If unreachable a stub is used (all infeasible).",
     )
     og.add_argument(
         "--reserved-nodes", metavar="N1,N2,…",

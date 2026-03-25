@@ -417,7 +417,7 @@ class PlacementOracle:
         nodes_blacklist: str,
         use_topo_files: bool = False,
     ) -> None:
-        debug(f"PlacementOracle init for system='{system}', use_topo_files={use_topo_files}")
+        debug(f"PlacementOracle init for system='{system}', use_topo_files(ignored)={use_topo_files}")
         topology_toml_file=None
         if system.lower() == 'alps':
             topology_toml_file=f'../common/JobPlacer/systems/{system.upper()}.toml'
@@ -460,7 +460,7 @@ class PlacementOracle:
         res = self.oracle.place(
             oracle_jobs,
             seed=seed,
-            timeout=5.0,
+            timeout=30.0,
         )
         if not res.ok:
             print("Placement could not be satisfied", file=sys.stderr)

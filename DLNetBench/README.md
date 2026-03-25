@@ -93,11 +93,11 @@ python experiments_generator.py -G $((510*4)) \
 python expand_experiments.py experiments_leonardo_3_groups_powerlaw.json \
   --placement-mode runtime \
   --system leonardo \
-   --comm-lib nccl \
+  --comm-lib nccl \
   --gpu-model A100 \
   --gpus-per-node 4 \
   --small-job-threshold $((128*4)) \
-  --output-dir experiments_leonardo_3_groups_powerlaw \
+  --output-dir experiments_leonardo_3_groups_powerlaw
 ```
 
 #### Uniform Workload

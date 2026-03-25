@@ -13,11 +13,10 @@ Three metrics (runtime, commtime, throughput) × one subplot each.
 
 Interference metrics (requires --baseline)
 -------------------------------------------
-For each sbatchman job in the concurrent data, four scalar summaries are
+For each sbatchman job in the concurrent data, three scalar summaries are
 computed from per-job slowdown  σ_j = T0(strategy, gpus) / T(job | C):
 
   - Mean slowdown          σ̄  = mean(σ_j)
-  - GPU-weighted slowdown  σ̃  = Σ (g_j / G) · σ_j
   - Worst-case slowdown    σ_max = max(σ_j)
   - Per-strategy histogram : one bar-plot bin per strategy, aggregated
                              with the chosen aggregate function
@@ -88,10 +87,52 @@ METRICS = ["throughput_mean", "runtime_mean", "commtime"]
 METRIC_LABELS = {
     "throughput_mean": "Throughput (samples/s)",
     "runtime_mean":    "Runtime (s)",
-    "commtime":   "Comm. time (s)", # TODO fix
+    "commtime":        "Comm. time (s)",
 }
 
 _PALETTE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+# ---------------------------------------------------------------------------
+# Visual-encoding pools
+#
+# Encoding rules (new scheme):
+#   color     ← (strategy, gpus, placement)   — what kind of job it is
+#   marker    ← unique_index                  — which specific instance
+#   linestyle ← unique_index                  — same index, different channel
+#
+# Job name format expected:  <strategy>_g<gpus>_n<nodes>_<placement>_<uid>
+# ---------------------------------------------------------------------------
+
+_COLOR_POOL: list[str] = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f",
+    "#aec7e8", "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5",
+    "#c49c94", "#f7b6d2", "#9edae5", "#dbdb8d", "#c7c7c7",
+]
+_MARKER_POOL: list[str] = ["o", "s", "^", "D", "v", "P", "X", "*", "h", "<", ">", "p", "H", "8"]
+_LINESTYLE_POOL: list[str] = ["-", "--", "-.", ":",
+                               (0, (3, 1, 1, 1)),       # densely dashdotted
+                               (0, (5, 1)),              # densely dashed
+                               (0, (1, 1)),              # densely dotted
+                               (0, (3, 1, 1, 1, 1, 1))] # densely dashdotdotted
+
+
+def _parse_job_name(job_name: str) -> tuple[str, str, str, str]:
+    """
+    Parse ``<strategy>_g<gpus>_n<nodes>_<placement>_<uid>`` into
+    ``(strategy, gpus, placement, uid)``.
+
+    Falls back gracefully when the name does not match the expected format:
+    - missing fields are returned as empty strings
+    - extra trailing fields are folded into uid
+    """
+    parts = job_name.split('_')
+    strategy  = parts[0] if len(parts) > 0 else ""
+    gpus      = parts[1] if len(parts) > 1 else ""   # e.g. "g4"
+    # parts[2] is nodes — we don't use it for visuals
+    placement = parts[3] if len(parts) > 3 else ""
+    uid       = "_".join(parts[4:]) if len(parts) > 4 else ""
+    return strategy, gpus, placement, uid
 
 
 # ===========================================================================
@@ -321,8 +362,6 @@ def _build_baseline_table_from_mapping(
         nruns = command_map._STRATEGIES_NUM_RUNS[strategy]
         nruns = nruns[0] + nruns[1]
         
-        # print(f'{uid=}  {current_metric=}  {agg=}  {nruns=}  {exclude_first_n=}  {[f"{v:.2f}" for v in list(col.values)][:20]}')
-
         if col.empty:
             continue
 
@@ -348,10 +387,6 @@ def _build_baseline_table_from_mapping(
                 col = col.iloc[exclude_first_n:]
             else:
                 print(f"  [baseline] cannot remove {exclude_first_n} warmup runs for {strategy=} / {gpus=} / {nruns=}, not enough values.")
-
-        # print(f'AFTER REMOVING WARMUP {uid=}  {current_metric=}  {agg=}  {exclude_first_n=}  {[f"{v:.2f}" for v in list(col.values)][:20]}')
-        # print()
-        # print()
 
         # -----------------------------
         # Variance check
@@ -477,9 +512,6 @@ def _compute_slowdowns(
 
         col = pd.to_numeric(df[current_metric], errors="coerce").dropna()
 
-        # print(f'[slowdown BEFORE] {jname=} {rep=} {current_metric=} {agg=} {exclude_first_n=} '
-        #       f'{[f"{v:.2f}" for v in list(col.values)][:20]}')
-
         if col.empty:
             continue
 
@@ -500,7 +532,6 @@ def _compute_slowdowns(
                           f"starting at {start} ({strategy=} / {gpus=} / {nruns=}), not enough values.")
 
             kept_idx = sorted(kept_idx)
-            # print(f'[slowdown] {kept_idx=}')
             col = col.iloc[kept_idx]
 
         else:
@@ -508,10 +539,6 @@ def _compute_slowdowns(
                 col = col.iloc[exclude_first_n:]
             else:
                 print(f"  [slowdown] cannot remove {exclude_first_n} warmup runs for {jname}, not enough values.")
-
-        # print(f'[slowdown AFTER] {jname=} {rep=} {current_metric=} {agg=} {exclude_first_n=} '
-        #       f'{[f"{v:.2f}" for v in list(col.values)][:20]}')
-        # print()
 
         if col.empty:
             continue
@@ -545,7 +572,7 @@ def _compute_slowdowns(
 
 
 # ===========================================================================
-# Aggregate slowdown metrics
+# Aggregate slowdown metrics  (GPU-weighted metric removed)
 # ===========================================================================
 
 def _aggregate_slowdowns(
@@ -556,7 +583,6 @@ def _aggregate_slowdowns(
     Returns:
       'per_job'      : { job_name -> mean_σ over reps }
       'mean'         : σ̄
-      'gpu_weighted' : σ̃
       'worst_case'   : σ_max
       'per_strategy' : { strategy -> mean_σ }
     """
@@ -567,8 +593,6 @@ def _aggregate_slowdowns(
         gpus     = int(meta.get("gpus", 0))
         job_meta[jname] = (strategy, gpus)
 
-    total_gpus = sum(v[1] for v in job_meta.values())
-
     per_job: dict[str, float] = {
         jname: float(np.mean(list(reps.values())))
         for jname, reps in slowdowns.items() if reps
@@ -576,12 +600,8 @@ def _aggregate_slowdowns(
     if not per_job:
         return {}
 
-    mean_sigma   = float(np.mean(list(per_job.values())))
-    worst_case   = float(max(per_job.values()))
-    gpu_weighted = sum(
-        (job_meta.get(jn, ("", 0))[1] / total_gpus) * s if total_gpus > 0 else s
-        for jn, s in per_job.items()
-    )
+    mean_sigma = float(np.mean(list(per_job.values())))
+    worst_case = float(max(per_job.values()))
 
     by_strategy: dict[str, list[float]] = defaultdict(list)
     for jname, sigma in per_job.items():
@@ -591,10 +611,52 @@ def _aggregate_slowdowns(
     return {
         "per_job":      per_job,
         "mean":         mean_sigma,
-        "gpu_weighted": gpu_weighted,
         "worst_case":   worst_case,
         "per_strategy": per_strategy,
     }
+
+
+# ===========================================================================
+# Visual encoding helpers
+# ===========================================================================
+
+def _build_job_visuals(
+    job_names: list[str],
+) -> dict[str, tuple[str, str, str]]:
+    """
+    Return ``{ job_name -> (color, marker, linestyle) }``.
+
+    Encoding:
+      color     — (strategy, gpus, placement) tuple, so jobs of the same
+                  type share a color regardless of their unique index.
+      marker    — unique_index (cycles through _MARKER_POOL).
+      linestyle — unique_index (cycles through _LINESTYLE_POOL), same index
+                  as marker so the two channels reinforce each other.
+
+    Job name format: ``<strategy>_g<gpus>_n<nodes>_<placement>_<uid>``
+    """
+    # Build ordered maps so the assignment is deterministic and stable.
+    color_key_order: dict[tuple[str, str, str], int] = {}
+    uid_order:       dict[str, int]                  = {}
+
+    for jname in sorted(job_names):          # sort for stability
+        strategy, gpus, placement, uid = _parse_job_name(jname)
+        ck = (strategy, gpus, placement)
+        if ck not in color_key_order:
+            color_key_order[ck] = len(color_key_order)
+        if uid not in uid_order:
+            uid_order[uid] = len(uid_order)
+
+    visuals: dict[str, tuple[str, str, str]] = {}
+    for jname in job_names:
+        strategy, gpus, placement, uid = _parse_job_name(jname)
+        ck        = (strategy, gpus, placement)
+        color     = _COLOR_POOL[color_key_order[ck] % len(_COLOR_POOL)]
+        uid_idx   = uid_order[uid]
+        marker    = _MARKER_POOL[uid_idx % len(_MARKER_POOL)]
+        linestyle = _LINESTYLE_POOL[uid_idx % len(_LINESTYLE_POOL)]
+        visuals[jname] = (color, marker, linestyle)
+    return visuals
 
 
 # ===========================================================================
@@ -612,7 +674,8 @@ def _plot_performance(
         return None
 
     job_names = sorted(agg.keys())
-    colour    = {jn: _PALETTE[i % len(_PALETTE)] for i, jn in enumerate(job_names)}
+    n_jobs    = len(job_names)
+    visuals   = _build_job_visuals(job_names)
 
     present_metrics = [
         m for m in METRICS
@@ -623,11 +686,26 @@ def _plot_performance(
         return None
 
     n_metrics = len(present_metrics)
-    fig, axes = plt.subplots(1, n_metrics, figsize=(5 * n_metrics, 4), squeeze=False)
+
+    # Scale figure height to accommodate large legends below the plot area.
+    legend_ncol  = min(8, n_jobs)
+    legend_rows  = (n_jobs + legend_ncol - 1) // legend_ncol
+    legend_h_in  = max(0.7, legend_rows * 0.30 + 0.4)   # +0.4 for title + padding
+    subplot_h_in = 4.0
+    fig_h        = subplot_h_in + legend_h_in
+
+    fig, axes = plt.subplots(
+        1, n_metrics,
+        figsize=(max(6 * n_metrics, 8), fig_h),
+        squeeze=False,
+    )
     fig.suptitle(
         f"Concurrent run performance\nsbm_job={sbm_job_id}  tag={tag}",
-        fontsize=10, y=1.02,
+        fontsize=10, y=1.01,
     )
+
+    legend_handles: list = []
+    legend_labels:  list[str] = []
 
     for col_idx, metric in enumerate(present_metrics):
         ax = axes[0][col_idx]
@@ -638,18 +716,44 @@ def _plot_performance(
                 continue
             ys    = np.array([reps_dict[r][metric][0] for r in xs_present])
             yerrs = np.array([reps_dict[r][metric][1] for r in xs_present])
-            c     = colour[jname]
-            ax.plot(xs_present, ys, marker="o", linewidth=1.5, markersize=4, label=jname, color=c)
-            ax.fill_between(xs_present, ys - yerrs, ys + yerrs, alpha=0.15, color=c)
+            color, marker, linestyle = visuals[jname]
+            line, = ax.plot(
+                xs_present, ys,
+                marker=marker, linestyle=linestyle,
+                linewidth=1.5, markersize=5,
+                color=color, label=jname,
+            )
+            ax.fill_between(xs_present, ys - yerrs, ys + yerrs, alpha=0.12, color=color)
+
+            # Collect legend handles only from the first metric subplot
+            if col_idx == 0:
+                legend_handles.append(line)
+                legend_labels.append(jname)
 
         ax.set_xlabel("Repetition", fontsize=9)
         ax.set_ylabel(METRIC_LABELS.get(metric, metric), fontsize=9)
         ax.set_title(metric, fontsize=9)
         ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
         ax.grid(True, linewidth=0.4, alpha=0.6)
-        ax.legend(fontsize=8, title="job", title_fontsize=8)
+
+    # Single shared legend placed below all subplots.
+    # legend_frac is the fraction of figure height reserved for the legend.
+    legend_frac = legend_h_in / fig_h
+    if legend_handles:
+        fig.legend(
+            legend_handles, legend_labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.0),
+            ncol=legend_ncol,
+            fontsize=8,
+            title="job",
+            title_fontsize=8,
+            frameon=True,
+            borderaxespad=0.3,
+        )
 
     fig.tight_layout()
+    fig.subplots_adjust(bottom=legend_frac + 0.02)
     out_path = OUT_DIR / f"{tag}_performance.png"
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -666,26 +770,53 @@ def _plot_slowdown_timeline(
     slowdowns:  dict[str, dict[int, float]],
 ) -> Path:
     job_names = sorted(slowdowns.keys())
-    colour    = {jn: _PALETTE[i % len(_PALETTE)] for i, jn in enumerate(job_names)}
+    n_jobs    = len(job_names)
+    visuals   = _build_job_visuals(job_names)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    legend_ncol = min(8, n_jobs)
+    legend_rows = (n_jobs + legend_ncol - 1) // legend_ncol
+    legend_h_in = max(0.7, legend_rows * 0.30 + 0.4)
+    fig_h       = 4.0 + legend_h_in
+
+    fig, ax = plt.subplots(figsize=(max(7, n_jobs * 0.35 + 4), fig_h))
     fig.suptitle(f"Slowdown timeline\nsbm_job={sbm_job_id}  tag={tag}", fontsize=10)
 
+    handles: list = []
+    labels:  list[str] = []
     for jname in job_names:
-        reps = slowdowns[jname]
-        xs   = sorted(reps.keys())
-        ys   = [reps[r] for r in xs]
-        ax.plot(xs, ys, marker="o", linewidth=1.5, markersize=4,
-                label=jname, color=colour[jname])
+        reps  = slowdowns[jname]
+        xs    = sorted(reps.keys())
+        ys    = [reps[r] for r in xs]
+        color, marker, linestyle = visuals[jname]
+        line, = ax.plot(
+            xs, ys,
+            marker=marker, linestyle=linestyle,
+            linewidth=1.5, markersize=5,
+            color=color, label=jname,
+        )
+        handles.append(line)
+        labels.append(jname)
 
     ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="No slowdown (σ=1)")
     ax.set_xlabel("Repetition", fontsize=9)
     ax.set_ylabel("Slowdown  σ_j  (higher = worse)", fontsize=9)
     ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
     ax.grid(True, linewidth=0.4, alpha=0.6)
-    ax.legend(fontsize=8, title="job", title_fontsize=8)
 
+    legend_frac = legend_h_in / fig_h
+    fig.legend(
+        handles, labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=legend_ncol,
+        fontsize=8,
+        title="job",
+        title_fontsize=8,
+        frameon=True,
+        borderaxespad=0.3,
+    )
     fig.tight_layout()
+    fig.subplots_adjust(bottom=legend_frac + 0.02)
     out_path = OUT_DIR / f"{tag}_slowdown_timeline.png"
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -700,22 +831,26 @@ def _plot_slowdown_summary(
     per_job      = agg_metrics["per_job"]
     per_strategy = agg_metrics["per_strategy"]
     job_names    = sorted(per_job.keys())
-    colour       = {jn: _PALETTE[i % len(_PALETTE)] for i, jn in enumerate(job_names)}
+    n_jobs       = len(job_names)
+    visuals      = _build_job_visuals(job_names)
     strat_names  = sorted(per_strategy.keys())
 
-    fig, (ax_jobs, ax_summary) = plt.subplots(1, 2, figsize=(12, 4))
+    # Scale figure width so bars are legible with many jobs
+    fig_w = max(12, n_jobs * 0.45 + 6)
+    fig, (ax_jobs, ax_summary) = plt.subplots(1, 2, figsize=(fig_w, 5))
     fig.suptitle(f"Interference summary\nsbm_job={sbm_job_id}  tag={tag}", fontsize=10)
 
     # Left: per-job σ
+    bar_colors = [visuals[jn][0] for jn in job_names]
     bars = ax_jobs.bar(
         range(len(job_names)),
         [per_job[jn] for jn in job_names],
-        color=[colour[jn] for jn in job_names],
+        color=bar_colors,
         edgecolor="black", linewidth=0.5,
     )
     ax_jobs.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="No slowdown")
     ax_jobs.set_xticks(range(len(job_names)))
-    ax_jobs.set_xticklabels(job_names, rotation=20, ha="right", fontsize=8)
+    ax_jobs.set_xticklabels(job_names, rotation=35, ha="right", fontsize=max(6, 8 - n_jobs // 10))
     ax_jobs.set_ylabel("Mean slowdown  σ_j", fontsize=9)
     ax_jobs.set_title("Per-job slowdown", fontsize=9)
     ax_jobs.legend(fontsize=8)
@@ -725,14 +860,14 @@ def _plot_slowdown_summary(
         ax_jobs.text(bar.get_x() + bar.get_width() / 2, h + 0.005,
                      f"{h:.3f}", ha="center", va="bottom", fontsize=7)
 
-    # Right: aggregate scalars + per-strategy
-    scalar_labels = ["Mean σ̄", "GPU-weighted σ̃", "Worst-case σ_max"]
-    scalar_values = [agg_metrics["mean"], agg_metrics["gpu_weighted"], agg_metrics["worst_case"]]
+    # Right: aggregate scalars + per-strategy  (GPU-weighted removed)
+    scalar_labels = ["Mean σ̄", "Worst-case σ_max"]
+    scalar_values = [agg_metrics["mean"], agg_metrics["worst_case"]]
     all_labels    = scalar_labels + [f"{s}\n(strategy)" for s in strat_names]
     all_values    = scalar_values + [per_strategy[s] for s in strat_names]
     bar_colours   = (
-        ["#4C72B0", "#DD8452", "#55A868"]
-        + [_PALETTE[(3 + i) % len(_PALETTE)] for i in range(len(strat_names))]
+        ["#4C72B0", "#55A868"]
+        + [_PALETTE[(2 + i) % len(_PALETTE)] for i in range(len(strat_names))]
     )
 
     bars2 = ax_summary.bar(range(len(all_labels)), all_values,
@@ -774,24 +909,33 @@ def _plot_slowdown_heatmap(
     if not rows:
         return None
 
-    df  = pd.DataFrame(rows, index=row_tags).sort_index(axis=1).fillna(np.nan)
-    fig, ax = plt.subplots(figsize=(max(6, len(df.columns) * 1.2), max(4, len(df) * 0.5 + 1)))
+    df      = pd.DataFrame(rows, index=row_tags).sort_index(axis=1).fillna(np.nan)
+    n_cols  = len(df.columns)
+    n_rows  = len(df.index)
+
+    # Scale figure to accommodate up to ~50 jobs
+    fig_w = max(8, n_cols * 1.0 + 2)
+    fig_h = max(4, n_rows * 0.55 + 1.5)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
     im  = ax.imshow(df.values, aspect="auto", cmap="RdYlGn_r", vmin=1.0)
 
-    ax.set_xticks(range(len(df.columns)))
-    ax.set_xticklabels(df.columns, rotation=30, ha="right", fontsize=10)
-    ax.set_yticks(range(len(df.index)))
-    ax.set_yticklabels(df.index, fontsize=10)
+    ax.set_xticks(range(n_cols))
+    ax.set_xticklabels(df.columns, rotation=45, ha="right",
+                       fontsize=max(6, 10 - n_cols // 8))
+    ax.set_yticks(range(n_rows))
+    ax.set_yticklabels(df.index, fontsize=max(6, 10 - n_rows // 8))
     ax.set_xlabel("Job name (slot)", fontsize=9)
     ax.set_ylabel("sbm_job_id", fontsize=9)
     ax.set_title("Slowdown heatmap  (σ_j, mean over repetitions)", fontsize=10)
     fig.colorbar(im, ax=ax, pad=0.01).set_label("σ_j", fontsize=8)
 
-    for r in range(len(df.index)):
-        for c in range(len(df.columns)):
+    cell_fontsize = max(5, 10 - n_cols // 8)
+    for r in range(n_rows):
+        for c in range(n_cols):
             v = df.values[r, c]
             if not np.isnan(v):
-                ax.text(c, r, f"{(v*100)-100:.1f}%", ha="center", va="center", fontsize=10, color="black")
+                ax.text(c, r, f"{(v*100)-100:.1f}%", ha="center", va="center",
+                        fontsize=cell_fontsize, color="black")
 
     fig.tight_layout()
     out_path = OUT_DIR / "all_jobs_slowdown_heatmap.png"
@@ -905,7 +1049,6 @@ def main() -> None:
             print("WARNING: no baseline data loaded — interference metrics disabled.")
         else:
             agg_baselines = agg
-            agg_baselines = 'max' # FIXME 
             print(f"\nBuilding T0 table from {len(baseline_mapping)} run(s)  [metric={metric}, agg={agg_baselines}]")
             baseline, counts = _build_baseline_table_from_mapping(baseline_mapping, metric, agg_baselines)
             _print_baseline_table(baseline, metric, counts)
@@ -950,7 +1093,6 @@ def main() -> None:
                 print(
                     f"  Aggregates:  "
                     f"σ̄={agg_metrics['mean']:.3f}  "
-                    f"σ̃={agg_metrics['gpu_weighted']:.3f}  "
                     f"σ_max={agg_metrics['worst_case']:.3f}  "
                     f"per-strategy: {strat_str}\n"
                 )
