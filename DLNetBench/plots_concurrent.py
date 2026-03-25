@@ -25,6 +25,18 @@ The metric and its aggregation function are fully configurable via
 SLOWDOWN_METRIC and SLOWDOWN_AGG at the top of this file, or at runtime
 via --metric and --agg.
 
+Placement visualisation (requires --show-placements)
+-----------------------------------------------------
+For every sbatchman job / repetition a SVG is produced showing which nodes
+each concurrent job was placed on.  The SVGs are written alongside the other
+plots with the naming convention::
+
+    <tag>_rep<N>_placement.svg
+
+The feature requires each run's metadata to contain:
+  - ``system``   : cluster name (e.g. "alps")
+  - ``nodelist`` : nodes allocated to that job (comma/space separated)
+
 Usage
 -----
     # Performance plots only
@@ -38,6 +50,10 @@ Usage
     python plot_concurrent.py results/concurrent.parquet \\
         --baseline results/baseline.parquet \\
         --metric throughput --agg mean
+
+    # With placement SVGs
+    python plot_concurrent.py results/concurrent.parquet \\
+        --show-placements
 """
 
 from __future__ import annotations
@@ -59,6 +75,7 @@ import pandas as pd
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 import import_export
+from JobPlacer.cli_wrapper import JobPlacer
 
 
 # ===========================================================================
@@ -945,6 +962,86 @@ def _plot_slowdown_heatmap(
 
 
 # ===========================================================================
+# Placement visualisation
+# ===========================================================================
+
+def _plot_placements(
+    sbm_job_id: str,
+    tag:        str,
+    entries:    list[tuple[dict, pd.DataFrame]],
+) -> list[Path]:
+    """
+    Create one SVG for the first repetition showing the node placement of each job.
+
+    Requires every entry's ``meta`` dict to carry:
+      - ``cluster``   : cluster name (e.g. "alps")
+      - ``resources`` / ``nodelist`` / ``nodes`` : nodes allocated to that job
+        (comma/space separated; first non-empty field wins)
+
+    The SVG follows the same naming convention as other plots::
+
+        <tag>_rep<N>_placement.svg
+
+    Returns a list containing the single path written (empty on failure).
+    """
+    # ── Pick the first repetition only ───────────────────────────────
+    first_rep = min(meta["repetition"] for meta, _ in entries)
+    rep_entries = [(meta, df) for meta, df in entries if meta["repetition"] == first_rep]
+
+    # ── Collect per-job node lists and resolve system ─────────────────
+    jobs:   dict[str, list[str]] = {}
+    system: str | None = None
+
+    for meta, _ in rep_entries:
+        jname   = meta["job_name"]
+        jnodes  = meta.get("resources") or meta.get("nodelist") or meta.get("nodes") or ""
+        jsystem = meta.get("cluster") or ""
+
+        if jsystem and system is None:
+            system = jsystem
+        if jnodes:
+            node_list = [n.strip() for n in jnodes.replace(",", " ").split() if n.strip()]
+            jobs[jname] = node_list
+
+    if not system:
+        print(f"  [placements] {tag} rep={first_rep}: 'cluster' missing in metadata — skipping.")
+        return []
+    if not jobs:
+        print(f"  [placements] {tag} rep={first_rep}: no nodelist data found — skipping.")
+        return []
+
+    # ── Build JobPlacer, then set _nodelist to the union of all nodes ─
+    try:
+        base = Path(__file__).parent.parent / "common" / "JobPlacer"
+        kwargs: dict = dict(
+            system        = system,
+            topology_file = str(base / f"{system}_topo.txt"),
+            sinfo_file    = str(base / f"{system}_sinfo.txt"),
+            verbose       = False,
+        )
+        # ALPS requires an extra TOML topology file.
+        toml_path = base / "systems" / f"{system.upper()}.toml"
+        if toml_path.exists():
+            kwargs["topology_toml_file"] = str(toml_path)
+
+        placer = JobPlacer(**kwargs)
+    except Exception as exc:
+        print(f"  [placements] {tag} rep={first_rep}: failed to create JobPlacer for "
+              f"system '{system}' — {exc}")
+        return []
+
+    # ── Render SVG ────────────────────────────────────────────────────
+    out_path = OUT_DIR / f"{tag}_rep{first_rep}_placement.svg"
+    try:
+        placer.visualize(jobs=jobs, out_svg=out_path)
+        print(f"  [placements] {tag} rep={first_rep}: saved → {out_path}")
+        return [out_path]
+    except Exception as exc:
+        print(f"  [placements] {tag} rep={first_rep}: visualize() failed — {exc}")
+        return []
+
+
+# ===========================================================================
 # Summary printer
 # ===========================================================================
 
@@ -954,6 +1051,7 @@ def _print_summary(
     perf_path: Path | None,
     slow_path: Path | None = None,
     summ_path: Path | None = None,
+    plac_paths: list[Path] | None = None,
 ) -> None:
     job_names  = sorted({e[0]["job_name"] for e in entries})
     rep_counts = {
@@ -961,11 +1059,14 @@ def _print_summary(
         for jn in job_names
     }
     total_rows = sum(len(df) for _, df in entries)
-    outs = " | ".join(filter(None, [
-        f"perf→{perf_path}"     if perf_path else None,
-        f"timeline→{slow_path}" if slow_path else None,
-        f"summary→{summ_path}"  if summ_path else None,
-    ]))
+    parts = [
+        f"perf→{perf_path}"     if perf_path  else None,
+        f"timeline→{slow_path}" if slow_path  else None,
+        f"summary→{summ_path}"  if summ_path  else None,
+    ]
+    if plac_paths:
+        parts.append(f"placements({len(plac_paths)})→{OUT_DIR}")
+    outs = " | ".join(filter(None, parts))
     print(
         f"  {tag:<40}  "
         f"jobs={len(job_names)}  "
@@ -1003,6 +1104,14 @@ def main() -> None:
     parser.add_argument(
         "--out-dir", default=str(OUT_DIR),
         help="Output directory for plots.",
+    )
+    parser.add_argument(
+        "--show-placements", action="store_true", default=False,
+        help=(
+            "Produce one SVG per repetition showing node placements, "
+            "using JobPlacer.  Requires 'system' and 'nodelist' fields "
+            "in the run metadata."
+        ),
     )
     args = parser.parse_args()
 
@@ -1076,6 +1185,11 @@ def main() -> None:
                     slow_path = _plot_slowdown_timeline(sbm_job_id, tag, slowdowns)
                     summ_path = _plot_slowdown_summary(sbm_job_id, tag, agg_metrics)
 
+        # ── Placement SVGs (optional) ─────────────────────────────────
+        plac_paths: list[Path] = []
+        if args.show_placements:
+            plac_paths = _plot_placements(sbm_job_id, tag, entries)
+
         # ── Debug tables ──────────────────────────────────────────────
         _print_concurrent_job_stats(
             sbm_job_id, tag, entries,
@@ -1098,7 +1212,7 @@ def main() -> None:
                 )
         # ─────────────────────────────────────────────────────────────
 
-        _print_summary(tag, entries, perf_path, slow_path, summ_path)
+        _print_summary(tag, entries, perf_path, slow_path, summ_path, plac_paths)
         if perf_path is None:
             skipped += 1
 
