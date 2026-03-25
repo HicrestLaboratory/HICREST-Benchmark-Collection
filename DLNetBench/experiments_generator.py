@@ -241,6 +241,33 @@ STRATEGY_PLACEMENT_MAP: dict[str, list[str]] = {
                       "INTER_GROUP_RANDOM"],
 }
 
+STRATEGY_PLACEMENT_MAP_EXTENDED: dict[str, list[str]] = {
+    # Strategy       Allowed placement-class names
+    "DP":            ["INTRA_L1_RANDOM",
+                      "INTRA_GROUP_RANDOM",
+                      "INTER_GROUP_RANDOM"],
+
+    "FSDP":          ["INTRA_L1_RANDOM",
+                      "INTRA_GROUP_SAME_L1_2",
+                      "INTER_GROUP_SAME_L1_2",
+                      "INTRA_GROUP_RANDOM", 
+                      "INTER_GROUP_RANDOM"],
+
+    "DP+PP":         ["INTRA_L1_RANDOM",
+                      "INTRA_GROUP_SAME_L1_2",
+                      "INTER_GROUP_SAME_L1_2",
+                      "INTER_GROUP_RANDOM",
+                      "INTRA_GROUP_RANDOM"],
+
+    "DP+PP+TP":      ["INTRA_GROUP_SAME_L1_4",
+                      "INTER_GROUP_SAME_L1_4",
+                      "INTER_GROUP_RANDOM",
+                      "INTRA_GROUP_RANDOM"],
+
+    "DP+PP+Expert":  ["INTRA_GROUP_RANDOM",
+                      "INTER_GROUP_RANDOM"],
+}
+
 # Placement-vector scoring and bin boundaries.
 PLACEMENT_BIN_LO_HI:  float = 1.67
 PLACEMENT_BIN_MED_HI: float = 2.33
@@ -1684,7 +1711,10 @@ def serialize_to_json(doc: dict, path: str) -> None:
 # ===========================================================================
 
 def override_args_values(args: argparse.Namespace) -> None:
-    global G, G_MIN, K_MAX, STRATEGY_DEFS, STOCHASTIC_TIER_CONFIG
+    global G, G_MIN, K_MAX, STRATEGY_DEFS, STOCHASTIC_TIER_CONFIG, STRATEGY_PLACEMENT_MAP
+
+    if args.baseline_extended:
+        STRATEGY_PLACEMENT_MAP = STRATEGY_PLACEMENT_MAP_EXTENDED
 
     if args.dgx == "DGX_A100":
         args.g = 8
@@ -1884,6 +1914,8 @@ examples:
                         help="Total number of GPUs. REQUIRED.")
     parser.add_argument("--dgx", required=False, help="Use DGX-A100 node.",
                         choices=["DGX_A100"], default=None)
+    parser.add_argument("--baseline-extended", action="store_true",
+                        help="Enable extended baseline (all feasible runs, not just powers of two).")
 
     pg = parser.add_argument_group("pattern generation")
     pg.add_argument("--k-max", type=_positive_int, default=K_MAX, metavar="K",
@@ -2017,4 +2049,5 @@ if __name__ == "__main__":
     _args = _parser.parse_args()
     _validate_args(_args, _parser)
     override_args_values(_args)
+    print(f"STRATEGY_PLACEMENT_MAP: {STRATEGY_PLACEMENT_MAP}")
     main(_args)
