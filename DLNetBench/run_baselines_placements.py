@@ -72,6 +72,23 @@ SYSTEM_CONFIGS: dict[str, dict] = {
             "UCX_IB_SL=1",
         ],
     },
+    
+    "jupyter": {
+        "cluster_name":  "jupyter",
+        "partition":     "booster",
+        "account":       "exalab",
+        "cpus_per_task": 72,
+        "time":          "00:04:00",
+        "gpus":          4,
+        "modules":       [
+            "CUDA/13",
+            "nvidia-compilers/25.9-CUDA-13",
+            "NCCL/default-CUDA-13",
+            "OpenMPI/5.0.8"
+        ],
+        "custom_headers": ["#SBATCH --ntasks-per-node=4"]
+    },
+    
     # TODO: fill in real values
     "alps": {
         "cluster_name":  "alps",
@@ -83,18 +100,6 @@ SYSTEM_CONFIGS: dict[str, dict] = {
         "qos":           "default",
         "modules":       ["cray-mpich/8.1.28"],
         "env":           ["OMP_NUM_THREADS=64"],
-    },
-    # TODO: fill in real values
-    "jupyter": {
-        "cluster_name":  "jupyter",
-        "partition":     "gpu",
-        "account":       "your_jupyter_account",
-        "cpus_per_task": 16,
-        "time":          "00:30:00",
-        "gpus":          0,
-        "qos":           "normal",
-        "modules":       ["openmpi/4.1.0"],
-        "env":           ["OMP_NUM_THREADS=16"],
     },
 }
 
@@ -160,7 +165,6 @@ def main(args: argparse.Namespace) -> None:
 
     # -- Oracle ---------------------------------------------------------------
     oracle = PlacementOracle(
-        program=oracle_program,
         system=args.system,
         reserved_nodes=nodelist,
         use_placer_files=args.use_placer_files,

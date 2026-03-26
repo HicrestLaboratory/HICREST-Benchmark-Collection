@@ -1,23 +1,22 @@
 sequential: true
 
 variables:
-  nodes: [256] # 18          # Ensure these are enough for the experiments that will run
-  system: ['leonardo'] # nvl72      # Does not matter if placement != runtime
+  nodes: [128]          # Ensure these are enough for the experiments that will run
+  system: ['jupiter']   # Does not matter if placement != runtime
   tasks_per_node: [4]
-  cpus_per_task: [8] # 8
+  cpus_per_task: [72]
 
   # -- Change as needed --
-  experiment: "testino_ccs/"
-  # experiment: "experiments/"
+  experiment: "experiments_jupiter/"
 
-  extra_flags: ["--debug"] # --keep-files --no-compact"] 
+  extra_flags: ["--debug --keep-files --no-compact"] 
   # Add if needed:    --nodes-blacklist <list in SLURM format>
 
-  walltime: [105]
+  walltime: [135]
 
 jobs:
   - config: "{nodes}_nodes"
     config_jobs:
-      - tag: "{experiment_filename}_compact"
+      - tag: "{experiment_filename}"
         preprocess: "echo \"Allocated nodes: $SLURM_JOB_NODELIST\""
         command: "python workerpool_scheduler.py --walltime {walltime} --nodelist \"$SLURM_JOB_NODELIST\" --tasks-per-node {tasks_per_node} --cpus-per-task {cpus_per_task} --system {system} -p {experiment} {extra_flags}"
