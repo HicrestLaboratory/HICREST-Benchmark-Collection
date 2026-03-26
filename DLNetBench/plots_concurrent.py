@@ -14,7 +14,7 @@ Three metrics (runtime, commtime, throughput) × one subplot each.
 Interference metrics (requires --baseline)
 -------------------------------------------
 For each sbatchman job in the concurrent data, three scalar summaries are
-computed from per-job slowdown  σ_j = T0(strategy, gpus) / T(job | C):
+computed from per-job slowdown  σ_j = T0(strategy, gpus, placement) / T(job | C):
 
   - Mean slowdown          σ̄  = mean(σ_j)
   - Worst-case slowdown    σ_max = max(σ_j)
@@ -24,6 +24,18 @@ computed from per-job slowdown  σ_j = T0(strategy, gpus) / T(job | C):
 The metric and its aggregation function are fully configurable via
 SLOWDOWN_METRIC and SLOWDOWN_AGG at the top of this file, or at runtime
 via --metric and --agg.
+
+Baseline lookup key
+--------------------
+Baselines are keyed by (strategy, gpus, placement_class) where
+placement_class is extracted from the ``sbm_tag`` field using the same
+``class-<placement>_rep`` regex that the baseline plotting script uses.
+
+If a concurrent run's exact (strategy, gpus, placement_class) triple is not
+found in the baseline table, the script emits **one** warning per missing key
+and falls back to the nearest available baseline for the same (strategy, gpus)
+pair (if any exists).  When no (strategy, gpus) match exists at all, those
+jobs are excluded from interference metrics and a warning is printed.
 
 Placement visualisation (requires --show-placements)
 -----------------------------------------------------
@@ -59,6 +71,7 @@ Usage
 from __future__ import annotations
 
 import sys
+import re
 import argparse
 from collections import defaultdict
 from pathlib import Path
@@ -109,15 +122,13 @@ METRIC_LABELS = {
 
 _PALETTE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
+# Regex that extracts the placement class from an sbm_tag.
+# Matches tags of the form:  ...class-<placement>_rep...
+# Identical to the pattern used in the baseline plotting script.
+_CLASS_TAG_RE = re.compile(r'class-([^_]+(?:_[^_]+)*)_rep')
+
 # ---------------------------------------------------------------------------
 # Visual-encoding pools
-#
-# Encoding rules (new scheme):
-#   color     ← (strategy, gpus, placement)   — what kind of job it is
-#   marker    ← unique_index                  — which specific instance
-#   linestyle ← unique_index                  — same index, different channel
-#
-# Job name format expected:  <strategy>_g<gpus>_n<nodes>_<placement>_<uid>
 # ---------------------------------------------------------------------------
 
 _COLOR_POOL: list[str] = [
@@ -128,10 +139,37 @@ _COLOR_POOL: list[str] = [
 ]
 _MARKER_POOL: list[str] = ["o", "s", "^", "D", "v", "P", "X", "*", "h", "<", ">", "p", "H", "8"]
 _LINESTYLE_POOL: list[str] = ["-", "--", "-.", ":",
-                               (0, (3, 1, 1, 1)),       # densely dashdotted
-                               (0, (5, 1)),              # densely dashed
-                               (0, (1, 1)),              # densely dotted
-                               (0, (3, 1, 1, 1, 1, 1))] # densely dashdotdotted
+                               (0, (3, 1, 1, 1)),
+                               (0, (5, 1)),
+                               (0, (1, 1)),
+                               (0, (3, 1, 1, 1, 1, 1))]
+
+
+# ===========================================================================
+# Placement-class extraction
+# ===========================================================================
+
+def _extract_placement_class(sbm_tag: str | None) -> str:
+    """
+    Return the placement class encoded in *sbm_tag*, or ``""`` if absent.
+
+    The tag format mirrors the baseline plotting script::
+
+        ..._class-<placement_class>_rep<N>_...
+
+    Examples
+    --------
+    >>> _extract_placement_class("ddp_g8_class-spread_rep0")
+    'spread'
+    >>> _extract_placement_class("ddp_g8_class-pack_tight_rep1")
+    'pack_tight'
+    >>> _extract_placement_class("ddp_g8_rep0")
+    ''
+    """
+    if not sbm_tag:
+        return ""
+    m = _CLASS_TAG_RE.search(sbm_tag)
+    return m.group(1) if m else ""
 
 
 def _parse_job_name(job_name: str) -> tuple[str, str, str, str]:
@@ -139,14 +177,11 @@ def _parse_job_name(job_name: str) -> tuple[str, str, str, str]:
     Parse ``<strategy>_g<gpus>_n<nodes>_<placement>_<uid>`` into
     ``(strategy, gpus, placement, uid)``.
 
-    Falls back gracefully when the name does not match the expected format:
-    - missing fields are returned as empty strings
-    - extra trailing fields are folded into uid
+    Falls back gracefully when the name does not match the expected format.
     """
     parts = job_name.split('_')
     strategy  = parts[0] if len(parts) > 0 else ""
-    gpus      = parts[1] if len(parts) > 1 else ""   # e.g. "g4"
-    # parts[2] is nodes — we don't use it for visuals
+    gpus      = parts[1] if len(parts) > 1 else ""
     placement = parts[3] if len(parts) > 3 else ""
     uid       = "_".join(parts[4:]) if len(parts) > 4 else ""
     return strategy, gpus, placement, uid
@@ -184,27 +219,29 @@ def _table(rows: list[list[str]], header: list[str], title: str = "", indent: in
         print(f"\n{pad}{title:=^{total_w}}")
     print(pad + "  ".join(str(h).ljust(w) for h, w in zip(header, col_widths)))
     print(sep)
-    for row in rows:
+    for row in rows[:50]:
         print(pad + "  ".join(str(v).ljust(w) for v, w in zip(row, col_widths)))
+    print('...')
     print()
 
 
 def _print_baseline_table(
-    baseline: dict[tuple[str, int], float],
+    baseline: dict[tuple[str, int, str], float],
     metric: str,
-    counts: dict[tuple[str, int], int],
+    counts: dict[tuple[str, int, str], int],
 ) -> None:
     """Print a summary table of all T0 baseline values."""
     if not baseline:
         print("  (no baseline entries)\n")
         return
     rows = [
-        [strategy, str(gpus), f"{t0:.4f}", str(counts.get((strategy, gpus), "?"))]
-        for (strategy, gpus), t0 in sorted(baseline.items())
+        [strategy, str(gpus), placement or "(none)", f"{t0:.4f}",
+         str(counts.get((strategy, gpus, placement), "?"))]
+        for (strategy, gpus, placement), t0 in sorted(baseline.items())
     ]
     _table(
         rows,
-        header=["Strategy", "GPUs", f"T0 ({metric})", "Runs averaged"],
+        header=["Strategy", "GPUs", "Placement", f"T0 ({metric})", "Runs averaged"],
         title=" Baseline T0 summary ",
     )
 
@@ -216,25 +253,24 @@ def _print_concurrent_job_stats(
     metric: str,
     agg: str,
     slowdowns: dict[str, dict[int, float]] | None,
-    baseline: dict[tuple[str, int], float] | None,
+    baseline: dict[tuple[str, int, str], float] | None,
 ) -> None:
     """
-    Print two tables for one sbatchman job:
+    Print two tables for one sbatchman job.
 
-    Table 1 — per (job_name, repetition) row:
-        strategy/gpus  n_rows  <metric> mean  <metric> std  <metric> <agg>  T0  σ_j
-
-    Table 2 — per job_name summary (σ aggregated over repetitions):
-        job_name  n_reps  σ mean  σ std  σ min  σ max
+    Table 1 — per (job_name, repetition) row showing strategy/gpus/placement,
+               metric stats, T0, σ_j.
+    Table 2 — per job_name summary (σ aggregated over repetitions).
     """
     agg_fn = _agg_fn(agg)
 
     detail_rows = []
     for meta, df in sorted(entries, key=lambda t: (t[0]["job_name"], t[0]["repetition"])):
-        jname    = meta["job_name"]
-        rep      = meta["repetition"]
-        strategy = meta.get("strategy") or jname.split('_')[0]
-        gpus     = meta.get("gpus") or int(jname.split('_')[1][1:])
+        jname     = meta["job_name"]
+        rep       = meta["repetition"]
+        strategy  = meta.get("strategy") or jname.split('_')[0]
+        gpus      = meta.get("gpus") or int(jname.split('_')[1][1:])
+        placement = _extract_placement_class(meta.get("sbm_tag", ""))
 
         if metric in df.columns:
             col    = pd.to_numeric(df[metric], errors="coerce").dropna()
@@ -245,7 +281,11 @@ def _print_concurrent_job_stats(
         else:
             n = mean_v = std_v = agg_v = float("nan")
 
-        t0    = baseline.get((strategy, int(gpus)), float("nan")) if baseline else float("nan")
+        t0 = float("nan")
+        if baseline is not None:
+            t0_val = _get_baseline_with_fallback(baseline, strategy, int(gpus), placement)
+            t0 = t0_val if t0_val is not None else float("nan")
+
         sigma = (
             slowdowns[jname][rep]
             if slowdowns and jname in slowdowns and rep in slowdowns[jname]
@@ -255,7 +295,7 @@ def _print_concurrent_job_stats(
         detail_rows.append([
             jname,
             str(rep),
-            f"{strategy}/{gpus}g",
+            f"{strategy}/{gpus}g/{placement or '—'}",
             str(n),
             f"{mean_v:.4f}" if not np.isnan(mean_v) else "—",
             f"{std_v:.4f}"  if not np.isnan(std_v)  else "—",
@@ -266,13 +306,12 @@ def _print_concurrent_job_stats(
 
     _table(
         detail_rows,
-        header=["job_name", "rep", "strategy/gpus", "n_rows",
+        header=["job_name", "rep", "strategy/gpus/placement", "n_rows",
                 f"{metric} mean", f"{metric} std", f"{metric} ({agg})",
                 "T0", "σ_j"],
         title=f" sbm_job={sbm_job_id} / tag={tag} — per-repetition detail ",
     )
 
-    # Table 2: per-job σ summary (only when slowdowns available)
     if slowdowns:
         summary_rows = []
         for jname in sorted(slowdowns):
@@ -294,6 +333,69 @@ def _print_concurrent_job_stats(
                 header=["job_name", "n_reps", "σ mean", "σ std", "σ min", "σ max"],
                 title=f" sbm_job={sbm_job_id} — per-job σ summary (over repetitions) ",
             )
+
+
+# ===========================================================================
+# Baseline fallback helper
+# ===========================================================================
+
+# Module-level set to track which missing (strategy, gpus, placement) triples
+# have already triggered a warning, so each distinct missing key only produces
+# one warning per script run.
+_baseline_fallback_warned: set[tuple[str, int, str]] = set()
+
+
+def _get_baseline_with_fallback(
+    baseline:  dict[tuple[str, int, str], float],
+    strategy:  str,
+    gpus:      int,
+    placement: str,
+    _warned:   set[tuple[str, int, str]] | None = None,
+) -> float | None:
+    """
+    Look up T0 for (strategy, gpus, placement).
+
+    Resolution order
+    ----------------
+    1. Exact match  (strategy, gpus, placement)
+    2. If not found: warn once per missing key, then return the T0 for the
+       alphabetically-first available placement with the same (strategy, gpus).
+    3. If still not found (no (strategy, gpus) match at all): return None.
+       The caller is responsible for skipping the job and printing a final
+       "excluded from metrics" notice.
+
+    Parameters
+    ----------
+    _warned:
+        External set for deduplicating warnings.  When None the module-level
+        ``_baseline_fallback_warned`` set is used.
+    """
+    warned = _warned if _warned is not None else _baseline_fallback_warned
+
+    exact = (strategy, gpus, placement)
+    if exact in baseline:
+        return baseline[exact]
+
+    candidates = {
+        k: v for k, v in baseline.items()
+        if k[0] == strategy and k[1] == gpus
+    }
+    if not candidates:
+        return None
+
+    fallback_key = min(candidates.keys(), key=lambda k: k[2])
+
+    if exact not in warned:
+        available = sorted(k[2] for k in candidates)
+        print(
+            f"  [baseline WARNING] no T0 for "
+            f"(strategy={strategy!r}, gpus={gpus}, placement={placement!r}). "
+            f"Available placements for this strategy/gpu: {available}. "
+            f"Falling back to placement={fallback_key[2]!r}."
+        )
+        warned.add(exact)
+
+    return candidates[fallback_key]
 
 
 # ===========================================================================
@@ -321,37 +423,40 @@ def _group_by_sbm_job(
 
     return groups
 
+
 # FIXME TUNE exclude_first_n
 def _build_baseline_table_from_mapping(
     mapping: list[tuple[dict, dict[str, pd.DataFrame]]],
     metric: str,
     agg: str,
     exclude_first_n: int = 1,
-    cyclic_warmup = True,
-    variance_warn_threshold = 0.05,  # 5% relative std
-) -> tuple[dict[tuple[str, int], float], dict[tuple[str, int], int]]:
+    cyclic_warmup: bool = True,
+    variance_warn_threshold: float = 0.05,
+) -> tuple[dict[tuple[str, int, str], float], dict[tuple[str, int, str], int]]:
     """
-    Build { (strategy, gpus) -> T0 } from an already-loaded mapping.
+    Build { (strategy, gpus, placement_class) -> T0 } from an already-loaded mapping.
+
+    The placement class is extracted from each run's ``sbm_tag`` using the same
+    ``class-<placement>_rep`` regex as the baseline plotting script.
 
     Multiple runs with the same key are averaged together.
-    
-    exclude_first_n Excludes warmup runs
 
-    Returns (baseline, counts) where counts[key] is how many runs
+    Returns (baseline, counts) where counts[key] is how many rows
     contributed to that T0 value.
     """
     agg_fn      = _agg_fn(agg)
-    accumulator: dict[tuple[str, int], list[float]] = defaultdict(list)
-    counts:   dict[tuple[str, int], int]   = defaultdict(int)
+    accumulator: dict[tuple[str, int, str], list[float]] = defaultdict(list)
+    counts:      dict[tuple[str, int, str], int]         = defaultdict(int)
 
     for meta, dfs in mapping:
         df = dfs.get("main")
         if df is None or df.empty:
             continue
 
-        strategy = meta.get("strategy")
-        gpus     = meta.get("gpus")
-        uid      = meta.get("sbm_tag")
+        strategy  = meta.get("strategy")
+        gpus      = meta.get("gpus")
+        uid       = meta.get("sbm_tag", "")
+        placement = _extract_placement_class(uid)
 
         if not strategy and uid:
             strategy = uid.split('_')[0]
@@ -361,70 +466,76 @@ def _build_baseline_table_from_mapping(
             except Exception:
                 gpus = None
 
-        # Try fallback metric name
         current_metric = metric
         if current_metric not in df.columns:
             current_metric = current_metric.split('_')[0]
 
         if current_metric not in df.columns:
-            print(f"  [baseline] metric '{metric}' not found in job {meta.get('sbm_job_id')} ({strategy=} / {gpus=}), skipping.")
+            print(
+                f"  [baseline] metric '{metric}' not found in job "
+                f"{meta.get('sbm_job_id')} "
+                f"({strategy=} / {gpus=} / placement={placement!r}), skipping."
+            )
             continue
 
         if strategy is None or gpus is None:
-            print(f"  [baseline] missing 'strategy' or 'gpus' or 'uid' in meta {meta}, skipping.")
+            print(f"  [baseline] missing 'strategy' or 'gpus' in meta {meta}, skipping.")
             continue
 
-        col = pd.to_numeric(df[current_metric], errors="coerce").dropna()
-
+        col   = pd.to_numeric(df[current_metric], errors="coerce").dropna()
         nruns = command_map._STRATEGIES_NUM_RUNS[strategy]
         nruns = nruns[0] + nruns[1]
-        
+
         if col.empty:
             continue
 
-        # -----------------------------
         # Warmup removal
-        # -----------------------------
         if cyclic_warmup:
-            kept_idx = []
+            kept_idx  = []
             total_len = len(col)
-
             for start in range(0, total_len, int(nruns)):
                 chunk_idx = list(range(start, min(start + int(nruns), total_len)))
-
                 if len(chunk_idx) > exclude_first_n:
                     kept_idx.extend(chunk_idx[exclude_first_n:])
                 else:
-                    print(f"  [baseline] cannot remove {exclude_first_n} warmup runs for chunk starting at {start} ({strategy=} / {gpus=} / {nruns=}), not enough values.")
-
-            kept_idx = sorted(kept_idx)
-            col = col.iloc[kept_idx]
+                    print(
+                        f"  [baseline] cannot remove {exclude_first_n} warmup runs for chunk "
+                        f"starting at {start} "
+                        f"({strategy=} / {gpus=} / placement={placement!r} / {nruns=}), "
+                        f"not enough values."
+                    )
+            col = col.iloc[sorted(kept_idx)]
         else:
             if len(col) > exclude_first_n:
                 col = col.iloc[exclude_first_n:]
             else:
-                print(f"  [baseline] cannot remove {exclude_first_n} warmup runs for {strategy=} / {gpus=} / {nruns=}, not enough values.")
+                print(
+                    f"  [baseline] cannot remove {exclude_first_n} warmup runs for "
+                    f"{strategy=} / {gpus=} / placement={placement!r} / {nruns=}, "
+                    f"not enough values."
+                )
 
-        # -----------------------------
+        if col.empty:
+            continue
+
         # Variance check
-        # -----------------------------
         if len(col) > 1:
             mean = col.mean()
-            std = col.std()
-
+            std  = col.std()
             if mean != 0:
                 rel_std = std / mean
                 if rel_std > variance_warn_threshold:
-                    print(f"  [warning] high variance after warmup removal "
-                        f"({rel_std:.2%}) for {strategy=} / {gpus=} / {uid=}")
+                    print(
+                        f"  [warning] high variance after warmup removal "
+                        f"({rel_std:.2%}) for "
+                        f"{strategy=} / {gpus=} / placement={placement!r} / {uid=}"
+                    )
 
-        # -----------------------------
-        # Accumulate
-        # -----------------------------
-        counts[(strategy, int(gpus))] += len(col)
-        accumulator[(strategy, int(gpus))].append(agg_fn(col))
+        key = (strategy, int(gpus), placement)
+        counts[key] += len(col)
+        accumulator[key].append(agg_fn(col))
 
-    baseline: dict[tuple[str, int], float] = {}
+    baseline: dict[tuple[str, int, str], float] = {}
     for key, vals in accumulator.items():
         baseline[key] = float(np.mean(vals))
 
@@ -435,7 +546,7 @@ def _build_baseline_table(
     path: Path,
     metric: str,
     agg: str,
-) -> tuple[dict[tuple[str, int], float], dict[tuple[str, int], int]]:
+) -> tuple[dict[tuple[str, int, str], float], dict[tuple[str, int, str], int]]:
     """Convenience wrapper: load a single parquet file and build the T0 table."""
     mapping = _load_parquet(path)
     return _build_baseline_table_from_mapping(mapping, metric, agg)
@@ -472,27 +583,33 @@ def _aggregate_runs(
 
 def _compute_slowdowns(
     entries:  list[tuple[dict, pd.DataFrame]],
-    baseline: dict[tuple[str, int], float],
+    baseline: dict[tuple[str, int, str], float],
     metric:   str,
     agg:      str,
-    cyclic_warmup = True,
-    exclude_first_n = 0,
-    variance_warn_threshold = 0.05,  # 5%
+    cyclic_warmup:           bool  = True,
+    exclude_first_n:         int   = 0,
+    variance_warn_threshold: float = 0.05,
 ) -> dict[str, dict[int, float]] | None:
     """
     Returns { job_name -> { repetition -> σ_j } } or None if data is missing.
-    σ_j = T0(strategy, gpus) / T(job | C)
+
+    σ_j = T0(strategy, gpus, placement_class) / T(job | C)
+
+    The placement class is extracted from each run's ``sbm_tag`` using the same
+    regex as the baseline script.  Missing exact keys fall back via
+    ``_get_baseline_with_fallback`` — one warning per unique missing key.
     """
-    agg_fn       = _agg_fn(agg)
-    result:       dict[str, dict[int, float]] = defaultdict(dict)
-    missing_keys: set[tuple[str, int]]        = set()
+    agg_fn      = _agg_fn(agg)
+    result:      dict[str, dict[int, float]] = defaultdict(dict)
+    no_baseline: set[tuple[str, int, str]]   = set()
 
     for meta, df in entries:
-        jname    = meta["job_name"]
-        rep      = meta["repetition"]
-        strategy = meta.get("strategy")
-        gpus     = meta.get("gpus")
-        nruns    = meta.get("nruns")
+        jname     = meta["job_name"]
+        rep       = meta["repetition"]
+        strategy  = meta.get("strategy")
+        gpus      = meta.get("gpus")
+        nruns     = meta.get("nruns")
+        placement = _extract_placement_class(meta.get("sbm_tag", ""))
 
         if not strategy:
             strategy = jname.split('_')[0]
@@ -501,8 +618,6 @@ def _compute_slowdowns(
                 gpus = int(jname.split('_')[1][1:])
             except Exception:
                 gpus = None
-
-        # nruns fallback (if not explicitly present)
         if not nruns:
             try:
                 nruns = int(jname.split('_')[2][1:])
@@ -510,86 +625,86 @@ def _compute_slowdowns(
                 nruns = None
 
         if strategy is None or gpus is None:
-            print(f"  [slowdown] missing 'strategy'/'gpus' for job {jname}, rep {rep} — skipping.")
+            print(
+                f"  [slowdown] missing 'strategy'/'gpus' for job {jname}, rep {rep} — skipping."
+            )
             continue
 
-        key = (strategy, int(gpus))
-        t0  = baseline.get(key)
+        t0 = _get_baseline_with_fallback(baseline, strategy, int(gpus), placement)
         if t0 is None:
-            missing_keys.add(key)
+            no_baseline.add((strategy, int(gpus), placement))
             continue
 
-        # Metric fallback logic
         current_metric = metric
         if current_metric not in df.columns:
             current_metric = current_metric.split('_')[0]
-
         if current_metric not in df.columns:
             continue
 
         col = pd.to_numeric(df[current_metric], errors="coerce").dropna()
-
         if col.empty:
             continue
 
-        # -----------------------------
-        # Warmup removal (chunk-based with nruns)
-        # -----------------------------
+        # Warmup removal
         if cyclic_warmup and nruns:
-            kept_idx = []
+            kept_idx  = []
             total_len = len(col)
-
             for start in range(0, total_len, int(nruns)):
                 chunk_idx = list(range(start, min(start + int(nruns), total_len)))
-
                 if len(chunk_idx) > exclude_first_n:
                     kept_idx.extend(chunk_idx[exclude_first_n:])
                 else:
-                    print(f"  [slowdown] cannot remove {exclude_first_n} warmup runs for chunk "
-                          f"starting at {start} ({strategy=} / {gpus=} / {nruns=}), not enough values.")
-
-            kept_idx = sorted(kept_idx)
-            col = col.iloc[kept_idx]
-
+                    print(
+                        f"  [slowdown] cannot remove {exclude_first_n} warmup runs for chunk "
+                        f"starting at {start} "
+                        f"({strategy=} / {gpus=} / placement={placement!r} / {nruns=}), "
+                        f"not enough values."
+                    )
+            col = col.iloc[sorted(kept_idx)]
         else:
             if len(col) > exclude_first_n:
                 col = col.iloc[exclude_first_n:]
             else:
-                print(f"  [slowdown] cannot remove {exclude_first_n} warmup runs for {jname}, not enough values.")
+                print(
+                    f"  [slowdown] cannot remove {exclude_first_n} warmup runs for {jname}, "
+                    f"not enough values."
+                )
 
         if col.empty:
             continue
 
-        # -----------------------------
         # Variance check
-        # -----------------------------
         if len(col) > 1:
             mean = col.mean()
             std  = col.std()
-
             if mean != 0:
                 rel_std = std / mean
                 if rel_std > variance_warn_threshold:
-                    print(f"  [slowdown WARNING] high variance after warmup removal "
-                          f"({rel_std:.2%}) for {jname=} / {strategy=} / {gpus=} / {nruns=} / {rep=}")
+                    print(
+                        f"  [slowdown WARNING] high variance after warmup removal "
+                        f"({rel_std:.2%}) for "
+                        f"{jname=} / {strategy=} / {gpus=} / "
+                        f"placement={placement!r} / {nruns=} / {rep=}"
+                    )
 
-        # -----------------------------
-        # Slowdown computation
-        # -----------------------------
         t_conc = agg_fn(col)
         if t_conc <= 0:
             continue
 
         result[jname][rep] = t0 / t_conc
 
-    for key in missing_keys:
-        print(f"  [slowdown] WARNING: no baseline for {key} — those jobs excluded from metrics.")
+    for key in no_baseline:
+        print(
+            f"  [slowdown] WARNING: no baseline (even via fallback) for "
+            f"(strategy={key[0]!r}, gpus={key[1]}, placement={key[2]!r}) "
+            f"— those jobs excluded from interference metrics."
+        )
 
     return result if result else None
 
 
 # ===========================================================================
-# Aggregate slowdown metrics  (GPU-weighted metric removed)
+# Aggregate slowdown metrics
 # ===========================================================================
 
 def _aggregate_slowdowns(
@@ -642,21 +757,11 @@ def _build_job_visuals(
 ) -> dict[str, tuple[str, str, str]]:
     """
     Return ``{ job_name -> (color, marker, linestyle) }``.
-
-    Encoding:
-      color     — (strategy, gpus, placement) tuple, so jobs of the same
-                  type share a color regardless of their unique index.
-      marker    — unique_index (cycles through _MARKER_POOL).
-      linestyle — unique_index (cycles through _LINESTYLE_POOL), same index
-                  as marker so the two channels reinforce each other.
-
-    Job name format: ``<strategy>_g<gpus>_n<nodes>_<placement>_<uid>``
     """
-    # Build ordered maps so the assignment is deterministic and stable.
     color_key_order: dict[tuple[str, str, str], int] = {}
     uid_order:       dict[str, int]                  = {}
 
-    for jname in sorted(job_names):          # sort for stability
+    for jname in sorted(job_names):
         strategy, gpus, placement, uid = _parse_job_name(jname)
         ck = (strategy, gpus, placement)
         if ck not in color_key_order:
@@ -704,10 +809,9 @@ def _plot_performance(
 
     n_metrics = len(present_metrics)
 
-    # Scale figure height to accommodate large legends below the plot area.
     legend_ncol  = min(8, n_jobs)
     legend_rows  = (n_jobs + legend_ncol - 1) // legend_ncol
-    legend_h_in  = max(0.7, legend_rows * 0.30 + 0.4)   # +0.4 for title + padding
+    legend_h_in  = max(0.7, legend_rows * 0.30 + 0.4)
     subplot_h_in = 4.0
     fig_h        = subplot_h_in + legend_h_in
 
@@ -742,7 +846,6 @@ def _plot_performance(
             )
             ax.fill_between(xs_present, ys - yerrs, ys + yerrs, alpha=0.12, color=color)
 
-            # Collect legend handles only from the first metric subplot
             if col_idx == 0:
                 legend_handles.append(line)
                 legend_labels.append(jname)
@@ -753,8 +856,6 @@ def _plot_performance(
         ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
         ax.grid(True, linewidth=0.4, alpha=0.6)
 
-    # Single shared legend placed below all subplots.
-    # legend_frac is the fraction of figure height reserved for the legend.
     legend_frac = legend_h_in / fig_h
     if legend_handles:
         fig.legend(
@@ -852,12 +953,10 @@ def _plot_slowdown_summary(
     visuals      = _build_job_visuals(job_names)
     strat_names  = sorted(per_strategy.keys())
 
-    # Scale figure width so bars are legible with many jobs
     fig_w = max(12, n_jobs * 0.45 + 6)
     fig, (ax_jobs, ax_summary) = plt.subplots(1, 2, figsize=(fig_w, 5))
     fig.suptitle(f"Interference summary\nsbm_job={sbm_job_id}  tag={tag}", fontsize=10)
 
-    # Left: per-job σ
     bar_colors = [visuals[jn][0] for jn in job_names]
     bars = ax_jobs.bar(
         range(len(job_names)),
@@ -877,7 +976,6 @@ def _plot_slowdown_summary(
         ax_jobs.text(bar.get_x() + bar.get_width() / 2, h + 0.005,
                      f"{h:.3f}", ha="center", va="bottom", fontsize=7)
 
-    # Right: aggregate scalars + per-strategy  (GPU-weighted removed)
     scalar_labels = ["Mean σ̄", "Worst-case σ_max"]
     scalar_values = [agg_metrics["mean"], agg_metrics["worst_case"]]
     all_labels    = scalar_labels + [f"{s}\n(strategy)" for s in strat_names]
@@ -909,12 +1007,12 @@ def _plot_slowdown_summary(
 
 def _plot_slowdown_heatmap(
     groups:   dict[str, list[tuple[dict, pd.DataFrame]]],
-    baseline: dict[tuple[str, int], float],
+    baseline: dict[tuple[str, int, str], float],
     metric:   str,
     agg:      str,
 ) -> Path | None:
     rows: list[dict] = []
-    row_tags:  list[str] = []
+    row_tags: list[str] = []
 
     for sbm_job_id, entries in sorted(groups.items()):
         slowdowns = _compute_slowdowns(entries, baseline, metric, agg)
@@ -930,7 +1028,6 @@ def _plot_slowdown_heatmap(
     n_cols  = len(df.columns)
     n_rows  = len(df.index)
 
-    # Scale figure to accommodate up to ~50 jobs
     fig_w = max(8, n_cols * 1.0 + 2)
     fig_h = max(4, n_rows * 0.55 + 1.5)
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
@@ -972,23 +1069,10 @@ def _plot_placements(
 ) -> list[Path]:
     """
     Create one SVG for the first repetition showing the node placement of each job.
-
-    Requires every entry's ``meta`` dict to carry:
-      - ``cluster``   : cluster name (e.g. "alps")
-      - ``resources`` / ``nodelist`` / ``nodes`` : nodes allocated to that job
-        (comma/space separated; first non-empty field wins)
-
-    The SVG follows the same naming convention as other plots::
-
-        <tag>_rep<N>_placement.svg
-
-    Returns a list containing the single path written (empty on failure).
     """
-    # ── Pick the first repetition only ───────────────────────────────
-    first_rep = min(meta["repetition"] for meta, _ in entries)
+    first_rep   = min(meta["repetition"] for meta, _ in entries)
     rep_entries = [(meta, df) for meta, df in entries if meta["repetition"] == first_rep]
 
-    # ── Collect per-job node lists and resolve system ─────────────────
     jobs:   dict[str, list[str]] = {}
     system: str | None = None
 
@@ -1010,7 +1094,6 @@ def _plot_placements(
         print(f"  [placements] {tag} rep={first_rep}: no nodelist data found — skipping.")
         return []
 
-    # ── Build JobPlacer, then set _nodelist to the union of all nodes ─
     try:
         base = Path(__file__).parent.parent / "common" / "JobPlacer"
         kwargs: dict = dict(
@@ -1019,7 +1102,6 @@ def _plot_placements(
             sinfo_file    = str(base / f"{system}_sinfo.txt"),
             verbose       = False,
         )
-        # ALPS requires an extra TOML topology file.
         toml_path = base / "systems" / f"{system.upper()}.toml"
         if toml_path.exists():
             kwargs["topology_toml_file"] = str(toml_path)
@@ -1030,7 +1112,6 @@ def _plot_placements(
               f"system '{system}' — {exc}")
         return []
 
-    # ── Render SVG ────────────────────────────────────────────────────
     out_path = OUT_DIR / f"{tag}_rep{first_rep}_placement.svg"
     try:
         placer.visualize(jobs=jobs, out_svg=out_path)
@@ -1143,7 +1224,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Load baseline (optional)
     # ------------------------------------------------------------------
-    baseline: dict[tuple[str, int], float] | None = None
+    baseline: dict[tuple[str, int, str], float] | None = None
     if args.baseline:
         baseline_mapping: list[tuple[dict, dict[str, pd.DataFrame]]] = []
         for bp in [Path(f) for f in args.baseline]:
@@ -1157,9 +1238,11 @@ def main() -> None:
         if not baseline_mapping:
             print("WARNING: no baseline data loaded — interference metrics disabled.")
         else:
-            agg_baselines = agg
-            print(f"\nBuilding T0 table from {len(baseline_mapping)} run(s)  [metric={metric}, agg={agg_baselines}]")
-            baseline, counts = _build_baseline_table_from_mapping(baseline_mapping, metric, agg_baselines)
+            print(
+                f"\nBuilding T0 table from {len(baseline_mapping)} run(s)  "
+                f"[metric={metric}, agg={agg}]"
+            )
+            baseline, counts = _build_baseline_table_from_mapping(baseline_mapping, metric, agg)
             _print_baseline_table(baseline, metric, counts)
 
     # ------------------------------------------------------------------
@@ -1185,12 +1268,10 @@ def main() -> None:
                     slow_path = _plot_slowdown_timeline(sbm_job_id, tag, slowdowns)
                     summ_path = _plot_slowdown_summary(sbm_job_id, tag, agg_metrics)
 
-        # ── Placement SVGs (optional) ─────────────────────────────────
         plac_paths: list[Path] = []
         if args.show_placements:
             plac_paths = _plot_placements(sbm_job_id, tag, entries)
 
-        # ── Debug tables ──────────────────────────────────────────────
         _print_concurrent_job_stats(
             sbm_job_id, tag, entries,
             metric=metric, agg=agg,
@@ -1210,7 +1291,6 @@ def main() -> None:
                     f"σ_max={agg_metrics['worst_case']:.3f}  "
                     f"per-strategy: {strat_str}\n"
                 )
-        # ─────────────────────────────────────────────────────────────
 
         _print_summary(tag, entries, perf_path, slow_path, summ_path, plac_paths)
         if perf_path is None:
