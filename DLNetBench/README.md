@@ -184,19 +184,31 @@ python experiments_generator.py -G 8 \
 ### Jupiter
 
 ```bash
-# Baselines
-python experiments_generator.py -G $((670*4)) --util-min 0.8 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 6 --max-experiments 1 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_baselines.json --baseline-extended
-
-# Concurrent
-python experiments_generator.py -G $((670*4)) --util-min 0.8 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 6 --max-experiments 15 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_powerlaw.json
+scontrol show reservation
+sinfo -n "jpbo-016-[01-48],jpbo-017-[01-48],jpbo-018-[01-48],jpbo-019-[01-48],jpbo-020-[01-48],jpbo-046-[01-48],jpbo-047-[01-48],jpbo-048-[01-48],jpbo-049-[01-48],jpbo-050-[01-48],jpbo-096-[01-48],jpbo-097-[01-48],jpbo-098-[01-48],jpbo-099-[01-48],jpbo-100-[01-48]" -t idle,alloc,comp
 ```
 
 ```bash
 # Baselines
-py run_baselines_placements.py --nodelist "jpbo-016-[01-46,48],jpbo-017-[01-40,43-48],jpbo-018-[01-15,17-20,23-30,32-46,48],jpbo-019-[01-22,25-28,30-40,42-44,46-48],jpbo-020-[01-30,32-35,37-48],jpbo-046-[01-24,27-48],jpbo-047-[01-08,10-20,22-36,39-48],jpbo-048-[01-20,22-35,37-46,48],jpbo-049-[02-09,11-16,19-28,30-48],jpbo-050-[01-48],jpbo-096-[01-05,07-33,35-48],jpbo-097-[01-28,32-48],jpbo-098-[01-20,23-25,27-48],jpbo-099-[01-46,48],jpbo-100-[01-06,09-20,23-30,32,34-48]" --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --cpus-per-task 72 experiments_jupiter_3_groups_baselines.json
+python experiments_generator.py -G $((650*4)) --util-min 0.8 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 6 --max-experiments 1 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_baselines.json --baseline-extended
+
+# Concurrent
+python experiments_generator.py -G $((650*4)) --util-min 0.9 --util-max 1.0 --util-steps 5 --use-topology --n-stochastic-patterns 5 --max-experiments 15 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_powerlaw.json
+
+python experiments_generator.py -G $((650*4)) --util-min 0.85 --util-max 1.0 --util-steps 40 --use-topology --n-stochastic-patterns 0 --include-uniform-patterns --max-experiments 10 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 400 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_uniform.json
+
+# BACKUP 640 nodes
+python experiments_generator.py -G $((640*4)) --util-min 0.92 --util-max 1.0 --util-steps 5 --use-topology --n-stochastic-patterns 5 --max-experiments 15 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_powerlaw.json
+```
+
+```bash
+# Baselines
+py run_baselines_placements.py --nodelist "jpbo-016-[01-27,29-46,48],jpbo-017-[01-33,35-36,38,40,43-48],jpbo-018-[01-15,17-20,23-30,32-33,35-42,44-45,48],jpbo-019-[01-06,08-22,25-28,30-40,43-44,47-48],jpbo-020-[01-30,32-35,37-48],jpbo-046-[01-09,11-24,27-34,36-48],jpbo-047-[01-08,10-20,23-30,32-36,39-48],jpbo-048-[01-08,10-20,22-35,37-43,45-46,48],jpbo-049-[02-09,11-16,19-28,30-48],jpbo-050-[01-48],jpbo-096-[01-05,07-33,35-48],jpbo-097-[01-17,19-28,32-48],jpbo-098-[01-20,23-25,27-48],jpbo-099-[01-46,48],jpbo-100-[01-06,09-20,23-30,32,34-48]" --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --cpus-per-task 72 experiments_jupiter_3_groups_baselines.json
 
 # Concurrent
 python expand_experiments.py experiments_jupiter_3_groups_powerlaw.json --placement-mode runtime --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_jupiter_3_groups_powerlaw_nccl
+
+python expand_experiments.py experiments_jupiter_3_groups_uniform.json --placement-mode runtime --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_jupiter_3_groups_uniform_nccl
 ```
 
 

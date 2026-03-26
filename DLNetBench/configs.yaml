@@ -1,5 +1,5 @@
 variables:
-  nodes: [2, 4, 6, 8, 10, 12, 14, 16, 18, 32, 56, 64, 128, 256] # , 512, 1024]
+  nodes: [2, 4, 6, 8, 10, 12, 14, 16, 18, 32, 56, 64, 128, 256, 655] # , 512, 1024]
   gpus: [2, 4, 8]
 
 isarco:
@@ -134,6 +134,7 @@ jupiter:
     exclusive: true
     time: "00:05:00"
     partition: "booster"
+    # exclude: "jpbo-046-45,jpbo-097-17,jpbo-019-11,jpbo-016-06,jpbo-047-17,jpbo-096-33,jpbo-016-22,jpbo-096-44,jpbo-018-20,jpbo-048-26,jpbo-099-26,jpbo-019-21,jpbo-016-34,jpbo-017-24,jpbo-018-37,jpbo-046-18,jpbo-046-06,jpbo-017-18,jpbo-050-14,jpbo-018-18,jpbo-019-12,jpbo-100-18,jpbo-017-06,jpbo-046-02,jpbo-016-41,jpbo-019-40,jpbo-048-24,jpbo-016-14,jpbo-099-24,jpbo-017-33,jpbo-050-43,jpbo-018-27,jpbo-100-19,jpbo-096-08,jpbo-047-15,jpbo-047-34,jpbo-050-04,jpbo-100-02,jpbo-050-45,jpbo-017-10"
     modules:
       - "CUDA/13"
       - "nvidia-compilers/25.9-CUDA-13"

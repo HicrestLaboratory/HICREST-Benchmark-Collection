@@ -6,14 +6,14 @@ Maps (strategy, num_gpus, comm_lib) -> full DLNetBench command string.
 
 from __future__ import annotations
 from typing import Union
-from experiments_generator import STRATEGY_DEFS, STRATEGY_DEFS_DGX_A100
+from experiments_generator import STRATEGY_DEFS, STRATEGY_DEFS_DGX_A100, STRATEGY_DEFS_EXTENDED
 
 EXTRA_SRUN_FLAGS = {
     'alps': ['--mpi=pmix', '--cpu-bind=cores', '--accel-bind=g']
 }
 
 FEASIBLE_GPU_COUNTS: dict[str, frozenset[int]] = {
-    strategy[0]: frozenset(strategy[1]) for strategy in STRATEGY_DEFS
+    strategy[0]: frozenset(strategy[1]) for strategy in STRATEGY_DEFS_EXTENDED
 }
 
 FEASIBLE_GPU_COUNTS_DGX_A100: dict[str, frozenset[int]] = {

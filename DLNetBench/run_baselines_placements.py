@@ -77,6 +77,7 @@ SYSTEM_CONFIGS: dict[str, dict] = {
         "cluster_name":  "jupiter",
         "partition":     "booster",
         "account":       "exalab",
+        "reservation":   "ic_bench",
         "cpus_per_task": 72,
         "time":          "00:04:00",
         "gpus":          4,
