@@ -186,6 +186,10 @@ def main(args: argparse.Namespace) -> None:
         seed                 = entry["seed"]
         replicate_index      = entry["replicate_index"]
 
+        if args.max_n_nodes and nodes > args.max_n_nodes:
+            print(f'Skipping job {strategy} @ {nodes} nodes. Limit is {args.max_n_nodes}.')
+            continue
+
         print(f"[{job_idx:03d}/{len(baselines):03d}] "
               f"strategy={strategy:<14}  gpus={num_gpus:<5}  nodes={nodes:<4}  "
               f"class={placement_class}  rep={replicate_index}  seed={seed}")
@@ -325,6 +329,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--dry-run", action="store_true", default=False,
         help="Print jobs without actually submitting them.",
+    )
+    p.add_argument(
+        "--max-n-nodes", type=int, default=None,
+        help="If set, it will only launch jobs that need at most --max-n-nodes nodes.",
     )
     return p
 
