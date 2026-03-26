@@ -10,7 +10,7 @@ Supported systems
 -----------------
   leonardo  -- CINECA Leonardo (boost_usr_prod, A100)
   alps      -- CSCS Alps        (dummy values, update as needed)
-  jupyter   -- Jupyter cluster  (dummy values, update as needed)
+  jupiter   -- Jupiter cluster  (dummy values, update as needed)
 
 Adding a new system: add one entry to SYSTEM_CONFIGS.
 
@@ -73,8 +73,8 @@ SYSTEM_CONFIGS: dict[str, dict] = {
         ],
     },
     
-    "jupyter": {
-        "cluster_name":  "jupyter",
+    "jupiter": {
+        "cluster_name":  "jupiter",
         "partition":     "booster",
         "account":       "exalab",
         "cpus_per_task": 72,
@@ -300,11 +300,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Target HPC system.",
     )
     p.add_argument(
-        "--comm-lib", required=True, choices=["nccl", "rccl", "oneccl"],
-        help="Communication library.",
+        "--comm-lib", required=True, help="Communication library to use", choices=["nccl", "rccl", "oneccl", "mpi_gpu_cuda"]
     )
     p.add_argument(
-        "--gpu-model", required=True, choices=["B200", "H200", "A100"],
+        "--gpu-model", required=True, choices=["B200", "H200", "A100", "GH200"],
         help="GPU model (selects compute-time emulation profile).",
     )
     p.add_argument(

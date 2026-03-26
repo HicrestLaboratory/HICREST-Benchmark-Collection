@@ -122,6 +122,14 @@ STRATEGY_DEFS: list[tuple[str, list[int]]] = [
     ("DP+PP+Expert", [512, 1024]),          # Nodes: 128, 256
 ]
 
+STRATEGY_DEFS_EXTENDED: list[tuple[str, list[int]]] = [
+    ("DP",           [8, 16, 32, 64]),            # Nodes: 2, 4, 8, 16
+    ("FSDP",         [16, 32, 64, 128, 256]),     # Nodes: 4, 8, 32, 64
+    ("DP+PP",        [16, 32, 64, 128, 256]),     # Nodes: 4, 8, 16, 32, 64
+    ("DP+PP+TP",     [224, 256, 512, 1024]),      # Nodes: 56, 64, 128, 256
+    ("DP+PP+Expert", [512, 1024, 2048]),          # Nodes: 128, 256, 512
+]
+
 STRATEGY_DEFS_DGX_A100: list[tuple[str, list[int]]] = [
     ("DP",           [2, 4, 8]),
     ("FSDP",         [4, 8]),
@@ -1714,6 +1722,7 @@ def override_args_values(args: argparse.Namespace) -> None:
     global G, G_MIN, K_MAX, STRATEGY_DEFS, STOCHASTIC_TIER_CONFIG, STRATEGY_PLACEMENT_MAP
 
     if args.baseline_extended:
+        STRATEGY_DEFS = STRATEGY_DEFS_EXTENDED
         STRATEGY_PLACEMENT_MAP = STRATEGY_PLACEMENT_MAP_EXTENDED
 
     if args.dgx == "DGX_A100":

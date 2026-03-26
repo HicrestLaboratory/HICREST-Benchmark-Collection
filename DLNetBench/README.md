@@ -148,41 +148,19 @@ ml gcc/14.3.0 cuda/12.9.1 nccl/2.28.9-1 openmpi/5.0.9 python/3.14.0
 #### Concurrent Setup
 **1. Generate the experiment JSON:**
 ```bash
-python experiments_generator.py -G $((64*4)) \
-  --util-min 0.8 \
-  --util-max 1.0 \
-  --use-topology \
-  --n-stochastic-patterns 5 \
-  --max-experiments 4 \
-  --n-samples-per-bin 1 \
-  --n-placement-samples-per-bin 1 \
-  --k-max 200 \
-  --placement-bin-med-hi 2.55 \
-  --topo-q2 28 \
-  --topo-q3 440 \
-  --output-json experiments_alps_test_64.json
+TODO
 ```
 
 **2. Expand for Alps:**
 ```bash
-python expand_experiments.py experiments_alps_test_64.json \
-  --placement-mode linear \
-  --system alps \
-  --comm-lib nccl \
-  --gpu-model H200 \
-  --gpus-per-node 4 \
-  --output-dir experiments_alps__test_64 \
+TODO
 ```
 
 #### Baseline
 Run the baseline placements using the generated JSON. 
 
 ```bash
-python run_baselines_placements.py json experiments_alps_test_64.json \
-  --system leonardo \
-  --comm-lib nccl \
-  --gpu-model H200 \
-  --gpus-per-node 4 \
+TODO
 ```
 
 ---
@@ -201,3 +179,29 @@ python experiments_generator.py -G 8 \
   --output-json experiments_dgxA100.json \
   --dgx DGX_A100
 ```
+
+
+### Jupiter
+
+```bash
+# Baselines
+python experiments_generator.py -G $((670*4)) --util-min 0.8 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 6 --max-experiments 1 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_baselines.json --baseline-extended
+
+# Concurrent
+python experiments_generator.py -G $((670*4)) --util-min 0.8 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 6 --max-experiments 15 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_powerlaw.json
+```
+
+```bash
+# Baselines
+py run_baselines_placements.py --nodelist "jpbo-016-[01-46,48],jpbo-017-[01-40,43-48],jpbo-018-[01-15,17-20,23-30,32-46,48],jpbo-019-[01-22,25-28,30-40,42-44,46-48],jpbo-020-[01-30,32-35,37-48],jpbo-046-[01-24,27-48],jpbo-047-[01-08,10-20,22-36,39-48],jpbo-048-[01-20,22-35,37-46,48],jpbo-049-[02-09,11-16,19-28,30-48],jpbo-050-[01-48],jpbo-096-[01-05,07-33,35-48],jpbo-097-[01-28,32-48],jpbo-098-[01-20,23-25,27-48],jpbo-099-[01-46,48],jpbo-100-[01-06,09-20,23-30,32,34-48]" --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --cpus-per-task 72 experiments_jupiter_3_groups_baselines.json
+
+# Concurrent
+python expand_experiments.py experiments_jupiter_3_groups_powerlaw.json --placement-mode runtime --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_jupiter_3_groups_powerlaw_nccl
+```
+
+
+<!--
+# python expand_experiments.py experiments_jupiter_3_groups_powerlaw.json   --placement-mode hardcoded --reserved-nodes "jpbo-016-[01-46,48],jpbo-017-[01-40,43-48],jpbo-018-[01-15,17-20,23-30,32-46,48],jpbo-019-[01-22,25-28,30-40,42-44,46-48],jpbo-020-[01-30,32-35,37-48],jpbo-046-[01-24,27-48],jpbo-047-[01-08,10-20,22-36,39-48],jpbo-048-[01-20,22-35,37-46,48],jpbo-049-[02-09,11-16,19-28,30-48],jpbo-050-[01-48],jpbo-096-[01-05,07-33,35-48],jpbo-097-[01-28,32-48],jpbo-098-[01-20,23-25,27-48],jpbo-099-[01-46,48],jpbo-100-[01-06,09-20,23-30,32,34-48]"   --system jupiter    --comm-lib nccl   --gpu-model GH200   --gpus-per-node 4  --output-dir experiments_jupiter_3_groups_powerlaw --use-placer-files
+
+python expand_experiments.py experiments_jupiter_3_groups_powerlaw.json --placement-mode runtime --system jupiter --comm-lib mpi_gpu_cuda --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_jupiter_3_groups_powerlaw_mpi_gpu_cuda
+-->

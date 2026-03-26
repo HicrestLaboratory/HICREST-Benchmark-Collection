@@ -12,7 +12,7 @@ variables:
   extra_flags: ["--debug --keep-files --no-compact"] 
   # Add if needed:    --nodes-blacklist <list in SLURM format>
 
-  walltime: [135]
+  walltime: [170]
 
 jobs:
   - config: "{nodes}_nodes"

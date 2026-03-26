@@ -45,39 +45,166 @@ OUT_DIR = Path("results")
 
 _VARIANCE_WARN_PCT = 15.0  # warn if std > 5% of mean
 
+# ---------------------------------------------------------------------------
+# Variance tracking — collected across all runs, reported once at the end
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass, field
+from collections import defaultdict
+
+@dataclass
+class VarianceViolation:
+    uid: str
+    tag: str
+    section: str
+    metric: str
+    pct: float
+    mean: float
+    std: float
+    n: int
+
+@dataclass  
+class WithinRankViolation:
+    uid: str
+    tag: str
+    section: str
+    metric: str
+    rank: str
+    pct: float
+
+
+class VarianceCollector:
+    """Accumulates variance warnings silently during parsing; reports once."""
+
+    def __init__(self):
+        self.violations: list[VarianceViolation] = []
+        self.within_rank: list[WithinRankViolation] = []
+
+    def record(
+        self,
+        uid: str,
+        tag: str,
+        section: str,
+        metric: str,
+        pct: float,
+        mean: float,
+        std: float,
+        n: int,
+    ) -> None:
+        self.violations.append(VarianceViolation(uid, tag, section, metric, pct, mean, std, n))
+
+    def record_within_rank(
+        self, uid: str, tag: str, section: str, metric: str, rank: str, pct: float
+    ) -> None:
+        self.within_rank.append(WithinRankViolation(uid, tag, section, metric, rank, pct))
+
+    # ------------------------------------------------------------------
+    def print_report(self, warn_pct: float = _VARIANCE_WARN_PCT, top_n: int = 10) -> None:
+        if not self.violations and not self.within_rank:
+            print("No variance violations detected.\n")
+            return
+
+        print("=== Variance report ===")
+
+        # ---- per-metric aggregation ----
+        if self.violations:
+            by_metric: dict[str, list[VarianceViolation]] = defaultdict(list)
+            for v in self.violations:
+                by_metric[f"{v.section} / {v.metric}"].append(v)
+
+            total_runs_seen = len({v.uid for v in self.violations} |
+                                  {v.uid for v in self.within_rank})
+
+            col = {"key": max(len(k) for k in by_metric) + 2,
+                   "n": 8, "pct_runs": 10, "mean": 8, "p95": 8, "max": 8}
+            hdr = (f"{'section / metric':<{col['key']}}"
+                   f"{'n_viol':>{col['n']}}"
+                   f"{'pct_runs':>{col['pct_runs']}}"
+                   f"{'mean_%':>{col['mean']}}"
+                   f"{'p95_%':>{col['p95']}}"
+                   f"{'max_%':>{col['max']}}")
+            print(f"\nCross-run std/mean violations (threshold >{warn_pct:.0f}%):")
+            print(hdr)
+            print("-" * len(hdr))
+
+            # sort by descending count
+            for key, vs in sorted(by_metric.items(), key=lambda kv: -len(kv[1])):
+                pcts = sorted(v.pct for v in vs)
+                n_runs = len({v.uid for v in vs})
+                p95 = pcts[int(len(pcts) * 0.95)] if pcts else 0.0
+                print(
+                    f"{key:<{col['key']}}"
+                    f"{len(vs):>{col['n']}}"
+                    f"{n_runs / max(total_runs_seen, 1) * 100:>{col['pct_runs']}.1f}%"
+                    f"{sum(pcts)/len(pcts):>{col['mean']}.1f}%"
+                    f"{p95:>{col['p95']}.1f}%"
+                    f"{max(pcts):>{col['max']}.1f}%"
+                )
+
+            # ---- top offenders ----
+            top = sorted(self.violations, key=lambda v: -v.pct)[:top_n]
+            print(f"\nTop {min(top_n, len(top))} worst violations:")
+            for v in top:
+                print(f"  uid={v.uid:<20} tag={v.tag:<30} {v.section}/{v.metric}"
+                      f"  {v.pct:.1f}%  (mean={v.mean:.4g}, std={v.std:.4g}, n={v.n})")
+
+        # ---- within-rank summary ----
+        if self.within_rank:
+            by_metric_wr: dict[str, list[WithinRankViolation]] = defaultdict(list)
+            for w in self.within_rank:
+                by_metric_wr[f"{w.section} / {w.metric}"].append(w)
+
+            print(f"\nWithin-rank variance warnings ({len(self.within_rank)} total):")
+            for key, ws in sorted(by_metric_wr.items(), key=lambda kv: -len(kv[1])):
+                n_runs = len({w.uid for w in ws})
+                mean_pct = sum(w.pct for w in ws) / len(ws)
+                print(f"  {key:<50}  {n_runs:>5} run(s)  mean {mean_pct:.1f}%")
+
+        print()
+
 def parse_outliers(cell: str) -> dict:
     if not cell or (isinstance(cell, float) and pd.isna(cell)):
         return {}
     return {k: float(v) for k, v in (pair.split(":") for pair in cell.split(";"))}
 
 
-def _check_variance(df: pd.DataFrame, section_name: str, uid: str, warn_pct: float = _VARIANCE_WARN_PCT):
+def _check_variance(
+    df: pd.DataFrame,
+    section_name: str,
+    uid: str,
+    tag: str,                          # ← new
+    collector: VarianceCollector,      # ← new
+    warn_pct: float = _VARIANCE_WARN_PCT,
+) -> None:
     std_cols = [c for c in df.columns if c.endswith("_std")]
     for std_col in std_cols:
-        base      = std_col.replace("_std", "")
-        mean_col  = f"{base}_mean"
-        n_col     = f"{base}_n"
+        base     = std_col.replace("_std", "")
+        mean_col = f"{base}_mean"
+        n_col    = f"{base}_n"
         warns_col = f"{base}_within_rank_warns"
         if mean_col not in df.columns:
             continue
-        for idx, row in df.iterrows():
+        for _, row in df.iterrows():
             mean_val = row[mean_col]
             std_val  = row[std_col]
-            n        = int(row[n_col]) if n_col in df.columns else "?"
+            n        = int(row[n_col]) if n_col in df.columns else 0
             if mean_val and abs(mean_val) > 1e-9:
                 pct = abs(std_val / mean_val) * 100
                 if pct > warn_pct:
-                    print(f"  [WARNING] uid={uid} '{section_name}' row {idx}: {base} std is {pct:.1f}% of mean "
-                          f"(mean={mean_val:.4f}, std={std_val:.4f}, n={n})")
+                    collector.record(uid, tag, section_name, base, pct, mean_val, std_val, n)
 
             if warns_col in df.columns:
-                within = parse_outliers(row[warns_col])  # k:v format
-                if within:
-                    ranks_str = ", ".join(f"{r}={pct:.1f}%" for r, pct in within.items())
-                    print(f"  [WARNING] uid={uid} '{section_name}' row {idx}: {base} high within-rank variance: {ranks_str}")
+                within = parse_outliers(row.get(warns_col, ""))
+                for rank, rank_pct in within.items():
+                    collector.record_within_rank(uid, tag, section_name, base, rank, rank_pct)
 
 
-def _parse_csv(stdout: str, uid: str) -> dict[str, pd.DataFrame] | None:
+def _parse_csv(
+    stdout: str,
+    uid: str,
+    tag: str,
+    collector: VarianceCollector,
+) -> dict[str, pd.DataFrame] | None:
     text = stdout.strip()
     if not text:
         return None
@@ -94,7 +221,7 @@ def _parse_csv(stdout: str, uid: str) -> dict[str, pd.DataFrame] | None:
                 try:
                     df = pd.read_csv(io.StringIO(csv_content))
                     if not df.empty:
-                        _check_variance(df, current_name, uid)
+                        _check_variance(df, current_name, uid, tag, collector)
                         dfs[current_name] = df
                 except Exception as e:
                     print(f"  [ERROR] Failed to parse section '{current_name}': {e}")
@@ -166,6 +293,7 @@ def main() -> None:
         from_active=True,
         from_archived=False,
     )
+    collector = VarianceCollector()
 
     # walltime = 600
     # print(f"Found {len(jobs)} completed job(s) in sbatchman.  Filtering for walltime={walltime} seconds and excluding baselines...")
@@ -263,7 +391,7 @@ def main() -> None:
                 
             # TODO handle non compressed case
             
-            dict_df = _parse_csv(stdout, uid)
+            dict_df = _parse_csv(stdout, uid, tag=sbm_job.tag, collector=collector)
             # print(f'DICTS')
             # if dict_df:
             #     for k, v in dict_df.items():
@@ -374,6 +502,8 @@ def main() -> None:
     if not pairs:
         print("Nothing to write — no valid data collected.")
         return
+    
+    collector.print_report(warn_pct=_VARIANCE_WARN_PCT, top_n=15)
 
     print(f"Writing {len(pairs)} run(s) to {out_file} ...")
     # for i in range(10):

@@ -78,10 +78,16 @@ def build_summary(meta_df: pd.DataFrame, pairs: List[Tuple[dict, dict]]) -> pd.D
         meas = dfs['main'].copy()
 
         # Skip the first iteration (warm-up) if there are enough rows
+        # TODO double-check
         if len(meas) > 1:
-            meas = meas.iloc[1:]
+            n_ranks = int(meta['gpus'])
+            chunk_size = len(meas) // n_ranks
+            meas = pd.concat([
+                meas.iloc[i * chunk_size + 1 : (i + 1) * chunk_size]
+                for i in range(n_ranks)
+            ]).reset_index(drop=True)
 
-        print(meas.columns)
+        print([int(t) for t in meas['throughput'].values])
         
         barrier_col_name = 'barrier'
         if barrier_col_name not in meas.columns:

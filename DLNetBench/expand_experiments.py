@@ -205,26 +205,26 @@ RUNTIME_ESTIMATES = {
     'alps__DP+PP+Expert__512__H200':        84.212112,
     'alps__DP+PP+Expert__1024__H200':       84.212112, # not real
     
-    # Jupiter
-    'jupiter__DP__8__H200':                 13.97558,
-    'jupiter__DP__16__H200':                14.720284,
-    
-    'jupiter__FSDP__16__H200':              27.420704,
-    'jupiter__FSDP__32__H200':              28.675755,
-    
-    'jupiter__DP+PP__16__H200':             17.272468,
-    'jupiter__DP+PP__32__H200':             18.960719,
-    'jupiter__DP+PP__64__H200':             19.19227,
-    
-    'jupiter__DP+PP+TP__224__H200':         33.82325,
-    'jupiter__DP+PP+TP__256__H200':         33.934512,
-    'jupiter__DP+PP+TP__512__H200':         39.810219,
-    
-    'jupiter__DP+PP+Expert__512__H200':     64.043106,
-    'jupiter__DP+PP+Expert__1024__H200':    64.043106, # not real
+     # Jupiter
+    'jupiter__DP__8__GH200':                 14.117437, # old compute 13.97558,
+    'jupiter__DP__16__GH200':                14.507217, # old compute 14.720284,
+
+    'jupiter__FSDP__16__GH200':              40.432619, # old compute 27.420704,
+    'jupiter__FSDP__32__GH200':              41.193809, # old compute 28.675755,
+
+    'jupiter__DP+PP__16__GH200':             18.707467, # old compute 17.272468,
+    'jupiter__DP+PP__32__GH200':             19.609214, # old compute 18.960719,
+    'jupiter__DP+PP__64__GH200':             20.506025, # old compute 19.19227,
+
+    'jupiter__DP+PP+TP__224__GH200':         37.036924, # old compute 33.82325,
+    'jupiter__DP+PP+TP__256__GH200':         37.62025,  # old compute 33.934512,
+    'jupiter__DP+PP+TP__512__GH200':         44.309712, # old compute 39.810219,
+
+    'jupiter__DP+PP+Expert__512__GH200':     81.942664, # old compute 64.043106,
+    'jupiter__DP+PP+Expert__1024__GH200':    81.942664, # old compute 64.043106, # not real
 }
 
-MIN_CONCURRENT_RUNTIME = 135 # FIXME
+MIN_CONCURRENT_RUNTIME = 170 # FIXME
 
 # ---------------------------------------------------------------------------
 # Placement Oracle  (hardcoded mode only)
@@ -752,12 +752,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p.add_argument(
         "--comm-lib", type=str, required=True, metavar="COMM_LIB", 
-        help="Communication library to use", choices=["nccl", "rccl", "oneccl"]
+        help="Communication library to use", choices=["nccl", "rccl", "oneccl", "mpi_gpu_cuda"]
     )
     
     p.add_argument(
         "--gpu-model", type=str, required=True, metavar="GPU_MODEL", 
-        help="The GPU model to emulate compute time (sleep)", choices=["B200", "H200", "A100"]
+        help="The GPU model to emulate compute time (sleep)", choices=["B200", "H200", "A100", "GH200"]
     )
 
     # Required
@@ -872,6 +872,18 @@ def get_total_runs(strategy: str, gpu_model: str) -> int:
     # Total runs = min_runs + max_runs
     return runs_tuple[0] + runs_tuple[1]
 
+def _lookup_time(profile_data: dict, strategy: str, gpus: int) -> float:
+    key = f"{strategy}__{gpus}"
+    if key in profile_data:
+        return profile_data[key]
+
+    if gpus == 1:
+        raise KeyError(f"No profile data found for strategy={strategy} down to 1 GPU")
+
+    # fallback: halve GPUs (at least 1)
+    return _lookup_time(profile_data, strategy, max(1, gpus // 2))
+
+
 def estimate_experiment_times(records: list, baselines: list, profile_data: dict, small_job_threshold: int) -> dict:
     """
     Estimates the runtime of the baseline (sequential) vs concurrent placements.
@@ -887,7 +899,8 @@ def estimate_experiment_times(records: list, baselines: list, profile_data: dict
     for bas in baselines:
         if 'run' in bas:
             bas = bas['run']
-        time = profile_data[f'{bas["strategy"]}__{bas["gpus"]}']
+
+        time = _lookup_time(profile_data, bas["strategy"], bas["gpus"])
         baseline_secs.append(time)
         total_baseline_secs += time
 
@@ -897,16 +910,19 @@ def estimate_experiment_times(records: list, baselines: list, profile_data: dict
 
         for run in runs:
             if small_job_threshold and run["gpus"] <= small_job_threshold:
-                continue  # small job: runs in background, does not drive exit time
-            time_per_iter = profile_data[f'{run["strategy"]}__{run["gpus"]}']
+                continue  # small job: runs in background
+
+            time_per_iter = _lookup_time(profile_data, run["strategy"], run["gpus"])
             large_jobs_times.append(time_per_iter)
 
-        # Runtime is determined by the slowest large job.
-        # If no large jobs exist, fall back to MIN_CONCURRENT_RUNTIME (walltime unknown here).
-        record_time = max(MIN_CONCURRENT_RUNTIME, max(large_jobs_times)) if large_jobs_times else MIN_CONCURRENT_RUNTIME
+        record_time = (
+            max(MIN_CONCURRENT_RUNTIME, max(large_jobs_times))
+            if large_jobs_times else MIN_CONCURRENT_RUNTIME
+        )
+
         concurrent_secs.append(large_jobs_times)
         total_concurrent_secs += record_time
-
+    
     return {
         "concurrent_times": concurrent_secs,
         "baseline_times": baseline_secs,
