@@ -235,7 +235,6 @@ def main(args: argparse.Namespace) -> None:
         sbm.create_slurm_config(
             name=config_name,
             nodes=str(nodes),
-            ntasks=str(nodes),
             nodelist=nodelist,
             overwrite=True,
             **sys_cfg,
@@ -252,6 +251,7 @@ def main(args: argparse.Namespace) -> None:
                     f"_comm-{args.comm_lib}_gpu-{args.gpu_model}"
                     f"_class-{placement_class_name}_rep{replicate_index}"
                 ),
+                ignore_archived = True,
                 previous_job_id = previous_job_id,
                 dry_run         = args.dry_run,
                 variables       = {

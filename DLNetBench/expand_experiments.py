@@ -224,7 +224,7 @@ RUNTIME_ESTIMATES = {
     'jupiter__DP+PP+Expert__1024__H200':    64.043106, # not real
 }
 
-MIN_CONCURRENT_RUNTIME = 130 # FIXME
+MIN_CONCURRENT_RUNTIME = 135 # FIXME
 
 # ---------------------------------------------------------------------------
 # Placement Oracle  (hardcoded mode only)
@@ -705,7 +705,7 @@ def main(args: argparse.Namespace) -> None:
             idx=idx,
             out_dir=out_dir,
         )
-        fname = f'exp_{str(idx).zfill(n_digits)}_{get_concurrent_run_descriptor(rec.get("pattern_id"), rec.get("entropy_bin"), rec.get("placement_score"))}.json'
+        fname = f'exp_{str(idx).zfill(n_digits)}_{get_concurrent_run_descriptor(rec.get("pattern_id"), rec.get("entropy_bin"), rec.get("placement_score"))}_{args.comm_lib}_{args.gpu_model}.json'
         fpath = out_dir / fname
         with open(fpath, "w", encoding="utf-8") as fh:
             json.dump(exp_doc, fh, indent=2, ensure_ascii=False)
