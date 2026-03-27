@@ -1,6 +1,7 @@
 variables:
   system: ['leonardo-dcgp'] # pioneer
 
+  grace_ncpus: [1, 2, 4, 8, 16, 32, 64, 72]
   pioneer_ncpus: [1, 2, 4, 8, 16, 32, 64]
   bananaf3_ncpus: [1, 2, 4, 8]
   arriesgado_ncpus: [1, 2, 4]

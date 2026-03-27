@@ -49,3 +49,23 @@ leonardo:
     - name: "leonardo-dcgp_112cpus_perf"
       env:
         - "LOCKS_ENABLE_PERF=1"
+
+
+thea:
+  scheduler: slurm
+
+  default_conf:
+    time: "02:30:00"
+    partition: "gg"
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    cpus_per_task: 144
+
+  configs:
+
+    - name: "thea-gg_144cpus"
+
+    - name: "thea-gg_144cpus_perf"
+      env:
+        - "LOCKS_ENABLE_PERF=1"

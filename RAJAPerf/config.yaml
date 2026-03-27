@@ -2,6 +2,7 @@ variables:
   pioneer_ncpus: [1, 2, 4, 8, 16, 32, 64]
   bananaf3_ncpus: [1, 2, 4, 8]
   arriesgado_ncpus: [1, 2, 4]
+  grace_ncpus: [1, 2, 4, 8, 16, 32, 64, 72]
 
 hca:
   scheduler: slurm
@@ -59,3 +60,24 @@ leonardo:
         - "llvm/14.0.6--gcc--12.2.0-cuda-12.2"
       env: 
         - "OMP_NUM_THREADS={pioneer_ncpus}"
+
+
+thea:
+  scheduler: slurm
+
+  default_conf:
+    time: "00:20:00"
+    partition: "gg"
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    cpus_per_task: 144
+
+  configs:
+    - name: "thea-gg_{grace_ncpus}cpus"
+      # modules: 
+      #   - "gcc/14.3.0"
+      env: 
+        - "OMP_NUM_THREADS={grace_ncpus}"
+        - "OMP_PROC_BIND=close"
+        - "OMP_PLACES=cores"

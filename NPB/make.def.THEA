@@ -1,0 +1,73 @@
+# ===========================================================================
+# NAS Parallel Benchmarks 3.4
+# OpenMP Versions
+# Site- and platform-specific definitions for x86
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Fortran Compiler Settings
+# ---------------------------------------------------------------------------
+
+# Native x86 Fortran compiler
+FC = gfortran
+FLINK = $(FC)         # Fortran linker
+
+# Compiler and linker flags
+FFLAGS = -O3 -fopenmp -march=native
+FLINKFLAGS = $(FFLAGS)
+
+# Include and library paths (usually empty for native builds)
+F_INC  =
+F_LIB  =
+
+# ---------------------------------------------------------------------------
+# C Compiler Settings (used for IS and DC benchmarks)
+# ---------------------------------------------------------------------------
+
+# Native x86 C compiler
+CC = gcc
+CLINK = $(CC)
+
+# Compiler and linker flags
+CFLAGS = -O3 -fopenmp -march=native
+CLINKFLAGS = $(CFLAGS)
+
+# Include and library paths
+C_INC  =
+C_LIB  = -lm
+
+# ---------------------------------------------------------------------------
+# Utilities C compiler (for scripts and small helpers)
+# ---------------------------------------------------------------------------
+
+UCC = gcc
+
+# ---------------------------------------------------------------------------
+# Executable output directory
+# ---------------------------------------------------------------------------
+
+BINDIR = ../bin
+
+# ---------------------------------------------------------------------------
+# Random number generator (used by benchmarks)
+# ---------------------------------------------------------------------------
+
+RAND = randi8
+# For a slower but highly reliable generator:
+# RAND = randdp
+
+# ---------------------------------------------------------------------------
+# Timing module
+# ---------------------------------------------------------------------------
+
+WTIME = wtime.c
+
+# ---------------------------------------------------------------------------
+# Optional machine definitions (not needed for x86)
+# ---------------------------------------------------------------------------
+
+# MACHINE = -DX86  # Uncomment if a specific machine macro is needed
+
+# ===========================================================================
+# End of site-specific settings for x86
+# ===========================================================================
