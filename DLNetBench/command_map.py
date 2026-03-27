@@ -44,12 +44,12 @@ _STRATEGIES_NUM_RUNS: dict[str, tuple[int, int]] = {
     "DP+PP+TP":     (1, 2), # 23s  * 3 = 1m 9s
 }
 
-_STRATEGIES_NUM_RUNS_B200: dict[str, tuple[int, int]] = {
+_STRATEGIES_NUM_RUNS_BX00: dict[str, tuple[int, int]] = {
     "DP":           (1, 10), # 1.1s * 6 = 6.6s
-    "FSDP":         (1, 4),  # 4s   * 4 = 16s
-    "DP+PP":        (1, 4),  # 3s   * 4 = 12s
-    "DP+PP+Expert": (1, 3),  # 45s  * 3 = 2m 15s
-    "DP+PP+TP":     (1, 2),  # 23s  * 3 = 1m 9s
+    "FSDP":         (1, 6),  # 4s   * 4 = 16s
+    "DP+PP":        (1, 6),  # 3s   * 4 = 12s
+    "DP+PP+Expert": (1, 4),  # 45s  * 3 = 2m 15s
+    "DP+PP+TP":     (1, 4),  # 23s  * 3 = 1m 9s
 }
 
 def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model: str, num_warmup_override: Union[int, None]=None, use_dgx:bool=False) -> str:
@@ -68,8 +68,8 @@ def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model: str, num
             raise ValueError(f"num_gpus={num_gpus} not feasible for '{strategy}'. "
                              f"Valid: {sorted(FEASIBLE_GPU_COUNTS[strategy])}")
 
-    if gpu_model == "B200":
-        num_runs = _STRATEGIES_NUM_RUNS_B200[strategy]
+    if gpu_model in ["B200", "B300"]:
+        num_runs = _STRATEGIES_NUM_RUNS_BX00[strategy]
     else:
         num_runs = _STRATEGIES_NUM_RUNS[strategy]
         

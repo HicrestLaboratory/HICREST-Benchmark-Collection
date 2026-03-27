@@ -148,7 +148,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-from command_map import get_command, _STRATEGIES_NUM_RUNS, _STRATEGIES_NUM_RUNS_B200
+from command_map import get_command, _STRATEGIES_NUM_RUNS, _STRATEGIES_NUM_RUNS_BX00
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 from utils.slurm import expand_slurm_nodelist
@@ -757,7 +757,7 @@ def build_parser() -> argparse.ArgumentParser:
     
     p.add_argument(
         "--gpu-model", type=str, required=True, metavar="GPU_MODEL", 
-        help="The GPU model to emulate compute time (sleep)", choices=["B200", "H200", "A100", "GH200"]
+        help="The GPU model to emulate compute time (sleep)", choices=["B200", "B300", "H200", "A100", "GH200"]
     )
 
     # Required
@@ -856,12 +856,13 @@ def _validate(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None
         parser.error("--placement-mode hardcoded requires --system NAME.")
     if args.placement_mode != "device" and (args.gpus_per_node is None or args.gpus_per_node < 1):
         parser.error("--gpus-per-node must be ≥ 1.")
+        
 
 def get_total_runs(strategy: str, gpu_model: str) -> int:
     """Calculate total iterations (min_runs + max_runs) using command_map dicts."""
     
     # Select the correct dictionary based on the GPU model
-    target_dict = _STRATEGIES_NUM_RUNS_B200 if gpu_model == "B200" else _STRATEGIES_NUM_RUNS
+    target_dict = _STRATEGIES_NUM_RUNS_BX00 if gpu_model in ["B300", "B200"] else _STRATEGIES_NUM_RUNS
     
     # Raise an exception if the strategy isn't found
     if strategy not in target_dict:
