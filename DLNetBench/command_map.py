@@ -68,7 +68,7 @@ def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model: str, num
             raise ValueError(f"num_gpus={num_gpus} not feasible for '{strategy}'. "
                              f"Valid: {sorted(FEASIBLE_GPU_COUNTS[strategy])}")
 
-    if gpu_model in ["B200", "GB300"]:
+    if gpu_model in ["B200", "GB300", "GB200"]:
         num_runs = _STRATEGIES_NUM_RUNS_BX00[strategy]
     else:
         num_runs = _STRATEGIES_NUM_RUNS[strategy]
