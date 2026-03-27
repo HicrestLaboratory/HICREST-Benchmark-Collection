@@ -755,19 +755,28 @@ def _aggregate_slowdowns(
     """
     Returns:
       'per_job'      : { job_name -> mean_σ over reps }
+      'per_job_std'  : { job_name -> std_σ over reps }
       'mean'         : σ̄
       'worst_case'   : σ_max
       'per_strategy' : { strategy -> mean_σ }
+      'per_group'    : { (strategy, gpus, placement) -> {'mean': float, 'std': float,
+                          'job_names': list[str]} }
     """
-    job_meta: dict[str, tuple[str, int]] = {}
+    job_meta: dict[str, tuple[str, int, str]] = {}
     for meta, _ in entries:
-        jname    = meta["job_name"]
-        strategy = meta.get("strategy", "unknown")
-        gpus     = int(meta.get("gpus", 0))
-        job_meta[jname] = (strategy, gpus)
+        jname     = meta["job_name"]
+        strategy  = meta.get("strategy", "unknown")
+        gpus      = int(meta.get("gpus", 0))
+        placement = _extract_placement_class_with_fallback(
+            meta.get("sbm_tag", ""), jname)
+        job_meta[jname] = (strategy, gpus, placement)
 
     per_job: dict[str, float] = {
         jname: float(np.mean(list(reps.values())))
+        for jname, reps in slowdowns.items() if reps
+    }
+    per_job_std: dict[str, float] = {
+        jname: float(np.std(list(reps.values()), ddof=0)) if len(reps) > 1 else 0.0
         for jname, reps in slowdowns.items() if reps
     }
     if not per_job:
@@ -778,15 +787,166 @@ def _aggregate_slowdowns(
 
     by_strategy: dict[str, list[float]] = defaultdict(list)
     for jname, sigma in per_job.items():
-        by_strategy[job_meta.get(jname, ("unknown", 0))[0]].append(sigma)
+        by_strategy[job_meta.get(jname, ("unknown", 0, ""))[0]].append(sigma)
     per_strategy = {s: float(np.mean(vs)) for s, vs in by_strategy.items()}
+
+    # Group by (strategy, gpus, placement) — jobs sharing those three attrs
+    # get the same colour in the bar chart and are summarised together.
+    by_group: dict[tuple[str, int, str], list[float]] = defaultdict(list)
+    for jname, sigma in per_job.items():
+        key = job_meta.get(jname, ("unknown", 0, ""))
+        by_group[key].append(sigma)
+
+    per_group: dict[tuple[str, int, str], dict] = {}
+    for gkey, vals in by_group.items():
+        per_group[gkey] = {
+            "mean": float(np.mean(vals)),
+            "std":  float(np.std(vals, ddof=0)) if len(vals) > 1 else 0.0,
+            "job_names": [jn for jn in per_job if job_meta.get(jn) == gkey],
+        }
 
     return {
         "per_job":      per_job,
+        "per_job_std":  per_job_std,
         "mean":         mean_sigma,
         "worst_case":   worst_case,
         "per_strategy": per_strategy,
+        "per_group":    per_group,
     }
+
+
+# ===========================================================================
+# Slowdown distribution helpers
+# ===========================================================================
+
+def _compute_adaptive_bins(
+    all_pct: list[float],
+) -> list[tuple[float, float, str]]:
+    """
+    Compute adaptive histogram bins from a list of percentage slowdown values
+    (i.e. (σ - 1) * 100).
+
+    Strategy
+    --------
+    * Start with the range of the data.
+    * Always include a "no-slowdown" bin straddling 0 (negative = speedup).
+    * Use a fixed set of candidate breakpoints and keep those that divide
+      the data into non-trivially-small bins (>=5 % of total).
+    * Return a list of (lo_pct, hi_pct, label) tuples.
+
+    The labels use "%" notation with a leading sign so they read naturally
+    on a bar-chart axis, e.g. ``"[-5 %, +5 %)"`` or ``">= 20 %"``.
+    """
+    if not all_pct:
+        return [(-5.0, 5.0, "~0 %"), (5.0, float("inf"), "> 5 %")]
+
+    lo = min(all_pct)
+    hi = max(all_pct)
+    n  = len(all_pct)
+
+    # Candidate breakpoints (percentage slowdown).
+    candidate_breaks = [-50, -20, -10, -5, 0, 2, 5, 10, 15, 20, 30, 50, 100, 200]
+    # Filter to range that covers the data, with a little headroom.
+    breaks = [b for b in candidate_breaks if lo - 5 <= b <= hi + 5]
+
+    # Always have -inf as left edge and +inf as right edge.
+    edges: list[float] = sorted(set(breaks))
+    if not edges or edges[0] > lo:
+        edges = [lo - 1] + edges
+    if not edges or edges[-1] < hi:
+        edges = edges + [hi + 1]
+
+    # Merge bins that are too small (< 5 % of total runs).
+    min_count = max(1, int(0.05 * n))
+    merged: list[float] = [edges[0]]
+    for e in edges[1:]:
+        count_in_new = sum(1 for v in all_pct if merged[-1] <= v < e)
+        if count_in_new >= min_count or e == edges[-1]:
+            merged.append(e)
+        # else: skip this edge — merge with next
+
+    # Extend last bin to +inf and first bin to -inf
+    bins: list[tuple[float, float, str]] = []
+    for i in range(len(merged) - 1):
+        lo_b = merged[i]
+        hi_b = merged[i + 1]
+
+        if i == 0:
+            lo_label = f"< {hi_b:+.0f} %"
+        else:
+            lo_label = f"{lo_b:+.0f} %"
+
+        if i == len(merged) - 2:
+            hi_label = f">= {lo_b:+.0f} %"
+            label = hi_label
+        else:
+            label = f"[{lo_b:+.0f}, {hi_b:+.0f} %)"
+
+        bins.append((
+            -float("inf") if i == 0 else lo_b,
+            float("inf")  if i == len(merged) - 2 else hi_b,
+            label,
+        ))
+
+    return bins if bins else [(-float("inf"), float("inf"), "all")]
+
+
+def _build_distribution_panel(
+    ax: plt.Axes,
+    all_pct: list[float],
+    title: str = "Slowdown distribution",
+) -> None:
+    """
+    Draw an adaptive histogram of slowdown percentages on *ax*.
+
+    Each bar is labelled with its count and percentage of total runs.
+    Bars are coloured green (speedup / negligible) -> red (heavy slowdown).
+    """
+    bins = _compute_adaptive_bins(all_pct)
+    n    = len(all_pct)
+
+    counts = []
+    labels = []
+    for lo_b, hi_b, label in bins:
+        cnt = sum(1 for v in all_pct if lo_b <= v < hi_b)
+        counts.append(cnt)
+        labels.append(label)
+
+    # Colour: map bin midpoint to a green-yellow-red ramp.
+    def _bin_colour(lo_b: float, hi_b: float) -> str:
+        mid = (
+            (lo_b + hi_b) / 2
+            if not np.isinf(lo_b) and not np.isinf(hi_b)
+            else (hi_b if np.isinf(lo_b) else lo_b)
+        )
+        # Clamp to [-20, +50] for colour mapping.
+        t = np.clip((mid + 20) / 70, 0, 1)   # 0 = green (-20 %), 1 = red (+50 %)
+        r = t
+        g = 1 - t * 0.8
+        return (r, g, 0.2)
+
+    colours = [_bin_colour(lo_b, hi_b) for lo_b, hi_b, _ in bins]
+
+    x_pos = np.arange(len(counts))
+    bars  = ax.bar(x_pos, counts, color=colours, edgecolor="black", linewidth=0.6)
+
+    for bar, cnt in zip(bars, counts):
+        if cnt == 0:
+            continue
+        pct_of_total = 100.0 * cnt / n if n else 0
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.2,
+            f"{cnt}\n({pct_of_total:.0f}%)",
+            ha="center", va="bottom", fontsize=7,
+        )
+
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=8)
+    ax.set_ylabel("# runs", fontsize=9)
+    ax.set_title(title, fontsize=9)
+    ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    ax.grid(True, axis="y", linewidth=0.4, alpha=0.5)
 
 
 # ===========================================================================
@@ -798,6 +958,9 @@ def _build_job_visuals(
 ) -> dict[str, tuple[str, str, str]]:
     """
     Return ``{ job_name -> (color, marker, linestyle) }``.
+
+    Jobs that share the same (strategy, gpus, placement) triple get the same
+    colour; their marker / linestyle varies by uid index.
     """
     color_key_order: dict[tuple[str, str, str], int] = {}
     uid_order:       dict[str, int]                  = {}
@@ -956,9 +1119,9 @@ def _plot_slowdown_timeline(
         handles.append(line)
         labels.append(jname)
 
-    ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="No slowdown (σ=1)")
+    ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="No slowdown (sigma=1)")
     ax.set_xlabel("Repetition", fontsize=9)
-    ax.set_ylabel("Slowdown  σ_j  (higher = worse)", fontsize=9)
+    ax.set_ylabel("Slowdown  sigma_j  (higher = worse)", fontsize=9)
     ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
     ax.grid(True, linewidth=0.4, alpha=0.6)
 
@@ -986,58 +1149,202 @@ def _plot_slowdown_summary(
     sbm_job_id:  str,
     tag:         str,
     agg_metrics: dict,
+    slowdowns:   dict[str, dict[int, float]] | None = None,
 ) -> Path:
-    per_job      = agg_metrics["per_job"]
-    per_strategy = agg_metrics["per_strategy"]
-    job_names    = sorted(per_job.keys())
-    n_jobs       = len(job_names)
-    visuals      = _build_job_visuals(job_names)
-    strat_names  = sorted(per_strategy.keys())
+    """
+    Two-panel interference summary:
 
-    fig_w = max(12, n_jobs * 0.45 + 6)
-    fig, (ax_jobs, ax_summary) = plt.subplots(1, 2, figsize=(fig_w, 5))
-    fig.suptitle(f"Interference summary\nsbm_job={sbm_job_id}  tag={tag}", fontsize=10)
+    Panel 1 (left)  — Per-job bar chart.
+        * Bars coloured by (strategy, gpus, placement) group.
+        * Error bars show std of sigma over repetitions.
+        * Bar label inside the bar, shown as signed percentage (+12 %, -2 %).
 
-    bar_colors = [visuals[jn][0] for jn in job_names]
+    Panel 2 (right) — Adaptive slowdown-percentage histogram with grouped bars.
+        * Bins are computed from all per-repetition slowdown values.
+        * Within each bin, one bar per (strategy, gpus, placement) group,
+          coloured consistently with panel 1.
+        * Each bar counts the repetitions belonging to that group that fall
+          in the bin.
+    """
+    per_job     = agg_metrics["per_job"]
+    per_job_std = agg_metrics.get("per_job_std", {})
+    job_names   = sorted(per_job.keys())
+    n_jobs      = len(job_names)
+
+    # ------------------------------------------------------------------ #
+    # Derive group ordering and colours — stable across both panels       #
+    # ------------------------------------------------------------------ #
+    group_keys_ordered: list[tuple[str, str, str]] = []
+    for jn in sorted(job_names):
+        strategy, gpus, placement, _ = _parse_job_name(jn)
+        ck = (strategy, gpus, placement)
+        if ck not in group_keys_ordered:
+            group_keys_ordered.append(ck)
+
+    group_color: dict[tuple, str] = {
+        ck: _COLOR_POOL[i % len(_COLOR_POOL)]
+        for i, ck in enumerate(group_keys_ordered)
+    }
+
+    def _group_key(jname: str) -> tuple[str, str, str]:
+        s, g, p, _ = _parse_job_name(jname)
+        return (s, g, p)
+
+    # ------------------------------------------------------------------ #
+    # Build per-group per-rep slowdown pct lists for panel 2             #
+    # { group_key -> [pct_value, ...] }                                   #
+    # ------------------------------------------------------------------ #
+    group_pct: dict[tuple, list[float]] = defaultdict(list)
+    all_pct:   list[float] = []
+
+    if slowdowns:
+        for jname, reps in slowdowns.items():
+            gk = _group_key(jname)
+            for sigma in reps.values():
+                pct = (sigma - 1.0) * 100.0
+                group_pct[gk].append(pct)
+                all_pct.append(pct)
+    elif per_job:
+        for jname, sigma in per_job.items():
+            gk  = _group_key(jname)
+            pct = (sigma - 1.0) * 100.0
+            group_pct[gk].append(pct)
+            all_pct.append(pct)
+
+    # ------------------------------------------------------------------ #
+    # Figure layout: 1 x 2                                                #
+    # ------------------------------------------------------------------ #
+    fig_w = max(10, n_jobs * 0.5 + 7)
+    fig, (ax_jobs, ax_hist) = plt.subplots(2, 1, figsize=(fig_w, 18))
+    fig.suptitle(f"Interference summary\nsbm_job={sbm_job_id}  tag={tag}", fontsize=11)
+
+    # ==================================================================== #
+    # Panel 1 — per-job bars                                                #
+    # ==================================================================== #
+    bar_colors = [group_color.get(_group_key(jn), "#888888") for jn in job_names]
+    job_means  = [per_job[jn]               for jn in job_names]
+    job_stds   = [per_job_std.get(jn, 0.0) for jn in job_names]
+
     bars = ax_jobs.bar(
-        range(len(job_names)),
-        [per_job[jn] for jn in job_names],
+        range(n_jobs),
+        job_means,
+        yerr=job_stds,
         color=bar_colors,
         edgecolor="black", linewidth=0.5,
+        capsize=3, error_kw={"elinewidth": 1.0, "ecolor": "black"},
     )
-    ax_jobs.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="No slowdown")
-    ax_jobs.set_xticks(range(len(job_names)))
-    ax_jobs.set_xticklabels(job_names, rotation=35, ha="right", fontsize=max(6, 8 - n_jobs // 10))
-    ax_jobs.set_ylabel("Mean slowdown  σ_j", fontsize=9)
-    ax_jobs.set_title("Per-job slowdown", fontsize=9)
-    ax_jobs.legend(fontsize=8)
-    ax_jobs.grid(True, axis="y", linewidth=0.4, alpha=0.6)
-    for bar in bars:
-        h = bar.get_height()
-        ax_jobs.text(bar.get_x() + bar.get_width() / 2, h + 0.005,
-                     f"{h:.3f}", ha="center", va="bottom", fontsize=7)
+    ax_jobs.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="sigma = 1")
 
-    scalar_labels = ["Mean σ̄", "Worst-case σ_max"]
-    scalar_values = [agg_metrics["mean"], agg_metrics["worst_case"]]
-    all_labels    = scalar_labels + [f"{s}\n(strategy)" for s in strat_names]
-    all_values    = scalar_values + [per_strategy[s] for s in strat_names]
-    bar_colours   = (
-        ["#4C72B0", "#55A868"]
-        + [_PALETTE[(2 + i) % len(_PALETTE)] for i in range(len(strat_names))]
+    for bar, mean_v in zip(bars, job_means):
+        pct       = (mean_v - 1.0) * 100.0
+        sign      = "+" if pct >= 0 else ""
+        label_txt = f"{sign}{pct:.0f}%"
+        bar_h     = bar.get_height()
+        y_ref     = ax_jobs.get_ylim()[0]
+        label_y   = y_ref + 0.60 * (bar_h - y_ref) if bar_h > y_ref else bar_h * 0.5
+        ax_jobs.text(
+            bar.get_x() + bar.get_width() / 2,
+            label_y,
+            label_txt,
+            ha="center", va="center",
+            fontsize=max(6, 9 - n_jobs // 12),
+            color="white",
+            fontweight="bold",
+        )
+
+    ax_jobs.set_xticks(range(n_jobs))
+    ax_jobs.set_xticklabels(
+        job_names, rotation=35, ha="right",
+        fontsize=max(14, 8 - n_jobs // 10),
     )
+    ax_jobs.set_ylabel("Mean slowdown  sigma_j", fontsize=18)
+    ax_jobs.set_title("Per-job slowdown  (error bar = std over repetitions)", fontsize=18)
+    ax_jobs.legend(fontsize=12)
+    ax_jobs.grid(True, axis="y", linewidth=0.5, alpha=0.8)
 
-    bars2 = ax_summary.bar(range(len(all_labels)), all_values,
-                           color=bar_colours, edgecolor="black", linewidth=0.5)
-    ax_summary.axhline(1.0, color="black", linewidth=0.8, linestyle="--")
-    ax_summary.set_xticks(range(len(all_labels)))
-    ax_summary.set_xticklabels(all_labels, rotation=15, ha="right", fontsize=8)
-    ax_summary.set_ylabel("Slowdown σ", fontsize=9)
-    ax_summary.set_title("Aggregate interference metrics", fontsize=9)
-    ax_summary.grid(True, axis="y", linewidth=0.4, alpha=0.6)
-    for bar in bars2:
-        h = bar.get_height()
-        ax_summary.text(bar.get_x() + bar.get_width() / 2, h + 0.005,
-                        f"{h:.3f}", ha="center", va="bottom", fontsize=7)
+    # ==================================================================== #
+    # Panel 2 — adaptive histogram with one grouped bar per group per bin  #
+    # ==================================================================== #
+    if all_pct:
+        bins          = _compute_adaptive_bins(all_pct)
+        n_bins        = len(bins)
+        active_groups = [gk for gk in group_keys_ordered if group_pct.get(gk)]
+        n_active      = len(active_groups)
+
+        total_width = 0.8   # fraction of one bin slot used by all bars together
+        bar_width   = total_width / max(n_active, 1)
+        offsets     = np.linspace(
+            -total_width / 2 + bar_width / 2,
+            total_width / 2 - bar_width / 2,
+            n_active,
+        )
+
+        bin_centers    = np.arange(n_bins)
+        legend_handles: list = []
+        legend_labels:  list[str] = []
+
+        for g_idx, gk in enumerate(active_groups):
+            pct_vals = group_pct[gk]
+            color    = group_color.get(gk, "#888888")
+            counts   = [
+                sum(1 for v in pct_vals if lo_b <= v < hi_b)
+                for lo_b, hi_b, _ in bins
+            ]
+
+            x_pos    = bin_centers + offsets[g_idx]
+            grp_bars = ax_hist.bar(
+                x_pos,
+                counts,
+                width=bar_width * 0.92,   # tiny gap between adjacent group bars
+                color=color,
+                edgecolor="black", linewidth=0.4,
+                label=f"{gk[0]} / {gk[1]} / {gk[2] or '-'}",
+            )
+            legend_handles.append(grp_bars[0])
+            legend_labels.append(f"{gk[0]} / {gk[1]} / {gk[2] or '-'}")
+
+            # Count label above each non-zero bar
+            for bar, cnt in zip(grp_bars, counts):
+                if cnt == 0:
+                    continue
+                ax_hist.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.15,
+                    str(cnt),
+                    ha="center", va="bottom",
+                    fontsize=max(14, 8 - n_active),
+                )
+                total = len(pct_vals)
+                pct_val = (cnt / total * 100.0) if total > 0 else 0.0
+                ax_hist.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() / 2,
+                    f"{pct_val:.0f}%",
+                    ha="center", va="center",
+                    fontsize=max(14, 8 - n_active),
+                    color="white",
+                    fontweight="bold",
+                )
+
+        bin_labels = [label for _, _, label in bins]
+        ax_hist.set_xticks(bin_centers)
+        ax_hist.set_xticklabels(bin_labels, rotation=30, ha="right", fontsize=18)
+        ax_hist.set_ylabel("# repetitions", fontsize=20)
+        ax_hist.set_title(
+            "Slowdown distribution — grouped by (strategy / GPUs / placement)",
+            fontsize=18,
+        )
+        ax_hist.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+        ax_hist.grid(True, axis="y", linewidth=0.6, alpha=0.8)
+
+        if legend_handles:
+            ax_hist.legend(
+                legend_handles, legend_labels,
+                fontsize=14,
+                loc="upper right",
+            )
+    else:
+        ax_hist.set_visible(False)
 
     fig.tight_layout()
     out_path = OUT_DIR / f"{tag}_slowdown_summary.png"
@@ -1081,8 +1388,8 @@ def _plot_slowdown_heatmap(
     ax.set_yticklabels(df.index, fontsize=max(6, 10 - n_rows // 8))
     ax.set_xlabel("Job name (slot)", fontsize=9)
     ax.set_ylabel("sbm_job_id", fontsize=9)
-    ax.set_title("Slowdown heatmap  (σ_j, mean over repetitions)", fontsize=10)
-    fig.colorbar(im, ax=ax, pad=0.01).set_label("σ_j", fontsize=8)
+    ax.set_title("Slowdown heatmap  (sigma_j, mean over repetitions)", fontsize=10)
+    fig.colorbar(im, ax=ax, pad=0.01).set_label("sigma_j", fontsize=8)
 
     cell_fontsize = max(5, 10 - n_cols // 8)
     for r in range(n_rows):
@@ -1156,7 +1463,7 @@ def _plot_placements(
     out_path = OUT_DIR / f"{tag}_rep{first_rep}_placement.svg"
     try:
         placer.visualize(jobs=jobs, out_svg=out_path)
-        print(f"  [placements] {tag} rep={first_rep}: saved → {out_path}")
+        print(f"  [placements] {tag} rep={first_rep}: saved -> {out_path}")
         return [out_path]
     except Exception as exc:
         print(f"  [placements] {tag} rep={first_rep}: visualize() failed — {exc}")
@@ -1182,18 +1489,18 @@ def _print_summary(
     }
     total_rows = sum(len(df) for _, df in entries)
     parts = [
-        f"perf→{perf_path}"     if perf_path  else None,
-        f"timeline→{slow_path}" if slow_path  else None,
-        f"summary→{summ_path}"  if summ_path  else None,
+        f"perf->{perf_path}"     if perf_path  else None,
+        f"timeline->{slow_path}" if slow_path  else None,
+        f"summary->{summ_path}"  if summ_path  else None,
     ]
     if plac_paths:
-        parts.append(f"placements({len(plac_paths)})→{OUT_DIR}")
+        parts.append(f"placements({len(plac_paths)})->{OUT_DIR}")
     outs = " | ".join(filter(None, parts))
     print(
         f"  {tag:<40}  "
         f"jobs={len(job_names)}  "
         f"reps/job=[{', '.join(f'{jn}:{n}' for jn, n in rep_counts.items())}]  "
-        f"rows={total_rows}  {outs or '→ skipped'}"
+        f"rows={total_rows}  {outs or '-> skipped'}"
     )
 
 
@@ -1289,7 +1596,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Per-sbatchman-job plots + debug output
     # ------------------------------------------------------------------
-    print(f"Generating plots → {OUT_DIR}/\n")
+    print(f"Generating plots -> {OUT_DIR}/\n")
     skipped = 0
 
     for sbm_job_id, entries in sorted(groups.items()):
@@ -1307,7 +1614,9 @@ def main() -> None:
                 agg_metrics = _aggregate_slowdowns(slowdowns, entries)
                 if agg_metrics:
                     slow_path = _plot_slowdown_timeline(sbm_job_id, tag, slowdowns)
-                    summ_path = _plot_slowdown_summary(sbm_job_id, tag, agg_metrics)
+                    summ_path = _plot_slowdown_summary(
+                        sbm_job_id, tag, agg_metrics, slowdowns=slowdowns
+                    )
 
         plac_paths: list[Path] = []
         if args.show_placements:
@@ -1328,8 +1637,8 @@ def main() -> None:
                 )
                 print(
                     f"  Aggregates:  "
-                    f"σ̄={agg_metrics['mean']:.3f}  "
-                    f"σ_max={agg_metrics['worst_case']:.3f}  "
+                    f"sigma_bar={agg_metrics['mean']:.3f}  "
+                    f"sigma_max={agg_metrics['worst_case']:.3f}  "
                     f"per-strategy: {strat_str}\n"
                 )
 
