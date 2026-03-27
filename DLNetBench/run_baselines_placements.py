@@ -308,7 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--comm-lib", required=True, help="Communication library to use", choices=["nccl", "rccl", "oneccl", "mpi_gpu_cuda"]
     )
     p.add_argument(
-        "--gpu-model", required=True, choices=["B300", "B200", "H200", "A100", "GH200"],
+        "--gpu-model", required=True, choices=["GB300", "B200", "H200", "A100", "GH200"],
         help="GPU model (selects compute-time emulation profile).",
     )
     p.add_argument(

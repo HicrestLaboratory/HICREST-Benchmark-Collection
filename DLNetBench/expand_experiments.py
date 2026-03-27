@@ -757,7 +757,7 @@ def build_parser() -> argparse.ArgumentParser:
     
     p.add_argument(
         "--gpu-model", type=str, required=True, metavar="GPU_MODEL", 
-        help="The GPU model to emulate compute time (sleep)", choices=["B200", "B300", "H200", "A100", "GH200"]
+        help="The GPU model to emulate compute time (sleep)", choices=["B200", "GB300", "H200", "A100", "GH200"]
     )
 
     # Required
@@ -862,7 +862,7 @@ def get_total_runs(strategy: str, gpu_model: str) -> int:
     """Calculate total iterations (min_runs + max_runs) using command_map dicts."""
     
     # Select the correct dictionary based on the GPU model
-    target_dict = _STRATEGIES_NUM_RUNS_BX00 if gpu_model in ["B300", "B200"] else _STRATEGIES_NUM_RUNS
+    target_dict = _STRATEGIES_NUM_RUNS_BX00 if gpu_model in ["GB300", "B200"] else _STRATEGIES_NUM_RUNS
     
     # Raise an exception if the strategy isn't found
     if strategy not in target_dict:
