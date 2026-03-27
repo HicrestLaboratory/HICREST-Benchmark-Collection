@@ -88,7 +88,10 @@ import pandas as pd
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 import import_export
-from JobPlacer.cli_wrapper import JobPlacer
+try:
+    from JobPlacer.cli_wrapper import JobPlacer
+except ImportError:
+    JobPlacer = None
 
 
 # ===========================================================================
@@ -149,6 +152,19 @@ _LINESTYLE_POOL: list[str] = ["-", "--", "-.", ":",
 # Placement-class extraction
 # ===========================================================================
 
+# Mapping from concurrent job_name placement labels to baseline placement
+# class names.  Sourced from experiments_generator.PLACEMENT_DEFS.
+_LABEL_TO_PLACEMENT_CLASS: dict[str, str] = {
+    "intra-l1":               "INTRA_L1_RANDOM",
+    "intra-group":            "INTRA_GROUP_RANDOM",
+    "inter-group":            "INTER_GROUP_RANDOM",
+    "intra-group-same-l1-2":  "INTRA_GROUP_SAME_L1_2",
+    "intra-group-same-l1-4":  "INTRA_GROUP_SAME_L1_4",
+    "inter-group-same-l1-2":  "INTER_GROUP_SAME_L1_2",
+    "inter-group-same-l1-4":  "INTER_GROUP_SAME_L1_4",
+}
+
+
 def _extract_placement_class(sbm_tag: str | None) -> str:
     """
     Return the placement class encoded in *sbm_tag*, or ``""`` if absent.
@@ -170,6 +186,29 @@ def _extract_placement_class(sbm_tag: str | None) -> str:
         return ""
     m = _CLASS_TAG_RE.search(sbm_tag)
     return m.group(1) if m else ""
+
+
+def _extract_placement_class_with_fallback(
+    sbm_tag: str | None,
+    job_name: str | None = None,
+) -> str:
+    """
+    Like :func:`_extract_placement_class`, but when the *sbm_tag* does not
+    contain a ``class-<placement>_rep`` pattern, falls back to extracting
+    the placement label from *job_name* and mapping it to the canonical
+    baseline class name via :data:`_LABEL_TO_PLACEMENT_CLASS`.
+
+    The *job_name* format is ``<strategy>_g<gpus>_n<nodes>_<label>_<uid>``.
+    """
+    result = _extract_placement_class(sbm_tag)
+    if result:
+        return result
+    if job_name:
+        parts = job_name.split('_')
+        if len(parts) > 3:
+            label = parts[3]
+            return _LABEL_TO_PLACEMENT_CLASS.get(label, label)
+    return ""
 
 
 def _parse_job_name(job_name: str) -> tuple[str, str, str, str]:
@@ -270,7 +309,8 @@ def _print_concurrent_job_stats(
         rep       = meta["repetition"]
         strategy  = meta.get("strategy") or jname.split('_')[0]
         gpus      = meta.get("gpus") or int(jname.split('_')[1][1:])
-        placement = _extract_placement_class(meta.get("sbm_tag", ""))
+        placement = _extract_placement_class_with_fallback(
+            meta.get("sbm_tag", ""), jname)
 
         if metric in df.columns:
             col    = pd.to_numeric(df[metric], errors="coerce").dropna()
@@ -609,7 +649,8 @@ def _compute_slowdowns(
         strategy  = meta.get("strategy")
         gpus      = meta.get("gpus")
         nruns     = meta.get("nruns")
-        placement = _extract_placement_class(meta.get("sbm_tag", ""))
+        placement = _extract_placement_class_with_fallback(
+            meta.get("sbm_tag", ""), jname)
 
         if not strategy:
             strategy = jname.split('_')[0]
