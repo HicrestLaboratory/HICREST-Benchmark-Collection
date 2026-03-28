@@ -30,8 +30,8 @@ _EXECUTABLES: dict[str, str] = {
 
 _STRATEGY_MODELS_MAP: dict[str, Union[str, List[str]]] = {
     "DP":           "vit-h",
-    "FSDP":         ["llama3-8b", "minerva-7b"],
-    "DP+PP":        ["llama3-8b", "minerva-7b"],
+    "FSDP":         ["minerva-7b"],
+    "DP+PP":        ["minerva-7b"],
     "DP+PP+TP":     "llama3-70b",
     "DP+PP+Expert": "mixtral-8x7b",
 }

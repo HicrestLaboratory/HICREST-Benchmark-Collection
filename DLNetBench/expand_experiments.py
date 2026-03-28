@@ -516,7 +516,7 @@ def build_experiment_json(
         nodes = _gpus_to_nodes(gpus, gpus_per_node)
 
         # Base fields — always present
-        commands = get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=False)
+        commands = get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=True)
         
         # FIXME this is ugly and not generic (only up to two models)
         command = commands[0]
@@ -628,15 +628,15 @@ def main(args: argparse.Namespace) -> None:
         runtimes[f'{system}__{compute}'][f'{strategy}__{int(gpus)}'] = runtime
     
     for sys_compute, est_runtimes in runtimes.items():
-        estimates = estimate_experiment_times(records, baselines, est_runtimes, args.small_job_threshold)
+        #estimates = estimate_experiment_times(records, baselines, est_runtimes, args.small_job_threshold)
         print(f"\n\033[36m{'='*72}")
         print(f"RUNTIME ESTIMATION for {sys_compute}")
         print(f"{'='*72}\033[0m")
-        print(f"  Total Baseline (Sequential), #runs={len(estimates['baseline_times']):<3}  : {estimates['baseline_mins']:.2f} minutes")
-        print(f"  Total Concurrent Execution,  #runs={len(estimates['concurrent_times']):<3}  : {estimates['concurrent_mins']:.2f} minutes")
+        #print(f"  Total Baseline (Sequential), #runs={len(estimates['baseline_times']):<3}  : {estimates['baseline_mins']:.2f} minutes")
+        #print(f"  Total Concurrent Execution,  #runs={len(estimates['concurrent_times']):<3}  : {estimates['concurrent_mins']:.2f} minutes")
         print(f"{'-'*72}")
-        print(f"  Baseline times   (seconds): {estimates['baseline_times']}")
-        print(f"  Concurrent times (seconds): {estimates['concurrent_times'][0]} and {len(estimates['concurrent_times'])-1} more")
+        #print(f"  Baseline times   (seconds): {estimates['baseline_times']}")
+        #print(f"  Concurrent times (seconds): {estimates['concurrent_times'][0]} and {len(estimates['concurrent_times'])-1} more")
         print(f"{'-'*72}")
         print()
 
