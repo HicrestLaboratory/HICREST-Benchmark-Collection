@@ -1152,19 +1152,19 @@ def _plot_slowdown_summary(
     slowdowns:   dict[str, dict[int, float]] | None = None,
 ) -> Path:
     """
-    Two-panel interference summary:
+    Two-panel interference summary (stacked vertically):
 
-    Panel 1 (left)  — Per-job bar chart.
+    Panel 1 (top)    — Per-job bar chart.
         * Bars coloured by (strategy, gpus, placement) group.
         * Error bars show std of sigma over repetitions.
         * Bar label inside the bar, shown as signed percentage (+12 %, -2 %).
 
-    Panel 2 (right) — Adaptive slowdown-percentage histogram with grouped bars.
+    Panel 2 (bottom) — Adaptive slowdown-percentage histogram with grouped bars.
         * Bins are computed from all per-repetition slowdown values.
         * Within each bin, one bar per (strategy, gpus, placement) group,
           coloured consistently with panel 1.
-        * Each bar counts the repetitions belonging to that group that fall
-          in the bin.
+        * Each bar carries two labels: count above the bar, and percentage
+          of that group's total reps inside the bar (white bold).
     """
     per_job     = agg_metrics["per_job"]
     per_job_std = agg_metrics.get("per_job_std", {})
@@ -1212,7 +1212,7 @@ def _plot_slowdown_summary(
             all_pct.append(pct)
 
     # ------------------------------------------------------------------ #
-    # Figure layout: 1 x 2                                                #
+    # Figure layout: 2 x 1 stacked                                        #
     # ------------------------------------------------------------------ #
     fig_w = max(10, n_jobs * 0.5 + 7)
     fig, (ax_jobs, ax_hist) = plt.subplots(2, 1, figsize=(fig_w, 18))
@@ -1295,7 +1295,7 @@ def _plot_slowdown_summary(
             grp_bars = ax_hist.bar(
                 x_pos,
                 counts,
-                width=bar_width * 0.92,   # tiny gap between adjacent group bars
+                width=bar_width * 0.92,
                 color=color,
                 edgecolor="black", linewidth=0.4,
                 label=f"{gk[0]} / {gk[1]} / {gk[2] or '-'}",
@@ -1303,10 +1303,11 @@ def _plot_slowdown_summary(
             legend_handles.append(grp_bars[0])
             legend_labels.append(f"{gk[0]} / {gk[1]} / {gk[2] or '-'}")
 
-            # Count label above each non-zero bar
+            total = len(pct_vals)
             for bar, cnt in zip(grp_bars, counts):
                 if cnt == 0:
                     continue
+                # Count above the bar
                 ax_hist.text(
                     bar.get_x() + bar.get_width() / 2,
                     bar.get_height() + 0.15,
@@ -1314,7 +1315,7 @@ def _plot_slowdown_summary(
                     ha="center", va="bottom",
                     fontsize=max(14, 8 - n_active),
                 )
-                total = len(pct_vals)
+                # Percentage of this group's total reps, inside the bar
                 pct_val = (cnt / total * 100.0) if total > 0 else 0.0
                 ax_hist.text(
                     bar.get_x() + bar.get_width() / 2,
@@ -1348,6 +1349,392 @@ def _plot_slowdown_summary(
 
     fig.tight_layout()
     out_path = OUT_DIR / f"{tag}_slowdown_summary.png"
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
+# ===========================================================================
+# Cross-experiment analysis plots
+# ===========================================================================
+
+# Threshold used by the cross-experiment analysis functions below.
+# Runs with slowdown percentage strictly below this value are ignored.
+SLOWDOWN_THRESHOLD_PCT: float = 5.0
+CAP_THRESHOLD_PCT: float = 1000.0
+
+
+def _collect_cross_experiment_data(
+    groups:   dict[str, list[tuple[dict, pd.DataFrame]]],
+    baseline: dict[tuple[str, int, str], float],
+    metric:   str,
+    agg:      str,
+    cap:      float | None = None,
+) -> dict[tuple[str, str, str], list[float]]:
+    """
+    Aggregate all per-repetition sigma values across every sbatchman job,
+    keyed by (strategy, gpus, placement).
+
+    Returns { (strategy, gpus, placement) -> [sigma_pct, ...] }
+    where sigma_pct = (sigma - 1) * 100.
+
+    Parameters
+    ----------
+    cap:
+        If given, any sigma_pct strictly above this value is considered an
+        outlier and dropped.  A warning summarising removed counts per group
+        is printed once at the end.
+    """
+    result:   dict[tuple[str, str, str], list[float]] = defaultdict(list)
+    n_capped: dict[tuple[str, str, str], int]         = defaultdict(int)
+
+    for sbm_job_id, entries in groups.items():
+        slowdowns = _compute_slowdowns(entries, baseline, metric, agg)
+        if not slowdowns:
+            continue
+        for jname, reps in slowdowns.items():
+            strategy, gpus, placement, _ = _parse_job_name(jname)
+            gk = (strategy, gpus, placement)
+            for sigma in reps.values():
+                pct = (sigma - 1.0) * 100.0
+                if cap is not None and pct > cap:
+                    n_capped[gk] += 1
+                else:
+                    result[gk].append(pct)
+
+    if n_capped:
+        total_removed = sum(n_capped.values())
+        details = "  ".join(
+            f"{gk[0]}/{gk[1]}/{gk[2] or '-'}:{n}"
+            for gk, n in sorted(n_capped.items())
+        )
+        print(
+            f"  [cap] removed {total_removed} outlier value(s) "
+            f"with slowdown_pct > {cap:.1f}%:  {details}"
+        )
+
+    return dict(result)
+
+
+def _plot_ecdf_by_placement(
+    groups:    dict[str, list[tuple[dict, pd.DataFrame]]],
+    baseline:  dict[tuple[str, int, str], float],
+    metric:    str,
+    agg:       str,
+    threshold: float = SLOWDOWN_THRESHOLD_PCT,
+    cap:       float | None = None,
+) -> Path | None:
+    """
+    Empirical CDF of slowdown percentage, faceted by placement class.
+
+    One subplot per placement class.  Within each subplot, one eCDF curve per
+    (strategy, gpus) pair — coloured consistently across subplots.  Only
+    repetitions with slowdown_pct >= threshold are included; the threshold is
+    drawn as a vertical reference line.  Values above *cap* (if given) are
+    removed before plotting.
+
+    Layout
+    ------
+    Subplots are arranged in a grid with at most 3 columns.  Each subplot
+    x-axis is the slowdown percentage; y-axis is the empirical CDF value
+    (fraction of runs with slowdown <= x).
+    """
+    cross = _collect_cross_experiment_data(groups, baseline, metric, agg, cap=cap)
+    if not cross:
+        return None
+
+    # Collect all placement classes and (strategy, gpus) pairs
+    placements:   list[str]            = sorted({gk[2] for gk in cross})
+    strat_gpu_pairs: list[tuple[str, str]] = sorted({(gk[0], gk[1]) for gk in cross})
+
+    if not placements:
+        return None
+
+    # Stable colour per (strategy, gpus) pair across all subplots
+    sg_color: dict[tuple[str, str], str] = {
+        sg: _COLOR_POOL[i % len(_COLOR_POOL)]
+        for i, sg in enumerate(strat_gpu_pairs)
+    }
+    sg_marker: dict[tuple[str, str], str] = {
+        sg: _MARKER_POOL[i % len(_MARKER_POOL)]
+        for i, sg in enumerate(strat_gpu_pairs)
+    }
+
+    n_placements = len(placements)
+    n_cols       = min(3, n_placements)
+    n_rows       = (n_placements + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(7 * n_cols, 5 * n_rows),
+        squeeze=False,
+    )
+    fig.suptitle(
+        f"eCDF of slowdown (>= {threshold:+.0f}%) — faceted by placement\n"
+        f"one curve per (strategy, GPUs)",
+        fontsize=13,
+    )
+
+    legend_handles: list = []
+    legend_labels:  list[str] = []
+    legend_built = False
+
+    for p_idx, placement in enumerate(placements):
+        row = p_idx // n_cols
+        col = p_idx % n_cols
+        ax  = axes[row][col]
+
+        ax.axvline(threshold, color="grey", linewidth=1.0, linestyle=":",
+                   label=f"threshold ({threshold:+.0f}%)")
+        ax.axhline(1.0, color="lightgrey", linewidth=0.6, linestyle="--")
+
+        has_data = False
+        for sg in strat_gpu_pairs:
+            strategy, gpus = sg
+            gk      = (strategy, gpus, placement)
+            pct_all = cross.get(gk, [])
+            pct_filtered = [v for v in pct_all if v >= threshold]
+            if not pct_filtered:
+                continue
+
+            has_data = True
+            xs = sorted(pct_filtered)
+            ys = np.arange(1, len(xs) + 1) / len(xs)
+
+            # Prepend the threshold point at y=0 for a clean left edge
+            xs = [threshold] + xs
+            ys = np.concatenate([[0.0], ys])
+
+            color  = sg_color[sg]
+            marker = sg_marker[sg]
+            line, = ax.plot(
+                xs, ys,
+                color=color, marker=marker,
+                markevery=max(1, len(xs) // 10),
+                markersize=4, linewidth=1.6,
+                label=f"{strategy} / {gpus}",
+            )
+            if not legend_built:
+                legend_handles.append(line)
+                legend_labels.append(f"{strategy} / {gpus}")
+
+        if not has_data:
+            ax.text(0.5, 0.5, "no data above threshold",
+                    ha="center", va="center", transform=ax.transAxes,
+                    fontsize=10, color="grey")
+
+        legend_built = True
+        ax.set_title(f"placement: {placement or '(none)'}", fontsize=11)
+        ax.set_xlabel("Slowdown (%)", fontsize=10)
+        ax.set_ylabel("Empirical CDF", fontsize=10)
+        ax.set_ylim(-0.05, 1.05)
+        ax.grid(True, linewidth=0.4, alpha=0.6)
+        ax.tick_params(labelsize=9)
+
+    # Hide unused subplots
+    for p_idx in range(n_placements, n_rows * n_cols):
+        axes[p_idx // n_cols][p_idx % n_cols].set_visible(False)
+
+    # Shared legend below the figure
+    if legend_handles:
+        fig.legend(
+            legend_handles, legend_labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.0),
+            ncol=min(6, len(legend_handles)),
+            fontsize=10,
+            title="strategy / GPUs",
+            title_fontsize=10,
+            frameon=True,
+        )
+
+    fig.tight_layout()
+    fig.subplots_adjust(bottom=max(0.08, 0.04 * ((len(legend_handles) + 5) // 6)))
+    out_path = OUT_DIR / "cross_experiment_ecdf_by_placement.png"
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
+def _plot_exceedance(
+    groups:    dict[str, list[tuple[dict, pd.DataFrame]]],
+    baseline:  dict[tuple[str, int, str], float],
+    metric:    str,
+    agg:       str,
+    threshold: float = SLOWDOWN_THRESHOLD_PCT,
+    cap:       float | None = None,
+) -> Path | None:
+    """
+    Two-panel exceedance summary across all experiments.
+
+    Panel 1 — Exceedance rate bar chart.
+        For each (strategy, gpus, placement) group: the fraction of all
+        repetitions (across all experiments) whose slowdown_pct >= threshold.
+        Bars are grouped on the x-axis first by placement, then by
+        (strategy, gpus) within each placement block, so the placement
+        structure is immediately visible.
+
+    Panel 2 — Conditional mean excess bar chart.
+        For the same groups: the mean slowdown_pct of only the repetitions
+        that exceeded the threshold.  Empty when a group has zero exceedances.
+
+    Both panels share the same x-axis layout and colour scheme
+    (colour = strategy/gpus pair, consistent with the eCDF plot).
+    """
+    cross = _collect_cross_experiment_data(groups, baseline, metric, agg, cap=cap)
+    if not cross:
+        return None
+
+    # Sort groups: primary key = placement, secondary = (strategy, gpus)
+    all_gks = sorted(cross.keys(), key=lambda gk: (gk[2], gk[0], gk[1]))
+    if not all_gks:
+        return None
+
+    strat_gpu_pairs = sorted({(gk[0], gk[1]) for gk in cross})
+    sg_color: dict[tuple[str, str], str] = {
+        sg: _COLOR_POOL[i % len(_COLOR_POOL)]
+        for i, sg in enumerate(strat_gpu_pairs)
+    }
+
+    # Compute per-group stats
+    exceedance_rate: list[float] = []
+    mean_excess:     list[float] = []
+    bar_colors:      list[str]   = []
+    x_labels:        list[str]   = []
+
+    for gk in all_gks:
+        strategy, gpus, placement = gk
+        pct_all      = cross[gk]
+        pct_exceeded = [v for v in pct_all if v >= threshold]
+        rate         = len(pct_exceeded) / len(pct_all) if pct_all else 0.0
+        excess       = float(np.mean(pct_exceeded)) if pct_exceeded else float("nan")
+
+        exceedance_rate.append(rate * 100.0)   # convert to %
+        mean_excess.append(excess)
+        bar_colors.append(sg_color.get((strategy, gpus), "#888888"))
+        x_labels.append(f"{strategy}\n{gpus}\n{placement or '—'}")
+
+    n_groups = len(all_gks)
+    x_pos    = np.arange(n_groups)
+
+    fig, (ax_rate, ax_excess) = plt.subplots(2, 1, figsize=(max(10, n_groups * 0.9 + 3), 12))
+    fig.suptitle(
+        f"Cross-experiment exceedance analysis  (threshold >= {threshold:+.0f}%)\n"
+        f"groups sorted by placement",
+        fontsize=13,
+    )
+
+    # ------------------------------------------------------------------ #
+    # Panel 1 — exceedance rate                                           #
+    # ------------------------------------------------------------------ #
+    bars1 = ax_rate.bar(
+        x_pos, exceedance_rate,
+        color=bar_colors, edgecolor="black", linewidth=0.5,
+    )
+    ax_rate.set_ylabel("Exceedance rate (%)", fontsize=13)
+    ax_rate.set_title(
+        f"Fraction of reps with slowdown >= {threshold:+.0f}%", fontsize=12,
+    )
+    ax_rate.set_xticks(x_pos)
+    ax_rate.set_xticklabels(x_labels, rotation=0, ha="center", fontsize=9)
+    ax_rate.set_ylim(0, 110)
+    ax_rate.grid(True, axis="y", linewidth=0.5, alpha=0.7)
+
+    for bar, val in zip(bars1, exceedance_rate):
+        if val == 0:
+            continue
+        ax_rate.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 1.5,
+            f"{val:.0f}%",
+            ha="center", va="bottom", fontsize=9, fontweight="bold",
+        )
+
+    # Draw placement block separators and labels on top
+    placement_blocks: dict[str, list[int]] = defaultdict(list)
+    for i, gk in enumerate(all_gks):
+        placement_blocks[gk[2]].append(i)
+
+    y_sep = 107
+    for plac, indices in sorted(placement_blocks.items(), key=lambda kv: kv[1][0]):
+        lo = indices[0] - 0.5
+        hi = indices[-1] + 0.5
+        ax_rate.axvspan(lo, hi, alpha=0.06, color="steelblue")
+        ax_rate.text(
+            (lo + hi) / 2, y_sep,
+            plac or "(none)",
+            ha="center", va="bottom", fontsize=8, style="italic", color="steelblue",
+        )
+        if lo > -0.5:
+            ax_rate.axvline(lo, color="steelblue", linewidth=0.8, linestyle="--", alpha=0.5)
+
+    # ------------------------------------------------------------------ #
+    # Panel 2 — conditional mean excess                                   #
+    # ------------------------------------------------------------------ #
+    mean_excess_plot = [v if not np.isnan(v) else 0.0 for v in mean_excess]
+    bars2 = ax_excess.bar(
+        x_pos, mean_excess_plot,
+        color=bar_colors, edgecolor="black", linewidth=0.5,
+    )
+    ax_excess.axhline(threshold, color="grey", linewidth=1.0, linestyle=":",
+                      label=f"threshold ({threshold:+.0f}%)")
+    ax_excess.set_ylabel("Mean slowdown of exceeding reps (%)", fontsize=13)
+    ax_excess.set_title("Conditional mean excess  (only reps above threshold)", fontsize=12)
+    ax_excess.set_xticks(x_pos)
+    ax_excess.set_xticklabels(x_labels, rotation=0, ha="center", fontsize=9)
+    ax_excess.grid(True, axis="y", linewidth=0.5, alpha=0.7)
+    ax_excess.legend(fontsize=10)
+
+    for bar, val, raw in zip(bars2, mean_excess_plot, mean_excess):
+        if np.isnan(raw) or raw == 0:
+            ax_excess.text(
+                bar.get_x() + bar.get_width() / 2,
+                threshold * 0.3,
+                "none",
+                ha="center", va="bottom", fontsize=8, color="grey",
+            )
+            continue
+        ax_excess.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.3,
+            f"{val:.1f}%",
+            ha="center", va="bottom", fontsize=9, fontweight="bold",
+        )
+
+    # Same placement block shading as panel 1
+    y_sep2 = ax_excess.get_ylim()[1] * 0.97 if ax_excess.get_ylim()[1] > 0 else threshold * 2
+    for plac, indices in sorted(placement_blocks.items(), key=lambda kv: kv[1][0]):
+        lo = indices[0] - 0.5
+        hi = indices[-1] + 0.5
+        ax_excess.axvspan(lo, hi, alpha=0.06, color="steelblue")
+        ax_excess.text(
+            (lo + hi) / 2, y_sep2,
+            plac or "(none)",
+            ha="center", va="top", fontsize=8, style="italic", color="steelblue",
+        )
+        if lo > -0.5:
+            ax_excess.axvline(lo, color="steelblue", linewidth=0.8, linestyle="--", alpha=0.5)
+
+    # Shared legend for (strategy, gpus) colour coding
+    sg_handles = [
+        plt.Rectangle((0, 0), 1, 1, color=sg_color[sg])
+        for sg in strat_gpu_pairs
+    ]
+    sg_labels = [f"{sg[0]} / {sg[1]}" for sg in strat_gpu_pairs]
+    fig.legend(
+        sg_handles, sg_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=min(15, len(sg_handles)),
+        fontsize=10,
+        # title="Strategy / GPUs  (bar colour)",
+        # title_fontsize=10,
+        frameon=True,
+    )
+
+    fig.tight_layout()
+    fig.subplots_adjust(bottom=max(0.08, 0.04 * ((len(sg_handles) + 5) // 6)))
+    out_path = OUT_DIR / "cross_experiment_exceedance.png"
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
     return out_path
@@ -1542,6 +1929,23 @@ def main() -> None:
             "in the run metadata."
         ),
     )
+    parser.add_argument(
+        "--threshold", type=float, default=SLOWDOWN_THRESHOLD_PCT,
+        help=(
+            f"Minimum slowdown percentage to include in cross-experiment "
+            f"eCDF and exceedance plots (default: {SLOWDOWN_THRESHOLD_PCT})."
+        ),
+    )
+    parser.add_argument(
+        "--cap", type=float, default=CAP_THRESHOLD_PCT,
+        metavar="PCT",
+        help=(
+            "Drop cross-experiment slowdown values strictly above this "
+            "percentage before plotting.  Useful for removing spurious "
+            "outliers.  Disabled by default.  Removed values are reported "
+            "in a warning."
+        ),
+    )
     args = parser.parse_args()
 
     OUT_DIR = Path(args.out_dir)
@@ -1654,6 +2058,26 @@ def main() -> None:
         hmap_path = _plot_slowdown_heatmap(groups, baseline, metric, agg)
         if hmap_path:
             print(f"  Heatmap saved to {hmap_path}")
+
+        print("\nGenerating cross-experiment eCDF by placement...")
+        ecdf_path = _plot_ecdf_by_placement(
+            groups, baseline, metric, agg,
+            threshold=args.threshold, cap=args.cap,
+        )
+        if ecdf_path:
+            print(f"  eCDF plot saved to {ecdf_path}")
+        else:
+            print("  eCDF plot skipped (no data above threshold).")
+
+        print("\nGenerating cross-experiment exceedance analysis...")
+        exc_path = _plot_exceedance(
+            groups, baseline, metric, agg,
+            threshold=args.threshold, cap=args.cap,
+        )
+        if exc_path:
+            print(f"  Exceedance plot saved to {exc_path}")
+        else:
+            print("  Exceedance plot skipped (no data above threshold).")
 
     total = len(groups)
     print(f"\nDone. {total - skipped} plot(s) written, {skipped} skipped.")
