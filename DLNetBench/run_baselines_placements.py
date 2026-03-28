@@ -245,6 +245,7 @@ def main(args: argparse.Namespace) -> None:
                 overwrite=True,
                 **sys_cfg,
             )
+            model = get_model_from_command(command)
 
             # -- Submit -----------------------------------------------------------
             try:
@@ -253,7 +254,7 @@ def main(args: argparse.Namespace) -> None:
                     preprocess      = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
                     command         = command,
                     tag             = (
-                        f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes"
+                        f"baseline_{strategy}_{model}_{num_gpus}gpus_{nodes}nodes"
                         f"_comm-{args.comm_lib}_gpu-{args.gpu_model}"
                         f"_class-{placement_class_name}_rep{replicate_index}"
                     ),
@@ -262,7 +263,7 @@ def main(args: argparse.Namespace) -> None:
                     dry_run         = args.dry_run,
                     variables       = {
                         "strategy":        strategy,
-                        "model":           get_model_from_command(command),
+                        "model":           model,
                         "gpus":            num_gpus,
                         "nodes":           nodes,
                         "comm_lib":        args.comm_lib,

@@ -88,18 +88,19 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
                 print(f"        waiting for job_id={previous_job_id}")
 
             config_name = f"{nodes}_{config_prefix}" if config_prefix == "nodes" else f"{num_gpus}_{config_prefix}"
+            model = get_model_from_command(command)
 
             try:
                 job = sbm.launch_job(
                     config_name      = config_name,
                     preprocess       = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
                     command          = command,
-                    tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
+                    tag              = f"baseline_{strategy}_{model}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
                     previous_job_id  = None if args.no_serial else previous_job_id,
                     dry_run          = args.dry_run,
                     variables        = {
                         'strategy': strategy,
-                        "model": get_model_from_command(command),
+                        'model': model,
                         'gpus': num_gpus,
                         'nodes': nodes,
                         'comm_lib': args.comm_lib, 
