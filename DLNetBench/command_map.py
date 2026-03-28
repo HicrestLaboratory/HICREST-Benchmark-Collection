@@ -5,7 +5,7 @@ Maps (strategy, num_gpus, comm_lib) -> full DLNetBench command string.
 """
 
 from __future__ import annotations
-from typing import Union
+from typing import List, Union
 from experiments_generator import STRATEGY_DEFS, STRATEGY_DEFS_DGX_A100, STRATEGY_DEFS_EXTENDED
 
 EXTRA_SRUN_FLAGS = {
@@ -24,22 +24,31 @@ _EXECUTABLES: dict[str, str] = {
     "DP":           "cpp/data_parallel/dp",
     "FSDP":         "cpp/data_parallel/fsdp",
     "DP+PP":        "cpp/hybrid_parallel/hybrid_2d",
-    "DP+PP+Expert": "cpp/hybrid_parallel/hybrid_3d_moe",
     "DP+PP+TP":     "cpp/hybrid_parallel/hybrid_3d",
+    "DP+PP+Expert": "cpp/hybrid_parallel/hybrid_3d_moe",
+}
+
+_STRATEGY_MODELS_MAP: dict[str, Union[str, List[str]]] = {
+    "DP":           "vit-h",
+    "FSDP":         ["llama3-8b", "minerva-7b"],
+    "DP+PP":        ["llama3-8b", "minerva-7b"],
+    "DP+PP+TP":     "llama3-70b",
+    "DP+PP+Expert": "mixtral-8x7b",
 }
 
 _PARAMS: dict[str, callable] = {
-    "DP":           lambda g: "vit-h 50 ./DLNetBench",
-    "FSDP":         lambda g: f"llama3-8b 16 {g if g < 8 else 8} ./DLNetBench",
-    "DP+PP":        lambda g: f"minerva-7b {2 if g <= 8 else 8} 16 ./DLNetBench",
-    "DP+PP+Expert": lambda g: "mixtral-8x7b 8 16 8 ./DLNetBench",
-    "DP+PP+TP":     lambda g: "llama3-70b 8 16 4 ./DLNetBench",
+    "DP":           lambda g: f"{_STRATEGY_MODELS_MAP['DP']} 50 ./DLNetBench",
+    "FSDP":         lambda g: [f"{m} 16 {g if g < 8 else 8} ./DLNetBench" for m in _STRATEGY_MODELS_MAP['FSDP']],
+    "DP+PP":        lambda g: [f"{m} {2 if g <= 8 else 8} 16 ./DLNetBench" for m in _STRATEGY_MODELS_MAP['DP+PP']],
+    "DP+PP+TP":     lambda g: f"{_STRATEGY_MODELS_MAP['DP+PP+TP']} 8 16 4 ./DLNetBench",
+    "DP+PP+Expert": lambda g: f"{_STRATEGY_MODELS_MAP['DP+PP+Expert']} 8 16 8 ./DLNetBench",
 }
 
+
 _STRATEGIES_NUM_RUNS: dict[str, tuple[int, int]] = {
-    "DP":           (1, 5), # 1.1s * 6 = 6.6s
-    "FSDP":         (1, 3), # 4s   * 4 = 16s
-    "DP+PP":        (1, 3), # 3s   * 4 = 12s
+    "DP":           (1, 6), # 1.1s * 6 = 6.6s
+    "FSDP":         (1, 4), # 4s   * 4 = 16s
+    "DP+PP":        (1, 4), # 3s   * 4 = 12s
     "DP+PP+Expert": (1, 2), # 45s  * 3 = 2m 15s
     "DP+PP+TP":     (1, 2), # 23s  * 3 = 1m 9s
 }
@@ -52,7 +61,7 @@ _STRATEGIES_NUM_RUNS_BX00: dict[str, tuple[int, int]] = {
     "DP+PP+TP":     (1, 4),  # 23s  * 3 = 1m 9s
 }
 
-def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model: str, num_warmup_override: Union[int, None]=None, use_dgx:bool=False) -> str:
+def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model: str, num_warmup_override: Union[int, None]=None, use_dgx:bool=False) -> List[str]:
     if strategy not in _PARAMS:
         raise ValueError(f"Unknown strategy '{strategy}'. Valid: {sorted(_PARAMS)}")
     
@@ -76,7 +85,30 @@ def get_command(strategy: str, num_gpus: int, comm_lib: str, gpu_model: str, num
     if num_warmup_override is not None and num_warmup_override >= 0:
         num_runs = (num_warmup_override, num_runs[0] + num_runs[1])
         
-    return f"./DLNetBench/bin/{comm_lib}/{_EXECUTABLES[strategy]} {_PARAMS[strategy](num_gpus)} -w {num_runs[0]} -r {num_runs[1]} -g {gpu_model}"
+    params = _PARAMS[strategy](num_gpus)
+    if not isinstance(params, list):
+        params = [params]
+        
+    return [f"./DLNetBench/bin/{comm_lib}/{_EXECUTABLES[strategy]} {par} -w {num_runs[0]} -r {num_runs[1]} -g {gpu_model}" for par in params]
+
+
+def get_model_from_command(command: str):
+    tokens = command.split()
+
+    # Flatten all possible model names
+    models = set()
+    for v in _STRATEGY_MODELS_MAP.values():
+        if isinstance(v, list):
+            models.update(v)
+        else:
+            models.add(v)
+
+    # Find the first token that matches a known model
+    for t in tokens:
+        if t in models:
+            return t
+
+    return None
 
 
 if __name__ == "__main__":

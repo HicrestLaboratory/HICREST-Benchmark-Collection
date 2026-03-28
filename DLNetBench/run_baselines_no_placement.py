@@ -18,7 +18,7 @@ import sbatchman as sbm
 
 
 sys.path.append(str(Path(__file__).parent))
-from command_map import EXTRA_SRUN_FLAGS, get_command
+from command_map import EXTRA_SRUN_FLAGS, get_command, get_model_from_command
 from collections import Counter
 
 # ---------------------------------------------------------------------------
@@ -55,7 +55,9 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
 
     print(f"[baseline] Comm lib    : {args.comm_lib}")
     print(f"[baseline] Dry run     : {args.dry_run}")
-    print(f"[baseline] Launching {len(runs)} jobs sequentially...\n")
+    if args.strategies:
+        print(f"[baseline] Strategies  : {', '.join(args.strategies)}")
+    print(f"[baseline] Launching {len(runs)} jobs {'NOT ' if args.no_serial else ''}sequentially...\n")
 
     previous_job_id: int | None = None
 
@@ -63,43 +65,56 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
         strategy = run["strategy"]
         num_gpus = int(run["gpus"])
         nodes = int(num_gpus / args.gpus_per_node) if num_gpus > args.gpus_per_node else 1
-        
+
+        if args.strategies and strategy not in args.strategies:
+            print(f'Skipping job {strategy} @ {nodes} nodes. Not in selected strategies.')
+            continue
+
         if args.max_n_nodes and nodes > args.max_n_nodes:
             print(f'Skipping job {strategy} @ {nodes} nodes. Limit is {args.max_n_nodes}.')
             continue
 
-        command = get_command(strategy, num_gpus, args.comm_lib, args.gpu_model, num_warmup_override=0, use_dgx=(args.dgx == "DGX_A100"))
+        commands = get_command(strategy, num_gpus, args.comm_lib, args.gpu_model, num_warmup_override=0, use_dgx=(args.dgx == "DGX_A100"))
 
-        if args.use_mpirun:
-            command = f"mpirun -np {num_gpus} {command}"
-        else:
-            command = f"srun -N{nodes} -n{num_gpus} --ntasks-per-node={args.gpus_per_node} --cpus-per-task={args.cpus_per_task} {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} {command}"
+        for comm_i, comm in enumerate(commands):
+            if args.use_mpirun:
+                command = f"mpirun -np {num_gpus} {comm}"
+            else:
+                command = f"srun -N{nodes} -n{num_gpus} --ntasks-per-node={args.gpus_per_node} --cpus-per-task={args.cpus_per_task} {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} {comm}"
 
-        print(f"[{i:02d}/{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
-        print(f"        command: {command}")
-        if previous_job_id is not None:
-            print(f"        waiting for job_id={previous_job_id}")
+            print(f"[{i:02d}--{comm_i:02d}/~{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
+            print(f"        command: {command}")
+            if previous_job_id is not None:
+                print(f"        waiting for job_id={previous_job_id}")
 
-        config_name = f"{nodes}_{config_prefix}" if config_prefix == "nodes" else f"{num_gpus}_{config_prefix}"
+            config_name = f"{nodes}_{config_prefix}" if config_prefix == "nodes" else f"{num_gpus}_{config_prefix}"
 
-        try:
-            job = sbm.launch_job(
-                config_name      = config_name,
-                preprocess       = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
-                command          = command,
-                tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
-                previous_job_id  = previous_job_id,
-                dry_run          = args.dry_run,
-                variables        = {'strategy': strategy, 'gpus': num_gpus, 'nodes': nodes, 'comm_lib': args.comm_lib, 'gpu_model': args.gpu_model, 'placement': 'na'},
-                ignore_archived  = True,
-                ignore_commands_in_dup_check = True,
-            )
-            previous_job_id = job.job_id
-            print(f"        → job_id={job.job_id}\n")
-        except Exception as e:
-            previous_job_id = None
-            print(e)
-        print()
+            try:
+                job = sbm.launch_job(
+                    config_name      = config_name,
+                    preprocess       = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
+                    command          = command,
+                    tag              = f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes_comm-{args.comm_lib}_gpu-{args.gpu_model}",
+                    previous_job_id  = None if args.no_serial else previous_job_id,
+                    dry_run          = args.dry_run,
+                    variables        = {
+                        'strategy': strategy,
+                        "model": get_model_from_command(command),
+                        'gpus': num_gpus,
+                        'nodes': nodes,
+                        'comm_lib': args.comm_lib, 
+                        'gpu_model': args.gpu_model,
+                        'placement': 'na'
+                    },
+                    ignore_archived  = True,
+                    ignore_commands_in_dup_check = True,
+                )
+                previous_job_id = job.job_id
+                print(f"        → job_id={job.job_id}\n")
+            except Exception as e:
+                previous_job_id = None
+                print(e)
+            print()
 
     print(f"\n\033[32m[baseline] Done. {len(runs)} jobs launched.\033[0m")
 
@@ -155,6 +170,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--max-n-nodes", type=int, default=None,
         help="If set, it will only launch jobs that need at most --max-n-nodes nodes.",
+    )
+    p.add_argument(
+        "--strategies", "-s", nargs="+", default=None, metavar="STRATEGY",
+        help="If set, only runs with a matching strategy name will be launched. Accepts one or more strategy names. By default all strategies are run.",
+    )
+    p.add_argument(
+        "--no-serial", action="store_true", default=False,
+        help="If set, experiments won't run serially (one at the time).",
     )
     return p
 

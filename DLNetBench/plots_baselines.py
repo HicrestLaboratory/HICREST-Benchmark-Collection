@@ -386,14 +386,16 @@ def main():
     # ------------------------------------------------------------------
     print("Loading data...")
     meta_df, pairs = load_data(args.parquet_files)
+    if 'model' not in meta_df.columns:
+        meta_df['model'] = 'D'
     meta_df['cluster'] = meta_df['cluster'] + meta_df['gpu_model']
     meta_df['class_tag'] = meta_df['sbm_tag'].str.extract(r'class-([^_]+(?:_[^_]+)*)_rep')
-    meta_df['strategy'] = meta_df['strategy'] + "_" + meta_df['class_tag']
+    meta_df['strategy'] = meta_df['strategy'] + "_" + meta_df['model'] + "_" + meta_df['class_tag']
 
     for p, _ in pairs:
         match = re.search(r'class-([^_]+(?:_[^_]+)*)_rep', p.get('sbm_tag', ''))
         class_tag = match.group(1) if match else "UNKNOWN"
-        p['strategy'] = f"{p['strategy']}_{class_tag}"
+        p['strategy'] = f"{p['strategy']}_{p.get('model', 'D')}_{class_tag}"
     print(meta_df.to_string(index=False))
 
     summary = build_summary(meta_df, pairs)

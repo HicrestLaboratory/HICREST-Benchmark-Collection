@@ -19,7 +19,6 @@ Summary printed to stdout:
 from __future__ import annotations
 
 import io
-from pprint import pprint
 import sys
 from pathlib import Path
 from typing import Any

@@ -516,8 +516,15 @@ def build_experiment_json(
         nodes = _gpus_to_nodes(gpus, gpus_per_node)
 
         # Base fields — always present
+        commands = get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=False)
+        
+        # FIXME this is ugly and not generic (only up to two models)
+        command = commands[0]
+        if len(commands) > 1 and (i%2) != 0:
+            command = commands[1]
+            
         entry: dict = {
-            "command":          get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=False),
+            "command":          command,
             "nodes":            nodes,
             "gpus":             gpus,
         }
@@ -902,6 +909,8 @@ def estimate_experiment_times(records: list, baselines: list, profile_data: dict
             bas = bas['run']
 
         time = _lookup_time(profile_data, bas["strategy"], bas["gpus"])
+        if bas["strategy"] in ['FSDP', 'DP+PP']:
+            time *= 2
         baseline_secs.append(time)
         total_baseline_secs += time
 

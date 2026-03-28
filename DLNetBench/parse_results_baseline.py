@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from command_map import get_model_from_command
 from compact_csv import compact_all
 from parsers import stdout_to_csv_multi
 
@@ -184,6 +185,10 @@ def main() -> None:
             ))
             job_summaries.append({"job_id": job.job_id, "tag": tag, "outcome": OUTCOME_BAD_CSV})
             continue
+        
+        model = (job.variables or {}).get("model")
+        if not model:
+            model = get_model_from_command(job.command)
 
         # Good data — build flat metadata from the job
         meta: dict[str, Any] = {
@@ -193,6 +198,7 @@ def main() -> None:
             "tot_runtime": job.get_run_time(),
             # set at launch time in launch_baseline_singlenode.py
             "strategy":    (job.variables or {}).get("strategy"),
+            "model":       model,
             "gpus":        (job.variables or {}).get("gpus"),
             "nodes":       (job.variables or {}).get("nodes"),
             "comm_lib":    (job.variables or {}).get("comm_lib"),

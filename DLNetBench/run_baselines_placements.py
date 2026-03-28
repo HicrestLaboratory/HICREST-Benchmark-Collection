@@ -41,7 +41,7 @@ from typing import Optional
 import sbatchman as sbm
 
 sys.path.append(str(Path(__file__).parent))
-from command_map import EXTRA_SRUN_FLAGS, get_command
+from command_map import EXTRA_SRUN_FLAGS, get_command, get_model_from_command
 from expand_experiments import PlacementOracle
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
@@ -221,62 +221,64 @@ def main(args: argparse.Namespace) -> None:
             continue
 
         # -- Build command ----------------------------------------------------
-        command = get_command(
+        commands = get_command(
             strategy, num_gpus, args.comm_lib,
             gpu_model=args.gpu_model,
             num_warmup_override=0,
         )
-        command = f"srun -N{nodes} -n{num_gpus} --ntasks-per-node={args.gpus_per_node} --cpus-per-task={args.cpus_per_task} {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} {command}"
+        for comm in commands:
+            command = f"srun -N{nodes} -n{num_gpus} --ntasks-per-node={args.gpus_per_node} --cpus-per-task={args.cpus_per_task} {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} {comm}"
 
-        print(f"  nodelist : {nodelist}")
-        print(f"  command  : {command}")
-        if previous_job_id is not None:
-            print(f"  depends  : job_id={previous_job_id}")
+            print(f"  nodelist : {nodelist}")
+            print(f"  command  : {command}")
+            if previous_job_id is not None:
+                print(f"  depends  : job_id={previous_job_id}")
 
-        # -- Create per-job sbatch config -------------------------------------
-        config_name = _config_name(
-            args.system, strategy, nodes, placement_class_name, replicate_index,
-        )
-        sbm.create_slurm_config(
-            name=config_name,
-            nodes=str(nodes),
-            nodelist=nodelist,
-            overwrite=True,
-            **sys_cfg,
-        )
-
-        # -- Submit -----------------------------------------------------------
-        try:
-            job = sbm.launch_job(
-                config_name     = config_name,
-                preprocess      = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
-                command         = command,
-                tag             = (
-                    f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes"
-                    f"_comm-{args.comm_lib}_gpu-{args.gpu_model}"
-                    f"_class-{placement_class_name}_rep{replicate_index}"
-                ),
-                ignore_archived = True,
-                previous_job_id = previous_job_id,
-                dry_run         = args.dry_run,
-                variables       = {
-                    "strategy":        strategy,
-                    "gpus":            num_gpus,
-                    "nodes":           nodes,
-                    "comm_lib":        args.comm_lib,
-                    "gpu_model":       args.gpu_model,
-                    "placement_class": placement_class_name,
-                    "replicate_index": replicate_index,
-                    "seed":            seed,
-                    "system":          args.system,
-                },
+            # -- Create per-job sbatch config -------------------------------------
+            config_name = _config_name(
+                args.system, strategy, nodes, placement_class_name, replicate_index,
             )
-            previous_job_id = job.job_id
-            print(f"  -> job_id={job.job_id}\n")
-            n_ok += 1
-        except Exception as exc:
-            print(f"  [ERROR] Submission failed: {exc}\n")
-            previous_job_id = None
+            sbm.create_slurm_config(
+                name=config_name,
+                nodes=str(nodes),
+                nodelist=nodelist,
+                overwrite=True,
+                **sys_cfg,
+            )
+
+            # -- Submit -----------------------------------------------------------
+            try:
+                job = sbm.launch_job(
+                    config_name     = config_name,
+                    preprocess      = 'echo "Allocated nodes: $SLURM_JOB_NODELIST"',
+                    command         = command,
+                    tag             = (
+                        f"baseline_{strategy}_{num_gpus}gpus_{nodes}nodes"
+                        f"_comm-{args.comm_lib}_gpu-{args.gpu_model}"
+                        f"_class-{placement_class_name}_rep{replicate_index}"
+                    ),
+                    ignore_archived = True,
+                    previous_job_id = previous_job_id,
+                    dry_run         = args.dry_run,
+                    variables       = {
+                        "strategy":        strategy,
+                        "model":           get_model_from_command(command),
+                        "gpus":            num_gpus,
+                        "nodes":           nodes,
+                        "comm_lib":        args.comm_lib,
+                        "gpu_model":       args.gpu_model,
+                        "placement_class": placement_class_name,
+                        "replicate_index": replicate_index,
+                        "seed":            seed,
+                        "system":          args.system,
+                    },
+                )
+                previous_job_id = job.job_id
+                print(f"  -> job_id={job.job_id}\n")
+                n_ok += 1
+            except Exception as exc:
+                print(f"  [ERROR] Submission failed: {exc}\n")
+                previous_job_id = None
 
     # -- Summary --------------------------------------------------------------
     print(f"\n[baseline] Done.")
