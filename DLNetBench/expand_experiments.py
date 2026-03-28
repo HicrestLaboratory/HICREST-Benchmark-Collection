@@ -518,51 +518,48 @@ def build_experiment_json(
         # Base fields — always present
         commands = get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=False)
         
-        # FIXME this is ugly and not generic (only up to two models)
-        command = commands[0]
-        if len(commands) > 1 and (i%2) != 0:
-            command = commands[1]
+        for command in commands:
             
-        entry: dict = {
-            "command":          command,
-            "nodes":            nodes,
-            "gpus":             gpus,
-        }
-        
-        placement = 'na'
+            entry: dict = {
+                "command":          command,
+                "nodes":            nodes,
+                "gpus":             gpus,
+            }
+            
+            placement = 'na'
 
-        # Placement-mode-specific fields
-        if placement_mode in ("device", "random", "linear"):
-            # No extra key: placement is expressed at the top level only
-            pass
+            # Placement-mode-specific fields
+            if placement_mode in ("device", "random", "linear"):
+                # No extra key: placement is expressed at the top level only
+                pass
 
-        elif placement_mode == "runtime":
-            # placement_class comes from the design vector
-            entry["placement_class"] = pcv[i] if i < len(pcv) else "random"
-            placement = entry["placement_class"]
+            elif placement_mode == "runtime":
+                # placement_class comes from the design vector
+                entry["placement_class"] = pcv[i] if i < len(pcv) else "random"
+                placement = entry["placement_class"]
 
-        elif placement_mode == "hardcoded":
-            job_name = get_job_name(run['strategy'], gpus, nodes, pcv[i], i)
-            if oracle_result is not None and oracle_result.ok and oracle_result.placements is not None:
-                nodelist = oracle_result.placements.get(job_name)
-                if nodelist:
-                    entry["nodelist"] = nodelist
-                    entry["placement_class"] = pcv[i]
+            elif placement_mode == "hardcoded":
+                job_name = get_job_name(run['strategy'], gpus, nodes, pcv[i], i)
+                if oracle_result is not None and oracle_result.ok and oracle_result.placements is not None:
+                    nodelist = oracle_result.placements.get(job_name)
+                    if nodelist:
+                        entry["nodelist"] = nodelist
+                        entry["placement_class"] = pcv[i]
+                    else:
+                        # Oracle said feasible but returned no list for this job
+                        entry["placement_class"] = "hardcoded_partial"
                 else:
-                    # Oracle said feasible but returned no list for this job
-                    entry["placement_class"] = "hardcoded_partial"
-            else:
-                entry["placement_class"] = "hardcoded_infeasible"
-                if oracle_result and oracle_result.reason:
-                    entry["infeasible_reason"] = oracle_result.reason
-                    
-            placement = entry["placement_class"]
+                    entry["placement_class"] = "hardcoded_infeasible"
+                    if oracle_result and oracle_result.reason:
+                        entry["infeasible_reason"] = oracle_result.reason
+                        
+                placement = entry["placement_class"]
 
-        job_name = get_job_name(run['strategy'], gpus, nodes, placement, i)
-        if is_large:
-            large_jobs[job_name] = entry; lc += 1
-        else:
-            small_jobs[job_name] = entry; sc += 1
+            job_name = get_job_name(run['strategy'], gpus, nodes, placement, i)
+            if is_large:
+                large_jobs[job_name] = entry; lc += 1
+            else:
+                small_jobs[job_name] = entry; sc += 1
 
     # ── Top-level placement ──────────────────────────────────────────────────
     if placement_mode == "hardcoded":
