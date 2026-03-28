@@ -1361,7 +1361,7 @@ def _plot_slowdown_summary(
 # Threshold used by the cross-experiment analysis functions below.
 # Runs with slowdown percentage strictly below this value are ignored.
 SLOWDOWN_THRESHOLD_PCT: float = 5.0
-CAP_THRESHOLD_PCT: float = 1000.0
+CAP_THRESHOLD_PCT: float = 200.0
 
 
 def _collect_cross_experiment_data(
