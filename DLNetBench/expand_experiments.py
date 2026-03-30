@@ -516,7 +516,7 @@ def build_experiment_json(
         nodes = _gpus_to_nodes(gpus, gpus_per_node)
 
         # Base fields — always present
-        commands = get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=True)
+        commands = get_command(run["strategy"], gpus, comm_lib, gpu_model=gpu_model, use_dgx=False)
         
         # FIXME this is ugly and not generic (only up to two models)
         command = commands[0]

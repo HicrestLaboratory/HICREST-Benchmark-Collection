@@ -29,19 +29,25 @@ _EXECUTABLES: dict[str, str] = {
 }
 
 _STRATEGY_MODELS_MAP: dict[str, Union[str, List[str]]] = {
-    "DP":           "vit-h",
-    "FSDP":         ["llama3-8b", "minerva-7b"],
-    "DP+PP":        ["llama3-8b", "minerva-7b"],
-    "DP+PP+TP":     "llama3-70b",
-    "DP+PP+Expert": "mixtral-8x7b",
+    "DP":           ["vit-h"],
+    "FSDP":         ["minerva-7b"], # "llama3-8b"],
+    "DP+PP":        ["llama3-8b"],  # "minerva-7b"],
+    "DP+PP+TP":     ["llama3-70b"],
+    "DP+PP+Expert": ["mixtral-8x7b"],
 }
 
+def get_default_model(strategy: str) -> str:
+    model = _STRATEGY_MODELS_MAP[strategy]
+    if isinstance(model, str):
+        return model
+    return model[0]
+
 _PARAMS: dict[str, callable] = {
-    "DP":           lambda g: f"{_STRATEGY_MODELS_MAP['DP']} 50 ./DLNetBench",
+    "DP":           lambda g: [f"{m} 50 ./DLNetBench" for m in _STRATEGY_MODELS_MAP['DP']],
     "FSDP":         lambda g: [f"{m} 16 {g if g < 8 else 8} ./DLNetBench" for m in _STRATEGY_MODELS_MAP['FSDP']],
     "DP+PP":        lambda g: [f"{m} {2 if g <= 8 else 8} 16 ./DLNetBench" for m in _STRATEGY_MODELS_MAP['DP+PP']],
-    "DP+PP+TP":     lambda g: f"{_STRATEGY_MODELS_MAP['DP+PP+TP']} 8 16 4 ./DLNetBench",
-    "DP+PP+Expert": lambda g: f"{_STRATEGY_MODELS_MAP['DP+PP+Expert']} 8 16 8 ./DLNetBench",
+    "DP+PP+TP":     lambda g: [f"{m} 8 16 4 ./DLNetBench" for m in _STRATEGY_MODELS_MAP['DP+PP+TP']],
+    "DP+PP+Expert": lambda g: [f"{m} 8 16 8 ./DLNetBench" for m in _STRATEGY_MODELS_MAP['DP+PP+Expert']],
 }
 
 
