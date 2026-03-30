@@ -30,17 +30,22 @@ _EXECUTABLES: dict[str, str] = {
 
 _STRATEGY_MODELS_MAP: dict[str, Union[str, List[str]]] = {
     "DP":           ["vit-h"],
-    "FSDP":         ["minerva-7b"], # "llama3-8b"],
-    "DP+PP":        ["llama3-8b"],  # "minerva-7b"],
+    "FSDP":         ["llama3-8b", "minerva-7b"],
+    "DP+PP":        ["llama3-8b", "minerva-7b"],
     "DP+PP+TP":     ["llama3-70b"],
     "DP+PP+Expert": ["mixtral-8x7b"],
 }
 
+_DEFAULT_MODELS = {
+    "DP":           "vit-h",
+    "FSDP":         "llama3-8b",
+    "DP+PP":        "minerva-7b",
+    "DP+PP+TP":     "llama3-70b",
+    "DP+PP+Expert": "mixtral-8x7b",
+}
+
 def get_default_model(strategy: str) -> str:
-    model = _STRATEGY_MODELS_MAP[strategy]
-    if isinstance(model, str):
-        return model
-    return model[0]
+    return _DEFAULT_MODELS[strategy]
 
 _PARAMS: dict[str, callable] = {
     "DP":           lambda g: [f"{m} 50 ./DLNetBench" for m in _STRATEGY_MODELS_MAP['DP']],

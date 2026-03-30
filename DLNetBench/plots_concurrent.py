@@ -184,29 +184,9 @@ _LABEL_TO_PLACEMENT_CLASS: dict[str, str] = {
 def _extract_placement_class(sbm_tag: str | None) -> str:
     """Return the placement class encoded in *sbm_tag*, or ``""`` if absent."""
     if not sbm_tag:
-        return ""
+        return "ERR"
     m = _CLASS_TAG_RE.search(sbm_tag)
-    return m.group(1) if m else ""
-
-
-def _extract_placement_class_with_fallback(
-    sbm_tag:  str | None,
-    job_name: str | None = None,
-) -> str:
-    """
-    Like :func:`_extract_placement_class`, but falls back to extracting the
-    placement label from *job_name* and mapping it through
-    :data:`_LABEL_TO_PLACEMENT_CLASS` when the tag pattern is absent.
-    """
-    result = _extract_placement_class(sbm_tag)
-    if result:
-        return result
-    if job_name:
-        parts = job_name.split('_')
-        if len(parts) > 3:
-            label = parts[3]
-            return _LABEL_TO_PLACEMENT_CLASS.get(label, label)
-    return ""
+    return m.group(1) if m else "na"
 
 
 # ===========================================================================
@@ -246,16 +226,26 @@ def _run_key_from_job_name(job_name: str) -> RunKey:
     return RunKey(strategy=p.strategy, model=p.model, gpus=gpus, placement=p.placement)
 
 
+def _run_key_from_meta_baseline(meta: dict) -> RunKey:
+    plac = _extract_placement_class(meta['sbm_tag'])
+    return RunKey(
+        strategy=meta['strategy'],
+        model=meta.get('model', command_map.get_default_model(meta['strategy'])),
+        gpus=meta['gpus'],
+        placement=_LABEL_TO_PLACEMENT_CLASS.get(plac, plac)
+    )
+    
+
 def _run_key_from_meta(meta: dict) -> RunKey:
     """
     Build a :class:`RunKey` from a run's metadata dict, falling back to
     job_name parsing for any missing fields.
-    """
+    """    
     jname     = str(meta.get("job_name", ""))
     parsed    = _parse_job_name(jname)
-    strategy  = meta.get("strategy") or parsed.strategy
-    model     = meta.get("model") or command_map.get_default_model(strategy)
-    placement = _extract_placement_class_with_fallback(meta.get("sbm_tag", ""), jname)
+    strategy  = parsed.strategy or meta.get("strategy") or parsed.strategy
+    model     = parsed.model or meta.get("model") or command_map.get_default_model(strategy)
+    placement = parsed.placement
 
     raw_gpus = meta.get("gpus") or parsed.gpus
     try:
@@ -335,7 +325,7 @@ def _print_baseline_table(
     ]
     _table(
         rows,
-        header=["Strategy", "Model", "GPUs", "Placement", f"T0 ({metric})", "Runs averaged"],
+        header=["Strategy", "Model", "GPUs", "Placement", f"T0 ({metric})", "Values averaged"],
         title=" Baseline T0 summary ",
     )
 
@@ -528,7 +518,8 @@ def _build_baseline_table_from_mapping(
         if df is None or df.empty:
             continue
 
-        rkey = _run_key_from_meta(meta)
+        rkey = _run_key_from_meta_baseline(meta)
+        
         if not rkey.strategy or not rkey.gpus:
             print(f"  [baseline] missing 'strategy' or 'gpus' in meta {meta}, skipping.")
             continue
@@ -679,13 +670,19 @@ def _compute_slowdowns(
         jname = meta["job_name"]
         rep   = meta["repetition"]
         rkey  = _run_key_from_meta(meta)
-        nruns = meta.get("nruns")
-
-        if not nruns:
-            try:
-                nruns = int(jname.split('_')[3][1:])
-            except Exception:
-                nruns = None
+        # nruns = meta.get("nruns")
+        
+        # print(meta)
+        # print(jname)
+        # print(rep)
+        # print(rkey)
+        # print()
+        
+        # if not nruns:
+        #     try:
+        #         nruns = int(jname.split('_')[3][1:])
+        #     except Exception:
+        #         nruns = None
 
         if not rkey.strategy or not rkey.gpus:
             print(f"  [slowdown] missing strategy/gpus for job {jname}, rep {rep} — skipping.")
@@ -704,13 +701,14 @@ def _compute_slowdowns(
         if col.empty:
             continue
 
-        if nruns:
-            col = _remove_warmup(
-                col, int(nruns), exclude_first_n, cyclic_warmup,
-                label=f"{jname} rep={rep}",
-            )
-        elif len(col) > exclude_first_n:
-            col = col.iloc[exclude_first_n:]
+        # HERE WE DO NOT HAVE WARMUP (already excluded)
+        # if nruns:
+        #     col = _remove_warmup(
+        #         col, int(nruns), exclude_first_n, cyclic_warmup,
+        #         label=f"{jname} rep={rep}",
+        #     )
+        # elif len(col) > exclude_first_n:
+        #     col = col.iloc[exclude_first_n:]
 
         if col.empty:
             continue
@@ -728,7 +726,7 @@ def _compute_slowdowns(
             f"  [slowdown] WARNING: no baseline (even via fallback) for {key!r} "
             f"— those jobs excluded from interference metrics."
         )
-
+    
     return result if result else None
 
 
@@ -1772,6 +1770,11 @@ def main() -> None:
         help=f"How to reduce per-row values to a scalar (default: {SLOWDOWN_AGG}).",
     )
     parser.add_argument(
+        "--gpu-models", default=None, nargs="+",
+        choices=["GB300", "GB200", "B200", "H100", "H200", "A100", "GH200"],
+        help=f"GPU models to include (default: ALL available).",
+    )
+    parser.add_argument(
         "--out-dir", default=str(OUT_DIR),
         help="Output directory for plots.",
     )
@@ -1802,18 +1805,28 @@ def main() -> None:
     agg:    str = args.agg
 
     # --- Load concurrent data ---
-    mapping: list[tuple[dict, dict[str, pd.DataFrame]]] = []
+    mapping_full: list[tuple[dict, dict[str, pd.DataFrame]]] = []
     for p in [Path(f) for f in args.parquet_files]:
         if not p.exists():
             print(f"WARNING: {p} not found, skipping.")
             continue
         chunk = _load_parquet(p)
-        mapping.extend(chunk)
+        mapping_full.extend(chunk)
         print(f"Loaded {len(chunk)} run(s) from {p}")
+        
+    # Filtering
+    mapping: list[tuple[dict, dict[str, pd.DataFrame]]] = []
+    if args.gpu_models:
+        for meta, dicts in mapping_full:
+            gpu_model = str(meta['sbm_tag']).split('_')[-1]
+            if gpu_model in args.gpu_models:
+                mapping.append((meta, dicts))
+    else:
+        mapping = mapping_full
 
     if not mapping:
         print("No data loaded.")
-        sys.exit(1)
+        sys.exit(1)    
 
     groups = _group_by_sbm_job(mapping)
     print(f"\n{len(groups)} sbatchman job(s) found.")
@@ -1855,7 +1868,9 @@ def main() -> None:
             name_parts    = str(meta['job_name']).split('_')
             meta['job_name'] = '_'.join([name_parts[0], meta['model']] + name_parts[1:])
             # if 'FSDP' in meta['job_name']:
-            #     print(f"{meta['job_name']}    {meta['model']}")
+            #     print(f"{meta['job_name']}   {meta['model']}   {meta['app']}")
+                
+        # continue
 
         perf_path = _plot_performance(sbm_job_id, tag, entries)
 
@@ -1899,6 +1914,7 @@ def main() -> None:
         _print_summary(tag, entries, perf_path, slow_path, summ_path, plac_paths)
         if perf_path is None:
             skipped += 1
+            
     
     # --- Cross-job plots ---
     if baseline is not None and len(groups) > 1:
