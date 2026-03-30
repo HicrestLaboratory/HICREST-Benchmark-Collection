@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 import warnings
 import pandas as pd
 import pyarrow as pa
@@ -245,9 +245,11 @@ def write_multiple_to_parquet(
 
 def read_multiple_from_parquet(
     paths: Union[List[Path], Path],
+    meta_transform: Union[Callable[[dict], dict], None] = None
 ) -> Tuple[List[Tuple[Any, Dict[str, pd.DataFrame]]], Union[pd.DataFrame, None]]:
     """
     Read one or multiple Parquet files written by write_multiple_to_parquet().
+
     Returns:
         mapping: list of (metadata_dict, dict_of_dataframes) tuples
         metadata_df: optional DataFrame with metadata values if all metadata dicts
@@ -255,6 +257,7 @@ def read_multiple_from_parquet(
     """
     if isinstance(paths, Path):
         paths = [paths]
+
     combined_result = []
     seen_keys = set()
     metadata_records = []
@@ -264,12 +267,16 @@ def read_multiple_from_parquet(
         df = table.to_pandas()
         schema_meta = table.schema.metadata or {}
         json_bytes = schema_meta.get(b"user_metadata_list")
+
         if json_bytes is None:
             continue
+
         metadata_list = json.loads(json_bytes.decode("utf-8"))
 
-        for meta in metadata_list:
+        for raw_meta in metadata_list:
+            meta = dict(raw_meta)  # avoid mutating original
             pair_id = meta.pop("_pair_id")
+
             subset_df = df[df["_pair_id"] == pair_id].drop(columns=["_pair_id"])
 
             # Split subset_df by _df_name into a dictionary
@@ -279,25 +286,33 @@ def read_multiple_from_parquet(
                     df_subset = subset_df[subset_df["_df_name"] == df_name].drop(
                         columns=["_df_name"]
                     )
-                    # Drop columns that are all NaN (artifacts from concatenation)
                     df_subset = df_subset.dropna(axis=1, how="all")
                     df_dict[df_name] = df_subset.reset_index(drop=True)
             else:
-                # Fallback if no _df_name column exists (shouldn't happen with new format)
-                df_dict["default"] = subset_df
+                df_dict["default"] = subset_df.reset_index(drop=True)
 
-            # Use hashable string for duplicate checking
+            # ---- APPLY TRANSFORMATION HERE ----
+            if meta_transform is not None:
+                try:
+                    meta = meta_transform(meta)
+                    if not isinstance(meta, dict):
+                        raise TypeError("meta_transform must return a dict")
+                except Exception as e:
+                    raise RuntimeError(f"meta_transform failed for metadata {raw_meta}") from e
+
+            # ---- DEDUPLICATION ON TRANSFORMED META ----
             key_str = json.dumps(meta, sort_keys=True)
             if key_str in seen_keys:
                 warnings.warn(
                     f"Duplicate metadata found in {path}: {meta}. Keeping first occurrence."
                 )
                 continue
+
             seen_keys.add(key_str)
             combined_result.append((meta, df_dict))
             metadata_records.append(meta)
 
-    # Build metadata DataFrame
+    # ---- BUILD METADATA DATAFRAME (AFTER TRANSFORM) ----
     metadata_df = None
     if metadata_records:
         serialized_records = []

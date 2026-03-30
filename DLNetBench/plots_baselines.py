@@ -17,12 +17,13 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 from argparse import ArgumentParser
 from collections import defaultdict
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
 import import_export
+from command_map import _STRATEGY_MODELS_MAP, get_default_model
 
 
 def _placement_linestyles(class_tags: List[str]) -> Dict[str, str]:
@@ -49,16 +50,6 @@ def _base_strategy_linestyles(base_strategies: List[str]) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
-
-def load_data(parquet_files: List[str]) -> Tuple[pd.DataFrame, List[Tuple[dict, dict]]]:
-    """
-    Load all parquet files and return (meta_df, pairs).
-
-    meta_df has one row per job; pairs[i] = (meta_dict, dfs) for job i,
-    where dfs['main'] is the per-iteration DataFrame.
-    """
-    pairs, meta_df = import_export.read_multiple_from_parquet(parquet_files)
-    return meta_df, pairs
 
 
 def build_summary(meta_df: pd.DataFrame, pairs: List[Tuple[dict, dict]]) -> pd.DataFrame:
@@ -155,6 +146,7 @@ def plot_scaling(
     figsize: Tuple[int, int] = (10, 6),
     title: str = "Scaling: Throughput vs Number of GPUs",
     show_ideal: bool = True,
+    plot_efficiency: bool = False,
 ):
     df = summary.copy()
     if strategies:
@@ -162,13 +154,16 @@ def plot_scaling(
     if clusters:
         df = df[df['cluster'].isin(clusters)]
 
-    # Ensure decomposed columns exist
     if 'base_strategy' not in df.columns:
         df[['base_strategy', 'class_tag']] = df['strategy'].apply(
             lambda s: pd.Series(split_strategy(s))
         )
 
     fig, ax = plt.subplots(figsize=figsize)
+
+    # Optional second figure
+    if plot_efficiency:
+        fig_eff, ax_eff = plt.subplots(figsize=figsize)
 
     clust_color    = _cluster_colors(df['cluster'].unique())
     place_ls       = _placement_linestyles(df['class_tag'].unique())
@@ -184,6 +179,23 @@ def plot_scaling(
         marker = base_markers[base_strat]
         label  = f"{base_strat} [{class_tag}] — {cluster}"
 
+        # --- HANDLE DUPLICATES (same as before) ---
+        if grp['gpus'].duplicated().any():
+            dup_counts = grp['gpus'].value_counts()
+            dups = dup_counts[dup_counts > 1]
+
+            print(f"[WARN] Duplicate GPU entries detected for {label}:")
+            for gpu, count in dups.items():
+                sub = grp[grp['gpus'] == gpu]
+                best_idx = sub['throughput_mean'].idxmax()
+                best_val = sub.loc[best_idx, 'throughput_mean']
+                print(f"  - gpus={gpu}: {count} rows → keeping max throughput {best_val:.3f}")
+
+            grp = grp.loc[
+                grp.groupby('gpus')['throughput_mean'].idxmax()
+            ].sort_values('gpus')
+
+        # --- MAIN SCALING PLOT ---
         ax.errorbar(
             grp['gpus'], grp['throughput_mean'],
             yerr=grp['throughput_std'],
@@ -199,6 +211,22 @@ def plot_scaling(
             ideal = base['throughput_mean'] * (gpus_range / base['gpus'])
             ax.plot(gpus_range, ideal, color=color, linestyle=':', linewidth=1, alpha=0.4)
 
+        # --- EFFICIENCY PLOT ---
+        if plot_efficiency:
+            base = grp.iloc[0]
+            g0   = base['gpus']
+            T0   = base['throughput_mean']
+
+            eff = (grp['throughput_mean'] / T0) * (g0 / grp['gpus'])
+
+            ax_eff.plot(
+                grp['gpus'], eff,
+                label=label,
+                color=color, marker=marker, linestyle=ls,
+                linewidth=1, markersize=2,
+            )
+
+    # --- FINALIZE MAIN PLOT ---
     if show_ideal:
         ax.plot([], [], color='gray', linestyle=':', linewidth=1, alpha=0.7, label='Ideal scaling')
 
@@ -213,7 +241,30 @@ def plot_scaling(
 
     plt.tight_layout()
     _save_or_show(fig, output_file, "Scaling plot")
-    return fig, ax
+
+    # --- FINALIZE EFFICIENCY PLOT ---
+    if plot_efficiency:
+        ax_eff.axhline(1.0, linestyle=':', linewidth=1, alpha=0.7, color='gray', label='Ideal efficiency')
+
+        ax_eff.set_xticks(all_gpus)
+        ax_eff.set_xticklabels([str(g) for g in all_gpus])
+        ax_eff.set_xlabel('Number of GPUs', fontsize=12)
+        ax_eff.set_ylabel('Parallel Efficiency', fontsize=12)
+        ax_eff.set_title("Scaling Efficiency", fontsize=14, fontweight='bold')
+        ax_eff.legend(fontsize=9)
+        ax_eff.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        eff_file = None
+        if output_file:
+            eff_file = output_file.replace(".png", "_efficiency.png")
+
+        _save_or_show(fig_eff, eff_file, "Efficiency plot")
+
+        return (fig, ax), (fig_eff, ax_eff)
+
+    return fig, ax, (None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -309,9 +360,28 @@ def plot_breakdown(
 
         base_color = clust_color[cluster]
         color = place_colors[(cluster, class_tag)]
-        # color      = _lighten_color(base_color, place_lighten[class_tag])
 
         label_base = f"{base_strat} [{class_tag}] — {cluster}"
+
+        # --- HANDLE DUPLICATES ---
+        if grp['gpus'].duplicated().any():
+            dup_counts = grp['gpus'].value_counts()
+            dups = dup_counts[dup_counts > 1]
+
+            print(f"[WARN] Duplicate GPU entries detected for {label_base}:")
+            for gpu, count in dups.items():
+                print(f"  - gpus={gpu}: {count} rows merged")
+
+            # Aggregate duplicates (mean is usually safest for percentages)
+            grp = (
+                grp.groupby('gpus', as_index=False)
+                .agg({
+                    'compute_pct': 'mean',
+                    'comm_pct': 'mean'
+                })
+            )
+
+        # Now safe
         grp = grp.set_index('gpus').reindex(all_gpus).fillna(0)
 
         offset = x - group_width / 2 + i * (bar_width + gap) + bar_width / 2
@@ -320,11 +390,12 @@ def plot_breakdown(
         comm_vals    = grp['comm_pct'].values
 
         ax.bar(offset, compute_vals, width=bar_width,
-               color=color, alpha=0.95,
-               label=f"{label_base} — Compute" if label_base not in legend_added else "_nolegend_")
+            color=color, alpha=0.95,
+            label=f"{label_base} — Compute" if label_base not in legend_added else "_nolegend_")
+
         ax.bar(offset, comm_vals, width=bar_width,
-               bottom=compute_vals, color=color, alpha=0.45,
-               label=f"{label_base} — Comm" if label_base not in legend_added else "_nolegend_")
+            bottom=compute_vals, color=color, alpha=0.45,
+            label=f"{label_base} — Comm" if label_base not in legend_added else "_nolegend_")
 
         legend_added.add(label_base)
 
@@ -385,17 +456,16 @@ def main():
 
     # ------------------------------------------------------------------
     print("Loading data...")
-    meta_df, pairs = load_data(args.parquet_files)
-    if 'model' not in meta_df.columns:
-        meta_df['model'] = 'D'
-    meta_df['cluster'] = meta_df['cluster'] + meta_df['gpu_model']
-    meta_df['class_tag'] = meta_df['sbm_tag'].str.extract(r'class-([^_]+(?:_[^_]+)*)_rep')
-    meta_df['strategy'] = meta_df['strategy'] + "_" + meta_df['model'] + "_" + meta_df['class_tag']
+    
+    def meta_transform(meta):
+        match = re.search(r'class-([^_]+(?:_[^_]+)*)_rep', meta.get('sbm_tag', ''))
+        placement_class = match.group(1) if match else "NA"
+        meta['strategy'] = f'{meta["strategy"]}_{get_default_model(meta["strategy"])}_{placement_class}'
+        meta['cluster'] = meta['cluster'] + meta['gpu_model']
+        return meta
+        
+    pairs, meta_df = import_export.read_multiple_from_parquet(args.parquet_files, meta_transform)
 
-    for p, _ in pairs:
-        match = re.search(r'class-([^_]+(?:_[^_]+)*)_rep', p.get('sbm_tag', ''))
-        class_tag = match.group(1) if match else "UNKNOWN"
-        p['strategy'] = f"{p['strategy']}_{p.get('model', 'D')}_{class_tag}"
     print(meta_df.to_string(index=False))
 
     summary = build_summary(meta_df, pairs)
@@ -469,7 +539,7 @@ def main():
                 summary, strategies=[strategy], clusters=clust_here,
                 output_file=str(output_dir / f"{pfx}{strategy}_xcluster_scaling.png"),
                 title=f"Scaling — {strategy} across clusters",
-                show_ideal=not args.no_ideal,
+                show_ideal=not args.no_ideal
             )
             plot_breakdown(
                 summary, strategies=[strategy], clusters=clust_here,
@@ -498,6 +568,7 @@ def main():
                 output_file=str(output_dir / f"{pfx}{base_strat}_all_scaling.png"),
                 title=f"Scaling — {base_strat} (all placements, all clusters)",
                 show_ideal=not args.no_ideal,
+                plot_efficiency=True,
             )
             plot_breakdown(
                 summary, strategies=strats_here,

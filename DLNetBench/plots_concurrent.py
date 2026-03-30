@@ -14,7 +14,7 @@ Three metrics (runtime, commtime, throughput) × one subplot each.
 Interference metrics (requires --baseline)
 -------------------------------------------
 For each sbatchman job in the concurrent data, three scalar summaries are
-computed from per-job slowdown  σ_j = T0(strategy, gpus, placement) / T(job | C):
+computed from per-job slowdown  σ_j = T0(strategy, model, gpus, placement) / T(job | C):
 
   - Mean slowdown          σ̄  = mean(σ_j)
   - Worst-case slowdown    σ_max = max(σ_j)
@@ -27,15 +27,15 @@ via --metric and --agg.
 
 Baseline lookup key
 --------------------
-Baselines are keyed by (strategy, gpus, placement_class) where
+Baselines are keyed by RunKey(strategy, model, gpus, placement_class) where
 placement_class is extracted from the ``sbm_tag`` field using the same
 ``class-<placement>_rep`` regex that the baseline plotting script uses.
 
-If a concurrent run's exact (strategy, gpus, placement_class) triple is not
-found in the baseline table, the script emits **one** warning per missing key
-and falls back to the nearest available baseline for the same (strategy, gpus)
-pair (if any exists).  When no (strategy, gpus) match exists at all, those
-jobs are excluded from interference metrics and a warning is printed.
+If a concurrent run's exact RunKey is not found in the baseline table, the
+script emits **one** warning per missing key and falls back to the nearest
+available baseline for the same (strategy, model, gpus) triple (if any
+exists).  When no such match exists at all, those jobs are excluded from
+interference metrics and a warning is printed.
 
 Placement visualisation (requires --show-placements)
 -----------------------------------------------------
@@ -75,10 +75,9 @@ import re
 import argparse
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable
+from typing import Callable, NamedTuple
 
 import matplotlib
-
 import command_map
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -96,7 +95,6 @@ except ImportError:
 
 # ===========================================================================
 # ❶  USER-CONFIGURABLE SECTION
-#    Change these to switch how slowdown is extracted and aggregated.
 # ===========================================================================
 
 # Which column in dfs['main'] to use as the throughput proxy.
@@ -106,6 +104,26 @@ SLOWDOWN_METRIC: str = "throughput_mean"
 # How to reduce per-rank/iteration rows to a single scalar for one run.
 # Options: "mean" | "median" | "max" | "min"
 SLOWDOWN_AGG: str = "mean"
+
+
+# ===========================================================================
+# ❷  RUN IDENTITY
+# ===========================================================================
+
+class RunKey(NamedTuple):
+    """Canonical identifier for a training run configuration."""
+    strategy:  str
+    model:     str
+    gpus:      int
+    placement: str
+
+    def display(self) -> str:
+        """Human-readable label used in plot titles and table columns."""
+        return f"{self.strategy}/{self.model}/{self.gpus}g/{self.placement or '—'}"
+
+    def short(self) -> str:
+        """Compact label used in legend entries and bar-chart x-ticks."""
+        return f"{self.strategy}\n{self.model}\n{self.gpus}g\n{self.placement or '—'}"
 
 
 # ===========================================================================
@@ -126,8 +144,6 @@ METRIC_LABELS = {
 _PALETTE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
 # Regex that extracts the placement class from an sbm_tag.
-# Matches tags of the form:  ...class-<placement>_rep...
-# Identical to the pattern used in the baseline plotting script.
 _CLASS_TAG_RE = re.compile(r'class-([^_]+(?:_[^_]+)*)_rep')
 
 # ---------------------------------------------------------------------------
@@ -140,20 +156,20 @@ _COLOR_POOL: list[str] = [
     "#aec7e8", "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5",
     "#c49c94", "#f7b6d2", "#9edae5", "#dbdb8d", "#c7c7c7",
 ]
-_MARKER_POOL: list[str] = ["o", "s", "^", "D", "v", "P", "X", "*", "h", "<", ">", "p", "H", "8"]
-_LINESTYLE_POOL: list[str] = ["-", "--", "-.", ":",
-                               (0, (3, 1, 1, 1)),
-                               (0, (5, 1)),
-                               (0, (1, 1)),
-                               (0, (3, 1, 1, 1, 1, 1))]
+_MARKER_POOL:    list[str] = ["o", "s", "^", "D", "v", "P", "X", "*", "h", "<", ">", "p", "H", "8"]
+_LINESTYLE_POOL: list[str] = [
+    "-", "--", "-.", ":",
+    (0, (3, 1, 1, 1)),
+    (0, (5, 1)),
+    (0, (1, 1)),
+    (0, (3, 1, 1, 1, 1, 1)),
+]
 
 
 # ===========================================================================
 # Placement-class extraction
 # ===========================================================================
 
-# Mapping from concurrent job_name placement labels to baseline placement
-# class names.  Sourced from experiments_generator.PLACEMENT_DEFS.
 _LABEL_TO_PLACEMENT_CLASS: dict[str, str] = {
     "intra-l1":               "INTRA_L1_RANDOM",
     "intra-group":            "INTRA_GROUP_RANDOM",
@@ -166,22 +182,7 @@ _LABEL_TO_PLACEMENT_CLASS: dict[str, str] = {
 
 
 def _extract_placement_class(sbm_tag: str | None) -> str:
-    """
-    Return the placement class encoded in *sbm_tag*, or ``""`` if absent.
-
-    The tag format mirrors the baseline plotting script::
-
-        ..._class-<placement_class>_rep<N>_...
-
-    Examples
-    --------
-    >>> _extract_placement_class("ddp_g8_class-spread_rep0")
-    'spread'
-    >>> _extract_placement_class("ddp_g8_class-pack_tight_rep1")
-    'pack_tight'
-    >>> _extract_placement_class("ddp_g8_rep0")
-    ''
-    """
+    """Return the placement class encoded in *sbm_tag*, or ``""`` if absent."""
     if not sbm_tag:
         return ""
     m = _CLASS_TAG_RE.search(sbm_tag)
@@ -189,16 +190,13 @@ def _extract_placement_class(sbm_tag: str | None) -> str:
 
 
 def _extract_placement_class_with_fallback(
-    sbm_tag: str | None,
+    sbm_tag:  str | None,
     job_name: str | None = None,
 ) -> str:
     """
-    Like :func:`_extract_placement_class`, but when the *sbm_tag* does not
-    contain a ``class-<placement>_rep`` pattern, falls back to extracting
-    the placement label from *job_name* and mapping it to the canonical
-    baseline class name via :data:`_LABEL_TO_PLACEMENT_CLASS`.
-
-    The *job_name* format is ``<strategy>_g<gpus>_n<nodes>_<label>_<uid>``.
+    Like :func:`_extract_placement_class`, but falls back to extracting the
+    placement label from *job_name* and mapping it through
+    :data:`_LABEL_TO_PLACEMENT_CLASS` when the tag pattern is absent.
     """
     result = _extract_placement_class(sbm_tag)
     if result:
@@ -211,19 +209,61 @@ def _extract_placement_class_with_fallback(
     return ""
 
 
-def _parse_job_name(job_name: str) -> tuple[str, str, str, str]:
-    """
-    Parse ``<strategy>_g<gpus>_n<nodes>_<placement>_<uid>`` into
-    ``(strategy, gpus, placement, uid)``.
+# ===========================================================================
+# Job-name parsing
+# ===========================================================================
 
-    Falls back gracefully when the name does not match the expected format.
+class ParsedJobName(NamedTuple):
+    strategy:  str
+    model:     str
+    gpus:      str   # kept as str; callers cast to int when needed
+    placement: str
+    uid:       str
+
+
+def _parse_job_name(job_name: str) -> ParsedJobName:
+    """
+    Parse ``<strategy>_<model>_g<gpus>_n<nodes>_<placement>_<uid>`` into a
+    :class:`ParsedJobName`.  Falls back gracefully on short names.
     """
     parts = job_name.split('_')
-    strategy  = parts[0] if len(parts) > 0 else ""
-    gpus      = parts[1] if len(parts) > 1 else ""
-    placement = parts[3] if len(parts) > 3 else ""
-    uid       = "_".join(parts[4:]) if len(parts) > 4 else ""
-    return strategy, gpus, placement, uid
+    return ParsedJobName(
+        strategy  = parts[0] if len(parts) > 0 else "",
+        model     = parts[1] if len(parts) > 1 else "",
+        gpus      = parts[2] if len(parts) > 2 else "",
+        placement = parts[4] if len(parts) > 4 else "",
+        uid       = "_".join(parts[5:]) if len(parts) > 5 else "",
+    )
+
+
+def _run_key_from_job_name(job_name: str) -> RunKey:
+    """Build a :class:`RunKey` directly from a job_name string."""
+    p = _parse_job_name(job_name)
+    try:
+        gpus = int(p.gpus.lstrip("g"))
+    except ValueError:
+        gpus = 0
+    return RunKey(strategy=p.strategy, model=p.model, gpus=gpus, placement=p.placement)
+
+
+def _run_key_from_meta(meta: dict) -> RunKey:
+    """
+    Build a :class:`RunKey` from a run's metadata dict, falling back to
+    job_name parsing for any missing fields.
+    """
+    jname     = str(meta.get("job_name", ""))
+    parsed    = _parse_job_name(jname)
+    strategy  = meta.get("strategy") or parsed.strategy
+    model     = meta.get("model") or command_map.get_default_model(strategy)
+    placement = _extract_placement_class_with_fallback(meta.get("sbm_tag", ""), jname)
+
+    raw_gpus = meta.get("gpus") or parsed.gpus
+    try:
+        gpus = int(str(raw_gpus).lstrip("g"))
+    except (ValueError, AttributeError):
+        gpus = 0
+
+    return RunKey(strategy=strategy, model=model, gpus=gpus, placement=placement)
 
 
 # ===========================================================================
@@ -241,6 +281,21 @@ def _agg_fn(name: str) -> Callable[[pd.Series], float]:
     if name not in fns:
         raise ValueError(f"Unknown aggregation '{name}'. Choose from {list(fns)}")
     return fns[name]
+
+
+def _resolve_metric_column(df: pd.DataFrame, metric: str) -> str | None:
+    """
+    Return the actual column name to use for *metric*.
+
+    Tries the full name first (e.g. ``throughput_mean``), then the prefix
+    (e.g. ``throughput``).  Returns ``None`` when neither is present.
+    """
+    if metric in df.columns:
+        return metric
+    prefix = metric.split('_')[0]
+    if prefix in df.columns:
+        return prefix
+    return None
 
 
 # ===========================================================================
@@ -265,55 +320,47 @@ def _table(rows: list[list[str]], header: list[str], title: str = "", indent: in
 
 
 def _print_baseline_table(
-    baseline: dict[tuple[str, int, str], float],
-    metric: str,
-    counts: dict[tuple[str, int, str], int],
+    baseline: dict[RunKey, float],
+    metric:   str,
+    counts:   dict[RunKey, int],
 ) -> None:
     """Print a summary table of all T0 baseline values."""
     if not baseline:
         print("  (no baseline entries)\n")
         return
     rows = [
-        [strategy, str(gpus), placement or "(none)", f"{t0:.4f}",
-         str(counts.get((strategy, gpus, placement), "?"))]
-        for (strategy, gpus, placement), t0 in sorted(baseline.items())
+        [k.strategy, k.model, str(k.gpus), k.placement or "(none)",
+         f"{t0:.4f}", str(counts.get(k, "?"))]
+        for k, t0 in sorted(baseline.items())
     ]
     _table(
         rows,
-        header=["Strategy", "GPUs", "Placement", f"T0 ({metric})", "Runs averaged"],
+        header=["Strategy", "Model", "GPUs", "Placement", f"T0 ({metric})", "Runs averaged"],
         title=" Baseline T0 summary ",
     )
 
 
 def _print_concurrent_job_stats(
     sbm_job_id: str,
-    tag: str,
-    entries: list[tuple[dict, pd.DataFrame]],
-    metric: str,
-    agg: str,
-    slowdowns: dict[str, dict[int, float]] | None,
-    baseline: dict[tuple[str, int, str], float] | None,
+    tag:        str,
+    entries:    list[tuple[dict, pd.DataFrame]],
+    metric:     str,
+    agg:        str,
+    slowdowns:  dict[str, dict[int, float]] | None,
+    baseline:   dict[RunKey, float] | None,
 ) -> None:
-    """
-    Print two tables for one sbatchman job.
-
-    Table 1 — per (job_name, repetition) row showing strategy/gpus/placement,
-               metric stats, T0, σ_j.
-    Table 2 — per job_name summary (σ aggregated over repetitions).
-    """
+    """Print per-repetition detail and per-job σ summary tables."""
     agg_fn = _agg_fn(agg)
 
     detail_rows = []
     for meta, df in sorted(entries, key=lambda t: (t[0]["job_name"], t[0]["repetition"])):
-        jname     = meta["job_name"]
-        rep       = meta["repetition"]
-        strategy  = meta.get("strategy") or jname.split('_')[0]
-        gpus      = meta.get("gpus") or int(jname.split('_')[1][1:])
-        placement = _extract_placement_class_with_fallback(
-            meta.get("sbm_tag", ""), jname)
+        jname = meta["job_name"]
+        rep   = meta["repetition"]
+        rkey  = _run_key_from_meta(meta)
 
-        if metric in df.columns:
-            col    = pd.to_numeric(df[metric], errors="coerce").dropna()
+        col_name = _resolve_metric_column(df, metric)
+        if col_name is not None:
+            col    = pd.to_numeric(df[col_name], errors="coerce").dropna()
             n      = len(col)
             mean_v = col.mean()
             std_v  = col.std(ddof=0)
@@ -323,8 +370,8 @@ def _print_concurrent_job_stats(
 
         t0 = float("nan")
         if baseline is not None:
-            t0_val = _get_baseline_with_fallback(baseline, strategy, int(gpus), placement)
-            t0 = t0_val if t0_val is not None else float("nan")
+            t0_val = _get_baseline_with_fallback(baseline, rkey)
+            t0     = t0_val if t0_val is not None else float("nan")
 
         sigma = (
             slowdowns[jname][rep]
@@ -333,9 +380,7 @@ def _print_concurrent_job_stats(
         )
 
         detail_rows.append([
-            jname,
-            str(rep),
-            f"{strategy}/{gpus}g/{placement or '—'}",
+            jname, str(rep), rkey.display(),
             str(n),
             f"{mean_v:.4f}" if not np.isnan(mean_v) else "—",
             f"{std_v:.4f}"  if not np.isnan(std_v)  else "—",
@@ -346,7 +391,7 @@ def _print_concurrent_job_stats(
 
     _table(
         detail_rows,
-        header=["job_name", "rep", "strategy/gpus/placement", "n_rows",
+        header=["job_name", "rep", "strategy/model/gpus/placement", "n_rows",
                 f"{metric} mean", f"{metric} std", f"{metric} ({agg})",
                 "T0", "σ_j"],
         title=f" sbm_job={sbm_job_id} / tag={tag} — per-repetition detail ",
@@ -360,8 +405,7 @@ def _print_concurrent_job_stats(
                 continue
             vals = list(reps.values())
             summary_rows.append([
-                jname,
-                str(len(vals)),
+                jname, str(len(vals)),
                 f"{np.mean(vals):.4f}",
                 f"{np.std(vals, ddof=0):.4f}",
                 f"{np.min(vals):.4f}",
@@ -379,61 +423,51 @@ def _print_concurrent_job_stats(
 # Baseline fallback helper
 # ===========================================================================
 
-# Module-level set to track which missing (strategy, gpus, placement) triples
-# have already triggered a warning, so each distinct missing key only produces
-# one warning per script run.
-_baseline_fallback_warned: set[tuple[str, int, str]] = set()
+_baseline_fallback_warned: set[RunKey] = set()
 
 
 def _get_baseline_with_fallback(
-    baseline:  dict[tuple[str, int, str], float],
-    strategy:  str,
-    gpus:      int,
-    placement: str,
-    _warned:   set[tuple[str, int, str]] | None = None,
+    baseline: dict[RunKey, float],
+    key:      RunKey,
+    _warned:  set[RunKey] | None = None,
 ) -> float | None:
     """
-    Look up T0 for (strategy, gpus, placement).
+    Look up T0 for *key*.
 
     Resolution order
     ----------------
-    1. Exact match  (strategy, gpus, placement)
-    2. If not found: warn once per missing key, then return the T0 for the
-       alphabetically-first available placement with the same (strategy, gpus).
-    3. If still not found (no (strategy, gpus) match at all): return None.
-       The caller is responsible for skipping the job and printing a final
-       "excluded from metrics" notice.
-
-    Parameters
-    ----------
-    _warned:
-        External set for deduplicating warnings.  When None the module-level
-        ``_baseline_fallback_warned`` set is used.
+    1. Exact match on the full RunKey.
+    2. Warn once, then fall back to the alphabetically-first available
+       placement for the same (strategy, model, gpus).
+    3. Return None when no (strategy, model, gpus) match exists at all.
     """
     warned = _warned if _warned is not None else _baseline_fallback_warned
 
-    exact = (strategy, gpus, placement)
-    if exact in baseline:
-        return baseline[exact]
+    # Normalise "na" placement to empty string
+    if key.placement.lower() == 'na':
+        key = key._replace(placement='')
+
+    if key in baseline:
+        return baseline[key]
 
     candidates = {
         k: v for k, v in baseline.items()
-        if k[0] == strategy and k[1] == gpus
+        if k.strategy == key.strategy and k.model == key.model and k.gpus == key.gpus
     }
     if not candidates:
         return None
 
-    fallback_key = min(candidates.keys(), key=lambda k: k[2])
+    fallback_key = min(candidates.keys(), key=lambda k: k.placement)
 
-    if exact not in warned:
-        available = sorted(k[2] for k in candidates)
+    if key not in warned:
+        available = sorted(k.placement for k in candidates)
         print(
-            f"  [baseline WARNING] no T0 for "
-            f"(strategy={strategy!r}, gpus={gpus}, placement={placement!r}). "
-            f"Available placements for this strategy/gpu: {available}. "
-            f"Falling back to placement={fallback_key[2]!r}."
+            f"  [baseline WARNING] no T0 for {key!r}. "
+            f"Available placements for (strategy={key.strategy!r}, model={key.model!r}, "
+            f"gpus={key.gpus}): {available}. "
+            f"Falling back to placement={fallback_key.placement!r}."
         )
-        warned.add(exact)
+        warned.add(key)
 
     return candidates[fallback_key]
 
@@ -464,132 +498,134 @@ def _group_by_sbm_job(
     return groups
 
 
+# ===========================================================================
+# Baseline table construction
+# ===========================================================================
+
 # FIXME TUNE exclude_first_n
 def _build_baseline_table_from_mapping(
-    mapping: list[tuple[dict, dict[str, pd.DataFrame]]],
-    metric: str,
-    agg: str,
-    exclude_first_n: int = 1,
-    cyclic_warmup: bool = True,
-    variance_warn_threshold: float = 0.05,
-) -> tuple[dict[tuple[str, int, str], float], dict[tuple[str, int, str], int]]:
+    mapping:                  list[tuple[dict, dict[str, pd.DataFrame]]],
+    metric:                   str,
+    agg:                      str,
+    exclude_first_n:          int   = 1,
+    cyclic_warmup:            bool  = True,
+    variance_warn_threshold:  float = 0.05,
+) -> tuple[dict[RunKey, float], dict[RunKey, int]]:
     """
-    Build { (strategy, gpus, placement_class) -> T0 } from an already-loaded mapping.
+    Build ``{ RunKey -> T0 }`` from an already-loaded mapping.
 
-    The placement class is extracted from each run's ``sbm_tag`` using the same
-    ``class-<placement>_rep`` regex as the baseline plotting script.
+    Multiple runs with the same key are kept as the max value (best baseline).
 
-    Multiple runs with the same key are averaged together.
-
-    Returns (baseline, counts) where counts[key] is how many rows
-    contributed to that T0 value.
+    Returns ``(baseline, counts)`` where ``counts[key]`` is how many data
+    rows contributed to that T0 value.
     """
     agg_fn      = _agg_fn(agg)
-    accumulator: dict[tuple[str, int, str], list[float]] = defaultdict(list)
-    counts:      dict[tuple[str, int, str], int]         = defaultdict(int)
+    accumulator: dict[RunKey, list[float]] = defaultdict(list)
+    counts:      dict[RunKey, int]         = defaultdict(int)
 
     for meta, dfs in mapping:
         df = dfs.get("main")
         if df is None or df.empty:
             continue
 
-        strategy  = meta.get("strategy")
-        gpus      = meta.get("gpus")
-        uid       = meta.get("sbm_tag", "")
-        placement = _extract_placement_class(uid)
-
-        if not strategy and uid:
-            strategy = uid.split('_')[0]
-        if not gpus and uid:
-            try:
-                gpus = int(uid.split('_')[1][1:])
-            except Exception:
-                gpus = None
-
-        current_metric = metric
-        if current_metric not in df.columns:
-            current_metric = current_metric.split('_')[0]
-
-        if current_metric not in df.columns:
-            print(
-                f"  [baseline] metric '{metric}' not found in job "
-                f"{meta.get('sbm_job_id')} "
-                f"({strategy=} / {gpus=} / placement={placement!r}), skipping."
-            )
-            continue
-
-        if strategy is None or gpus is None:
+        rkey = _run_key_from_meta(meta)
+        if not rkey.strategy or not rkey.gpus:
             print(f"  [baseline] missing 'strategy' or 'gpus' in meta {meta}, skipping.")
             continue
 
-        col   = pd.to_numeric(df[current_metric], errors="coerce").dropna()
-        nruns = command_map._STRATEGIES_NUM_RUNS[strategy]
+        col_name = _resolve_metric_column(df, metric)
+        if col_name is None:
+            print(
+                f"  [baseline] metric '{metric}' not found in job "
+                f"{meta.get('sbm_job_id')} ({rkey!r}), skipping."
+            )
+            continue
+
+        col   = pd.to_numeric(df[col_name], errors="coerce").dropna()
+        nruns = command_map._STRATEGIES_NUM_RUNS[rkey.strategy]
         nruns = nruns[0] + nruns[1]
 
         if col.empty:
             continue
 
-        # Warmup removal
-        if cyclic_warmup:
-            kept_idx  = []
-            total_len = len(col)
-            for start in range(0, total_len, int(nruns)):
-                chunk_idx = list(range(start, min(start + int(nruns), total_len)))
-                if len(chunk_idx) > exclude_first_n:
-                    kept_idx.extend(chunk_idx[exclude_first_n:])
-                else:
-                    print(
-                        f"  [baseline] cannot remove {exclude_first_n} warmup runs for chunk "
-                        f"starting at {start} "
-                        f"({strategy=} / {gpus=} / placement={placement!r} / {nruns=}), "
-                        f"not enough values."
-                    )
-            col = col.iloc[sorted(kept_idx)]
-        else:
-            if len(col) > exclude_first_n:
-                col = col.iloc[exclude_first_n:]
-            else:
-                print(
-                    f"  [baseline] cannot remove {exclude_first_n} warmup runs for "
-                    f"{strategy=} / {gpus=} / placement={placement!r} / {nruns=}, "
-                    f"not enough values."
-                )
+        col = _remove_warmup(col, nruns, exclude_first_n, cyclic_warmup, label=str(rkey))
 
         if col.empty:
             continue
 
-        # Variance check
-        if len(col) > 1:
-            mean = col.mean()
-            std  = col.std()
-            if mean != 0:
-                rel_std = std / mean
-                if rel_std > variance_warn_threshold:
-                    print(
-                        f"  [warning] high variance after warmup removal "
-                        f"({rel_std:.2%}) for "
-                        f"{strategy=} / {gpus=} / placement={placement!r} / {uid=}"
-                    )
+        _warn_high_variance(col, variance_warn_threshold, label=str(rkey))
 
-        key = (strategy, int(gpus), placement)
-        counts[key] += len(col)
-        accumulator[key].append(agg_fn(col))
+        counts[rkey] += len(col)
+        accumulator[rkey].append(agg_fn(col))
 
-    baseline: dict[tuple[str, int, str], float] = {}
+    baseline: dict[RunKey, float] = {}
     for key, vals in accumulator.items():
-        baseline[key] = float(np.mean(vals))
+        if len(vals) > 1:
+            print(f"[WARN] Multiple baseline candidates for {key}:")
+            for i, v in enumerate(vals):
+                print(f"  - candidate[{i}] = {v:.6f}")
+            best = max(vals)
+            print(f"  -> keeping max value {best:.6f}")
+        baseline[key] = float(max(vals))
 
     return baseline, counts
 
 
-def _build_baseline_table(
-    path: Path,
-    metric: str,
-    agg: str,
-) -> tuple[dict[tuple[str, int, str], float], dict[tuple[str, int, str], int]]:
-    """Convenience wrapper: load a single parquet file and build the T0 table."""
-    mapping = _load_parquet(path)
-    return _build_baseline_table_from_mapping(mapping, metric, agg)
+# ===========================================================================
+# Warmup / variance helpers  (extracted for reuse)
+# ===========================================================================
+
+def _remove_warmup(
+    col:             pd.Series,
+    nruns:           int,
+    exclude_first_n: int,
+    cyclic:          bool,
+    label:           str = "",
+) -> pd.Series:
+    """
+    Return *col* with the first *exclude_first_n* rows of each cycle removed.
+
+    When *cyclic* is False a single leading slice is removed instead.
+    """
+    if cyclic:
+        kept_idx: list[int] = []
+        total_len = len(col)
+        for start in range(0, total_len, int(nruns)):
+            chunk_idx = list(range(start, min(start + int(nruns), total_len)))
+            if len(chunk_idx) > exclude_first_n:
+                kept_idx.extend(chunk_idx[exclude_first_n:])
+            else:
+                print(
+                    f"  [warmup] cannot remove {exclude_first_n} warmup run(s) "
+                    f"for chunk starting at {start} ({label}), not enough values."
+                )
+        return col.iloc[sorted(kept_idx)]
+    else:
+        if len(col) > exclude_first_n:
+            return col.iloc[exclude_first_n:]
+        print(
+            f"  [warmup] cannot remove {exclude_first_n} warmup run(s) "
+            f"for {label}, not enough values."
+        )
+        return col
+
+
+def _warn_high_variance(
+    col:       pd.Series,
+    threshold: float,
+    label:     str = "",
+) -> None:
+    """Print a warning when the relative standard deviation of *col* exceeds *threshold*."""
+    if len(col) <= 1:
+        return
+    mean = col.mean()
+    if mean == 0:
+        return
+    rel_std = col.std() / mean
+    if rel_std > threshold:
+        print(
+            f"  [variance WARNING] high relative std ({rel_std:.2%}) for {label}"
+        )
 
 
 # ===========================================================================
@@ -600,7 +636,7 @@ def _aggregate_runs(
     entries: list[tuple[dict, pd.DataFrame]],
 ) -> dict[str, dict[int, dict[str, tuple[float, float]]]]:
     """
-    Returns { job_name -> { repetition -> { metric -> (mean, std) } } }.
+    Returns ``{ job_name -> { repetition -> { metric -> (mean, std) } } }``.
     mean/std are over MPI ranks / iterations within one run.
     """
     result: dict[str, dict[int, dict[str, tuple[float, float]]]] = defaultdict(dict)
@@ -622,111 +658,64 @@ def _aggregate_runs(
 # ===========================================================================
 
 def _compute_slowdowns(
-    entries:  list[tuple[dict, pd.DataFrame]],
-    baseline: dict[tuple[str, int, str], float],
-    metric:   str,
-    agg:      str,
+    entries:                 list[tuple[dict, pd.DataFrame]],
+    baseline:                dict[RunKey, float],
+    metric:                  str,
+    agg:                     str,
     cyclic_warmup:           bool  = True,
     exclude_first_n:         int   = 0,
     variance_warn_threshold: float = 0.05,
 ) -> dict[str, dict[int, float]] | None:
     """
-    Returns { job_name -> { repetition -> σ_j } } or None if data is missing.
+    Returns ``{ job_name -> { repetition -> σ_j } }`` or ``None`` if no data.
 
-    σ_j = T0(strategy, gpus, placement_class) / T(job | C)
-
-    The placement class is extracted from each run's ``sbm_tag`` using the same
-    regex as the baseline script.  Missing exact keys fall back via
-    ``_get_baseline_with_fallback`` — one warning per unique missing key.
+    ``σ_j = T0(RunKey) / T(job | concurrent)``
     """
     agg_fn      = _agg_fn(agg)
-    result:      dict[str, dict[int, float]] = defaultdict(dict)
-    no_baseline: set[tuple[str, int, str]]   = set()
+    result:      dict[str, dict[int, float]]  = defaultdict(dict)
+    no_baseline: set[RunKey]                  = set()
 
     for meta, df in entries:
-        jname     = meta["job_name"]
-        rep       = meta["repetition"]
-        strategy  = meta.get("strategy")
-        gpus      = meta.get("gpus")
-        nruns     = meta.get("nruns")
-        placement = _extract_placement_class_with_fallback(
-            meta.get("sbm_tag", ""), jname)
+        jname = meta["job_name"]
+        rep   = meta["repetition"]
+        rkey  = _run_key_from_meta(meta)
+        nruns = meta.get("nruns")
 
-        if not strategy:
-            strategy = jname.split('_')[0]
-        if not gpus:
-            try:
-                gpus = int(jname.split('_')[1][1:])
-            except Exception:
-                gpus = None
         if not nruns:
             try:
-                nruns = int(jname.split('_')[2][1:])
+                nruns = int(jname.split('_')[3][1:])
             except Exception:
                 nruns = None
 
-        if strategy is None or gpus is None:
-            print(
-                f"  [slowdown] missing 'strategy'/'gpus' for job {jname}, rep {rep} — skipping."
-            )
+        if not rkey.strategy or not rkey.gpus:
+            print(f"  [slowdown] missing strategy/gpus for job {jname}, rep {rep} — skipping.")
             continue
 
-        t0 = _get_baseline_with_fallback(baseline, strategy, int(gpus), placement)
+        t0 = _get_baseline_with_fallback(baseline, rkey)
         if t0 is None:
-            no_baseline.add((strategy, int(gpus), placement))
+            no_baseline.add(rkey)
             continue
 
-        current_metric = metric
-        if current_metric not in df.columns:
-            current_metric = current_metric.split('_')[0]
-        if current_metric not in df.columns:
+        col_name = _resolve_metric_column(df, metric)
+        if col_name is None:
             continue
 
-        col = pd.to_numeric(df[current_metric], errors="coerce").dropna()
+        col = pd.to_numeric(df[col_name], errors="coerce").dropna()
         if col.empty:
             continue
 
-        # Warmup removal
-        if cyclic_warmup and nruns:
-            kept_idx  = []
-            total_len = len(col)
-            for start in range(0, total_len, int(nruns)):
-                chunk_idx = list(range(start, min(start + int(nruns), total_len)))
-                if len(chunk_idx) > exclude_first_n:
-                    kept_idx.extend(chunk_idx[exclude_first_n:])
-                else:
-                    print(
-                        f"  [slowdown] cannot remove {exclude_first_n} warmup runs for chunk "
-                        f"starting at {start} "
-                        f"({strategy=} / {gpus=} / placement={placement!r} / {nruns=}), "
-                        f"not enough values."
-                    )
-            col = col.iloc[sorted(kept_idx)]
-        else:
-            if len(col) > exclude_first_n:
-                col = col.iloc[exclude_first_n:]
-            else:
-                print(
-                    f"  [slowdown] cannot remove {exclude_first_n} warmup runs for {jname}, "
-                    f"not enough values."
-                )
+        if nruns:
+            col = _remove_warmup(
+                col, int(nruns), exclude_first_n, cyclic_warmup,
+                label=f"{jname} rep={rep}",
+            )
+        elif len(col) > exclude_first_n:
+            col = col.iloc[exclude_first_n:]
 
         if col.empty:
             continue
 
-        # Variance check
-        if len(col) > 1:
-            mean = col.mean()
-            std  = col.std()
-            if mean != 0:
-                rel_std = std / mean
-                if rel_std > variance_warn_threshold:
-                    print(
-                        f"  [slowdown WARNING] high variance after warmup removal "
-                        f"({rel_std:.2%}) for "
-                        f"{jname=} / {strategy=} / {gpus=} / "
-                        f"placement={placement!r} / {nruns=} / {rep=}"
-                    )
+        _warn_high_variance(col, variance_warn_threshold, label=f"{jname} rep={rep} {rkey!r}")
 
         t_conc = agg_fn(col)
         if t_conc <= 0:
@@ -736,8 +725,7 @@ def _compute_slowdowns(
 
     for key in no_baseline:
         print(
-            f"  [slowdown] WARNING: no baseline (even via fallback) for "
-            f"(strategy={key[0]!r}, gpus={key[1]}, placement={key[2]!r}) "
+            f"  [slowdown] WARNING: no baseline (even via fallback) for {key!r} "
             f"— those jobs excluded from interference metrics."
         )
 
@@ -751,25 +739,20 @@ def _compute_slowdowns(
 def _aggregate_slowdowns(
     slowdowns: dict[str, dict[int, float]],
     entries:   list[tuple[dict, pd.DataFrame]],
-) -> dict[str, float | dict]:
+) -> dict:
     """
-    Returns:
-      'per_job'      : { job_name -> mean_σ over reps }
-      'per_job_std'  : { job_name -> std_σ over reps }
-      'mean'         : σ̄
-      'worst_case'   : σ_max
-      'per_strategy' : { strategy -> mean_σ }
-      'per_group'    : { (strategy, gpus, placement) -> {'mean': float, 'std': float,
-                          'job_names': list[str]} }
+    Returns a dict with keys:
+      ``per_job``      → { job_name -> mean_σ over reps }
+      ``per_job_std``  → { job_name -> std_σ over reps }
+      ``mean``         → σ̄
+      ``worst_case``   → σ_max
+      ``per_strategy`` → { strategy -> mean_σ }
+      ``per_group``    → { RunKey -> {'mean', 'std', 'job_names'} }
     """
-    job_meta: dict[str, tuple[str, int, str]] = {}
-    for meta, _ in entries:
-        jname     = meta["job_name"]
-        strategy  = meta.get("strategy", "unknown")
-        gpus      = int(meta.get("gpus", 0))
-        placement = _extract_placement_class_with_fallback(
-            meta.get("sbm_tag", ""), jname)
-        job_meta[jname] = (strategy, gpus, placement)
+    job_rkey: dict[str, RunKey] = {
+        meta["job_name"]: _run_key_from_meta(meta)
+        for meta, _ in entries
+    }
 
     per_job: dict[str, float] = {
         jname: float(np.mean(list(reps.values())))
@@ -787,23 +770,21 @@ def _aggregate_slowdowns(
 
     by_strategy: dict[str, list[float]] = defaultdict(list)
     for jname, sigma in per_job.items():
-        by_strategy[job_meta.get(jname, ("unknown", 0, ""))[0]].append(sigma)
+        by_strategy[job_rkey[jname].strategy].append(sigma)
     per_strategy = {s: float(np.mean(vs)) for s, vs in by_strategy.items()}
 
-    # Group by (strategy, gpus, placement) — jobs sharing those three attrs
-    # get the same colour in the bar chart and are summarised together.
-    by_group: dict[tuple[str, int, str], list[float]] = defaultdict(list)
+    by_group: dict[RunKey, list[float]] = defaultdict(list)
     for jname, sigma in per_job.items():
-        key = job_meta.get(jname, ("unknown", 0, ""))
-        by_group[key].append(sigma)
+        by_group[job_rkey[jname]].append(sigma)
 
-    per_group: dict[tuple[str, int, str], dict] = {}
-    for gkey, vals in by_group.items():
-        per_group[gkey] = {
-            "mean": float(np.mean(vals)),
-            "std":  float(np.std(vals, ddof=0)) if len(vals) > 1 else 0.0,
-            "job_names": [jn for jn in per_job if job_meta.get(jn) == gkey],
+    per_group: dict[RunKey, dict] = {
+        rk: {
+            "mean":      float(np.mean(vals)),
+            "std":       float(np.std(vals, ddof=0)) if len(vals) > 1 else 0.0,
+            "job_names": [jn for jn in per_job if job_rkey.get(jn) == rk],
         }
+        for rk, vals in by_group.items()
+    }
 
     return {
         "per_job":      per_job,
@@ -824,18 +805,7 @@ def _compute_adaptive_bins(
 ) -> list[tuple[float, float, str]]:
     """
     Compute adaptive histogram bins from a list of percentage slowdown values
-    (i.e. (σ - 1) * 100).
-
-    Strategy
-    --------
-    * Start with the range of the data.
-    * Always include a "no-slowdown" bin straddling 0 (negative = speedup).
-    * Use a fixed set of candidate breakpoints and keep those that divide
-      the data into non-trivially-small bins (>=5 % of total).
-    * Return a list of (lo_pct, hi_pct, label) tuples.
-
-    The labels use "%" notation with a leading sign so they read naturally
-    on a bar-chart axis, e.g. ``"[-5 %, +5 %)"`` or ``">= 20 %"``.
+    (i.e. ``(σ - 1) * 100``).
     """
     if not all_pct:
         return [(-5.0, 5.0, "~0 %"), (5.0, float("inf"), "> 5 %")]
@@ -844,41 +814,28 @@ def _compute_adaptive_bins(
     hi = max(all_pct)
     n  = len(all_pct)
 
-    # Candidate breakpoints (percentage slowdown).
     candidate_breaks = [-50, -20, -10, -5, 0, 2, 5, 10, 15, 20, 30, 50, 100, 200]
-    # Filter to range that covers the data, with a little headroom.
     breaks = [b for b in candidate_breaks if lo - 5 <= b <= hi + 5]
 
-    # Always have -inf as left edge and +inf as right edge.
     edges: list[float] = sorted(set(breaks))
     if not edges or edges[0] > lo:
         edges = [lo - 1] + edges
     if not edges or edges[-1] < hi:
         edges = edges + [hi + 1]
 
-    # Merge bins that are too small (< 5 % of total runs).
     min_count = max(1, int(0.05 * n))
     merged: list[float] = [edges[0]]
     for e in edges[1:]:
         count_in_new = sum(1 for v in all_pct if merged[-1] <= v < e)
         if count_in_new >= min_count or e == edges[-1]:
             merged.append(e)
-        # else: skip this edge — merge with next
 
-    # Extend last bin to +inf and first bin to -inf
     bins: list[tuple[float, float, str]] = []
     for i in range(len(merged) - 1):
         lo_b = merged[i]
         hi_b = merged[i + 1]
-
-        if i == 0:
-            lo_label = f"< {hi_b:+.0f} %"
-        else:
-            lo_label = f"{lo_b:+.0f} %"
-
         if i == len(merged) - 2:
-            hi_label = f">= {lo_b:+.0f} %"
-            label = hi_label
+            label = f">= {lo_b:+.0f} %"
         else:
             label = f"[{lo_b:+.0f}, {hi_b:+.0f} %)"
 
@@ -892,38 +849,28 @@ def _compute_adaptive_bins(
 
 
 def _build_distribution_panel(
-    ax: plt.Axes,
+    ax:     plt.Axes,
     all_pct: list[float],
-    title: str = "Slowdown distribution",
+    title:  str = "Slowdown distribution",
 ) -> None:
-    """
-    Draw an adaptive histogram of slowdown percentages on *ax*.
-
-    Each bar is labelled with its count and percentage of total runs.
-    Bars are coloured green (speedup / negligible) -> red (heavy slowdown).
-    """
+    """Draw an adaptive histogram of slowdown percentages on *ax*."""
     bins = _compute_adaptive_bins(all_pct)
     n    = len(all_pct)
 
-    counts = []
-    labels = []
-    for lo_b, hi_b, label in bins:
-        cnt = sum(1 for v in all_pct if lo_b <= v < hi_b)
-        counts.append(cnt)
-        labels.append(label)
+    counts = [
+        sum(1 for v in all_pct if lo_b <= v < hi_b)
+        for lo_b, hi_b, _ in bins
+    ]
+    labels = [label for _, _, label in bins]
 
-    # Colour: map bin midpoint to a green-yellow-red ramp.
-    def _bin_colour(lo_b: float, hi_b: float) -> str:
+    def _bin_colour(lo_b: float, hi_b: float) -> tuple:
         mid = (
             (lo_b + hi_b) / 2
             if not np.isinf(lo_b) and not np.isinf(hi_b)
             else (hi_b if np.isinf(lo_b) else lo_b)
         )
-        # Clamp to [-20, +50] for colour mapping.
-        t = np.clip((mid + 20) / 70, 0, 1)   # 0 = green (-20 %), 1 = red (+50 %)
-        r = t
-        g = 1 - t * 0.8
-        return (r, g, 0.2)
+        t = np.clip((mid + 20) / 70, 0, 1)
+        return (t, 1 - t * 0.8, 0.2)
 
     colours = [_bin_colour(lo_b, hi_b) for lo_b, hi_b, _ in bins]
 
@@ -959,26 +906,26 @@ def _build_job_visuals(
     """
     Return ``{ job_name -> (color, marker, linestyle) }``.
 
-    Jobs that share the same (strategy, gpus, placement) triple get the same
-    colour; their marker / linestyle varies by uid index.
+    Jobs that share the same :class:`RunKey` (minus uid) get the same colour;
+    their marker / linestyle varies by uid index.
     """
-    color_key_order: dict[tuple[str, str, str], int] = {}
-    uid_order:       dict[str, int]                  = {}
+    color_key_order: dict[RunKey, int] = {}
+    uid_order:       dict[str, int]    = {}
 
     for jname in sorted(job_names):
-        strategy, gpus, placement, uid = _parse_job_name(jname)
-        ck = (strategy, gpus, placement)
-        if ck not in color_key_order:
-            color_key_order[ck] = len(color_key_order)
-        if uid not in uid_order:
-            uid_order[uid] = len(uid_order)
+        p  = _parse_job_name(jname)
+        rk = RunKey(p.strategy, p.model, int(p.gpus.lstrip("g") or 0), p.placement)
+        if rk not in color_key_order:
+            color_key_order[rk] = len(color_key_order)
+        if p.uid not in uid_order:
+            uid_order[p.uid] = len(uid_order)
 
     visuals: dict[str, tuple[str, str, str]] = {}
     for jname in job_names:
-        strategy, gpus, placement, uid = _parse_job_name(jname)
-        ck        = (strategy, gpus, placement)
-        color     = _COLOR_POOL[color_key_order[ck] % len(_COLOR_POOL)]
-        uid_idx   = uid_order[uid]
+        p   = _parse_job_name(jname)
+        rk  = RunKey(p.strategy, p.model, int(p.gpus.lstrip("g") or 0), p.placement)
+        color     = _COLOR_POOL[color_key_order[rk] % len(_COLOR_POOL)]
+        uid_idx   = uid_order[p.uid]
         marker    = _MARKER_POOL[uid_idx % len(_MARKER_POOL)]
         linestyle = _LINESTYLE_POOL[uid_idx % len(_LINESTYLE_POOL)]
         visuals[jname] = (color, marker, linestyle)
@@ -991,28 +938,27 @@ def _build_job_visuals(
 
 def _plot_performance(
     sbm_job_id: str,
-    tag: str,
-    entries: list[tuple[dict, pd.DataFrame]],
+    tag:        str,
+    entries:    list[tuple[dict, pd.DataFrame]],
 ) -> Path | None:
-    agg = _aggregate_runs(entries)
-    if not agg:
+    agg_data  = _aggregate_runs(entries)
+    if not agg_data:
         print(f"  [skip] {tag}: no aggregatable data")
         return None
 
-    job_names = sorted(agg.keys())
+    job_names = sorted(agg_data.keys())
     n_jobs    = len(job_names)
     visuals   = _build_job_visuals(job_names)
 
     present_metrics = [
         m for m in METRICS
-        if any(m in stats for reps in agg.values() for stats in reps.values())
+        if any(m in stats for reps in agg_data.values() for stats in reps.values())
     ]
     if not present_metrics:
         print(f"  [skip] {tag}: no recognised metrics")
         return None
 
-    n_metrics = len(present_metrics)
-
+    n_metrics    = len(present_metrics)
     legend_ncol  = min(8, n_jobs)
     legend_rows  = (n_jobs + legend_ncol - 1) // legend_ncol
     legend_h_in  = max(0.7, legend_rows * 0.30 + 0.4)
@@ -1035,7 +981,7 @@ def _plot_performance(
     for col_idx, metric in enumerate(present_metrics):
         ax = axes[0][col_idx]
         for jname in job_names:
-            reps_dict  = agg[jname]
+            reps_dict  = agg_data[jname]
             xs_present = sorted(r for r in reps_dict if metric in reps_dict[r])
             if not xs_present:
                 continue
@@ -1049,7 +995,6 @@ def _plot_performance(
                 color=color, label=jname,
             )
             ax.fill_between(xs_present, ys - yerrs, ys + yerrs, alpha=0.12, color=color)
-
             if col_idx == 0:
                 legend_handles.append(line)
                 legend_labels.append(jname)
@@ -1091,10 +1036,9 @@ def _plot_slowdown_timeline(
     tag:        str,
     slowdowns:  dict[str, dict[int, float]],
 ) -> Path:
-    job_names = sorted(slowdowns.keys())
-    n_jobs    = len(job_names)
-    visuals   = _build_job_visuals(job_names)
-
+    job_names   = sorted(slowdowns.keys())
+    n_jobs      = len(job_names)
+    visuals     = _build_job_visuals(job_names)
     legend_ncol = min(8, n_jobs)
     legend_rows = (n_jobs + legend_ncol - 1) // legend_ncol
     legend_h_in = max(0.7, legend_rows * 0.30 + 0.4)
@@ -1119,9 +1063,9 @@ def _plot_slowdown_timeline(
         handles.append(line)
         labels.append(jname)
 
-    ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="No slowdown (sigma=1)")
+    ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="No slowdown (σ=1)")
     ax.set_xlabel("Repetition", fontsize=9)
-    ax.set_ylabel("Slowdown  sigma_j  (higher = worse)", fontsize=9)
+    ax.set_ylabel("Slowdown  σ_j  (higher = worse)", fontsize=9)
     ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
     ax.grid(True, linewidth=0.4, alpha=0.6)
 
@@ -1154,86 +1098,60 @@ def _plot_slowdown_summary(
     """
     Two-panel interference summary (stacked vertically):
 
-    Panel 1 (top)    — Per-job bar chart.
-        * Bars coloured by (strategy, gpus, placement) group.
-        * Error bars show std of sigma over repetitions.
-        * Bar label inside the bar, shown as signed percentage (+12 %, -2 %).
-
-    Panel 2 (bottom) — Adaptive slowdown-percentage histogram with grouped bars.
-        * Bins are computed from all per-repetition slowdown values.
-        * Within each bin, one bar per (strategy, gpus, placement) group,
-          coloured consistently with panel 1.
-        * Each bar carries two labels: count above the bar, and percentage
-          of that group's total reps inside the bar (white bold).
+    Panel 1 — Per-job bar chart with error bars and signed-% labels.
+    Panel 2 — Adaptive slowdown-% histogram, grouped by RunKey.
     """
     per_job     = agg_metrics["per_job"]
     per_job_std = agg_metrics.get("per_job_std", {})
     job_names   = sorted(per_job.keys())
     n_jobs      = len(job_names)
 
-    # ------------------------------------------------------------------ #
-    # Derive group ordering and colours — stable across both panels       #
-    # ------------------------------------------------------------------ #
-    group_keys_ordered: list[tuple[str, str, str]] = []
+    # Stable group ordering and colours
+    group_keys_ordered: list[RunKey] = []
     for jn in sorted(job_names):
-        strategy, gpus, placement, _ = _parse_job_name(jn)
-        ck = (strategy, gpus, placement)
-        if ck not in group_keys_ordered:
-            group_keys_ordered.append(ck)
+        rk = _run_key_from_job_name(jn)
+        if rk not in group_keys_ordered:
+            group_keys_ordered.append(rk)
 
-    group_color: dict[tuple, str] = {
-        ck: _COLOR_POOL[i % len(_COLOR_POOL)]
-        for i, ck in enumerate(group_keys_ordered)
+    group_color: dict[RunKey, str] = {
+        rk: _COLOR_POOL[i % len(_COLOR_POOL)]
+        for i, rk in enumerate(group_keys_ordered)
     }
 
-    def _group_key(jname: str) -> tuple[str, str, str]:
-        s, g, p, _ = _parse_job_name(jname)
-        return (s, g, p)
-
-    # ------------------------------------------------------------------ #
-    # Build per-group per-rep slowdown pct lists for panel 2             #
-    # { group_key -> [pct_value, ...] }                                   #
-    # ------------------------------------------------------------------ #
-    group_pct: dict[tuple, list[float]] = defaultdict(list)
+    # Per-group per-rep pct lists for panel 2
+    group_pct: dict[RunKey, list[float]] = defaultdict(list)
     all_pct:   list[float] = []
 
     if slowdowns:
         for jname, reps in slowdowns.items():
-            gk = _group_key(jname)
+            rk = _run_key_from_job_name(jname)
             for sigma in reps.values():
                 pct = (sigma - 1.0) * 100.0
-                group_pct[gk].append(pct)
+                group_pct[rk].append(pct)
                 all_pct.append(pct)
     elif per_job:
         for jname, sigma in per_job.items():
-            gk  = _group_key(jname)
+            rk  = _run_key_from_job_name(jname)
             pct = (sigma - 1.0) * 100.0
-            group_pct[gk].append(pct)
+            group_pct[rk].append(pct)
             all_pct.append(pct)
 
-    # ------------------------------------------------------------------ #
-    # Figure layout: 2 x 1 stacked                                        #
-    # ------------------------------------------------------------------ #
     fig_w = max(10, n_jobs * 0.5 + 7)
     fig, (ax_jobs, ax_hist) = plt.subplots(2, 1, figsize=(fig_w, 18))
     fig.suptitle(f"Interference summary\nsbm_job={sbm_job_id}  tag={tag}", fontsize=11)
 
-    # ==================================================================== #
-    # Panel 1 — per-job bars                                                #
-    # ==================================================================== #
-    bar_colors = [group_color.get(_group_key(jn), "#888888") for jn in job_names]
+    # --- Panel 1: per-job bars ---
+    bar_colors = [group_color.get(_run_key_from_job_name(jn), "#888888") for jn in job_names]
     job_means  = [per_job[jn]               for jn in job_names]
     job_stds   = [per_job_std.get(jn, 0.0) for jn in job_names]
 
     bars = ax_jobs.bar(
-        range(n_jobs),
-        job_means,
+        range(n_jobs), job_means,
         yerr=job_stds,
-        color=bar_colors,
-        edgecolor="black", linewidth=0.5,
+        color=bar_colors, edgecolor="black", linewidth=0.5,
         capsize=3, error_kw={"elinewidth": 1.0, "ecolor": "black"},
     )
-    ax_jobs.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="sigma = 1")
+    ax_jobs.axhline(1.0, color="black", linewidth=0.8, linestyle="--", label="σ = 1")
 
     for bar, mean_v in zip(bars, job_means):
         pct       = (mean_v - 1.0) * 100.0
@@ -1243,13 +1161,11 @@ def _plot_slowdown_summary(
         y_ref     = ax_jobs.get_ylim()[0]
         label_y   = y_ref + 0.60 * (bar_h - y_ref) if bar_h > y_ref else bar_h * 0.5
         ax_jobs.text(
-            bar.get_x() + bar.get_width() / 2,
-            label_y,
+            bar.get_x() + bar.get_width() / 2, label_y,
             label_txt,
             ha="center", va="center",
             fontsize=max(6, 9 - n_jobs // 12),
-            color="white",
-            fontweight="bold",
+            color="white", fontweight="bold",
         )
 
     ax_jobs.set_xticks(range(n_jobs))
@@ -1257,21 +1173,19 @@ def _plot_slowdown_summary(
         job_names, rotation=35, ha="right",
         fontsize=max(14, 8 - n_jobs // 10),
     )
-    ax_jobs.set_ylabel("Mean slowdown  sigma_j", fontsize=18)
+    ax_jobs.set_ylabel("Mean slowdown  σ_j", fontsize=18)
     ax_jobs.set_title("Per-job slowdown  (error bar = std over repetitions)", fontsize=18)
     ax_jobs.legend(fontsize=12)
     ax_jobs.grid(True, axis="y", linewidth=0.5, alpha=0.8)
 
-    # ==================================================================== #
-    # Panel 2 — adaptive histogram with one grouped bar per group per bin  #
-    # ==================================================================== #
+    # --- Panel 2: adaptive histogram grouped by RunKey ---
     if all_pct:
         bins          = _compute_adaptive_bins(all_pct)
         n_bins        = len(bins)
-        active_groups = [gk for gk in group_keys_ordered if group_pct.get(gk)]
+        active_groups = [rk for rk in group_keys_ordered if group_pct.get(rk)]
         n_active      = len(active_groups)
 
-        total_width = 0.8   # fraction of one bin slot used by all bars together
+        total_width = 0.8
         bar_width   = total_width / max(n_active, 1)
         offsets     = np.linspace(
             -total_width / 2 + bar_width / 2,
@@ -1283,9 +1197,9 @@ def _plot_slowdown_summary(
         legend_handles: list = []
         legend_labels:  list[str] = []
 
-        for g_idx, gk in enumerate(active_groups):
-            pct_vals = group_pct[gk]
-            color    = group_color.get(gk, "#888888")
+        for g_idx, rk in enumerate(active_groups):
+            pct_vals = group_pct[rk]
+            color    = group_color.get(rk, "#888888")
             counts   = [
                 sum(1 for v in pct_vals if lo_b <= v < hi_b)
                 for lo_b, hi_b, _ in bins
@@ -1293,21 +1207,18 @@ def _plot_slowdown_summary(
 
             x_pos    = bin_centers + offsets[g_idx]
             grp_bars = ax_hist.bar(
-                x_pos,
-                counts,
+                x_pos, counts,
                 width=bar_width * 0.92,
-                color=color,
-                edgecolor="black", linewidth=0.4,
-                label=f"{gk[0]} / {gk[1]} / {gk[2] or '-'}",
+                color=color, edgecolor="black", linewidth=0.4,
+                label=rk.display(),
             )
             legend_handles.append(grp_bars[0])
-            legend_labels.append(f"{gk[0]} / {gk[1]} / {gk[2] or '-'}")
+            legend_labels.append(rk.display())
 
             total = len(pct_vals)
             for bar, cnt in zip(grp_bars, counts):
                 if cnt == 0:
                     continue
-                # Count above the bar
                 ax_hist.text(
                     bar.get_x() + bar.get_width() / 2,
                     bar.get_height() + 0.15,
@@ -1315,7 +1226,6 @@ def _plot_slowdown_summary(
                     ha="center", va="bottom",
                     fontsize=max(14, 8 - n_active),
                 )
-                # Percentage of this group's total reps, inside the bar
                 pct_val = (cnt / total * 100.0) if total > 0 else 0.0
                 ax_hist.text(
                     bar.get_x() + bar.get_width() / 2,
@@ -1323,8 +1233,7 @@ def _plot_slowdown_summary(
                     f"{pct_val:.0f}%",
                     ha="center", va="center",
                     fontsize=max(14, 8 - n_active),
-                    color="white",
-                    fontweight="bold",
+                    color="white", fontweight="bold",
                 )
 
         bin_labels = [label for _, _, label in bins]
@@ -1332,18 +1241,14 @@ def _plot_slowdown_summary(
         ax_hist.set_xticklabels(bin_labels, rotation=30, ha="right", fontsize=18)
         ax_hist.set_ylabel("# repetitions", fontsize=20)
         ax_hist.set_title(
-            "Slowdown distribution — grouped by (strategy / GPUs / placement)",
+            "Slowdown distribution — grouped by (strategy / model / GPUs / placement)",
             fontsize=18,
         )
         ax_hist.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
         ax_hist.grid(True, axis="y", linewidth=0.6, alpha=0.8)
 
         if legend_handles:
-            ax_hist.legend(
-                legend_handles, legend_labels,
-                fontsize=14,
-                loc="upper right",
-            )
+            ax_hist.legend(legend_handles, legend_labels, fontsize=14, loc="upper right")
     else:
         ax_hist.set_visible(False)
 
@@ -1358,55 +1263,45 @@ def _plot_slowdown_summary(
 # Cross-experiment analysis plots
 # ===========================================================================
 
-# Threshold used by the cross-experiment analysis functions below.
-# Runs with slowdown percentage strictly below this value are ignored.
 SLOWDOWN_THRESHOLD_PCT: float = 5.0
-CAP_THRESHOLD_PCT: float = 200.0
+CAP_THRESHOLD_PCT:      float = 200.0
 
 
 def _collect_cross_experiment_data(
     groups:   dict[str, list[tuple[dict, pd.DataFrame]]],
-    baseline: dict[tuple[str, int, str], float],
+    baseline: dict[RunKey, float],
     metric:   str,
     agg:      str,
     cap:      float | None = None,
-) -> dict[tuple[str, str, str], list[float]]:
+) -> dict[RunKey, list[float]]:
     """
-    Aggregate all per-repetition sigma values across every sbatchman job,
-    keyed by (strategy, gpus, placement).
+    Aggregate all per-repetition σ values across every sbatchman job,
+    keyed by :class:`RunKey`.
 
-    Returns { (strategy, gpus, placement) -> [sigma_pct, ...] }
-    where sigma_pct = (sigma - 1) * 100.
-
-    Parameters
-    ----------
-    cap:
-        If given, any sigma_pct strictly above this value is considered an
-        outlier and dropped.  A warning summarising removed counts per group
-        is printed once at the end.
+    Returns ``{ RunKey -> [sigma_pct, ...] }`` where
+    ``sigma_pct = (σ - 1) * 100``.  Values above *cap* are dropped (with a
+    warning).
     """
-    result:   dict[tuple[str, str, str], list[float]] = defaultdict(list)
-    n_capped: dict[tuple[str, str, str], int]         = defaultdict(int)
+    result:   dict[RunKey, list[float]] = defaultdict(list)
+    n_capped: dict[RunKey, int]         = defaultdict(int)
 
     for sbm_job_id, entries in groups.items():
         slowdowns = _compute_slowdowns(entries, baseline, metric, agg)
         if not slowdowns:
             continue
         for jname, reps in slowdowns.items():
-            strategy, gpus, placement, _ = _parse_job_name(jname)
-            gk = (strategy, gpus, placement)
+            rk = _run_key_from_job_name(jname)
             for sigma in reps.values():
                 pct = (sigma - 1.0) * 100.0
                 if cap is not None and pct > cap:
-                    n_capped[gk] += 1
+                    n_capped[rk] += 1
                 else:
-                    result[gk].append(pct)
+                    result[rk].append(pct)
 
     if n_capped:
         total_removed = sum(n_capped.values())
         details = "  ".join(
-            f"{gk[0]}/{gk[1]}/{gk[2] or '-'}:{n}"
-            for gk, n in sorted(n_capped.items())
+            f"{rk.display()}:{n}" for rk, n in sorted(n_capped.items())
         )
         print(
             f"  [cap] removed {total_removed} outlier value(s) "
@@ -1418,7 +1313,7 @@ def _collect_cross_experiment_data(
 
 def _plot_ecdf_by_placement(
     groups:    dict[str, list[tuple[dict, pd.DataFrame]]],
-    baseline:  dict[tuple[str, int, str], float],
+    baseline:  dict[RunKey, float],
     metric:    str,
     agg:       str,
     threshold: float = SLOWDOWN_THRESHOLD_PCT,
@@ -1427,37 +1322,26 @@ def _plot_ecdf_by_placement(
     """
     Empirical CDF of slowdown percentage, faceted by placement class.
 
-    One subplot per placement class.  Within each subplot, one eCDF curve per
-    (strategy, gpus) pair — coloured consistently across subplots.  Only
-    repetitions with slowdown_pct >= threshold are included; the threshold is
-    drawn as a vertical reference line.  Values above *cap* (if given) are
-    removed before plotting.
-
-    Layout
-    ------
-    Subplots are arranged in a grid with at most 3 columns.  Each subplot
-    x-axis is the slowdown percentage; y-axis is the empirical CDF value
-    (fraction of runs with slowdown <= x).
+    One subplot per placement; one eCDF curve per (strategy, model, gpus) triple.
     """
     cross = _collect_cross_experiment_data(groups, baseline, metric, agg, cap=cap)
     if not cross:
         return None
 
-    # Collect all placement classes and (strategy, gpus) pairs
-    placements:   list[str]            = sorted({gk[2] for gk in cross})
-    strat_gpu_pairs: list[tuple[str, str]] = sorted({(gk[0], gk[1]) for gk in cross})
+    placements = sorted({rk.placement for rk in cross})
+    # (strategy, model, gpus) combos for colour/marker assignment
+    smg_pairs: list[tuple[str, str, int]] = sorted({
+        (rk.strategy, rk.model, rk.gpus) for rk in cross
+    })
 
     if not placements:
         return None
 
-    # Stable colour per (strategy, gpus) pair across all subplots
-    sg_color: dict[tuple[str, str], str] = {
-        sg: _COLOR_POOL[i % len(_COLOR_POOL)]
-        for i, sg in enumerate(strat_gpu_pairs)
+    smg_color:  dict[tuple, str] = {
+        smg: _COLOR_POOL[i % len(_COLOR_POOL)] for i, smg in enumerate(smg_pairs)
     }
-    sg_marker: dict[tuple[str, str], str] = {
-        sg: _MARKER_POOL[i % len(_MARKER_POOL)]
-        for i, sg in enumerate(strat_gpu_pairs)
+    smg_marker: dict[tuple, str] = {
+        smg: _MARKER_POOL[i % len(_MARKER_POOL)] for i, smg in enumerate(smg_pairs)
     }
 
     n_placements = len(placements)
@@ -1471,7 +1355,7 @@ def _plot_ecdf_by_placement(
     )
     fig.suptitle(
         f"eCDF of slowdown (>= {threshold:+.0f}%) — faceted by placement\n"
-        f"one curve per (strategy, GPUs)",
+        f"one curve per (strategy, model, GPUs)",
         fontsize=13,
     )
 
@@ -1489,34 +1373,31 @@ def _plot_ecdf_by_placement(
         ax.axhline(1.0, color="lightgrey", linewidth=0.6, linestyle="--")
 
         has_data = False
-        for sg in strat_gpu_pairs:
-            strategy, gpus = sg
-            gk      = (strategy, gpus, placement)
-            pct_all = cross.get(gk, [])
-            pct_filtered = [v for v in pct_all if v >= threshold]
-            if not pct_filtered:
+        for smg in smg_pairs:
+            rk       = RunKey(strategy=smg[0], model=smg[1], gpus=smg[2], placement=placement)
+            pct_all  = cross.get(rk, [])
+            pct_filt = [v for v in pct_all if v >= threshold]
+            if not pct_filt:
                 continue
 
             has_data = True
-            xs = sorted(pct_filtered)
+            xs = sorted(pct_filt)
             ys = np.arange(1, len(xs) + 1) / len(xs)
-
-            # Prepend the threshold point at y=0 for a clean left edge
             xs = [threshold] + xs
             ys = np.concatenate([[0.0], ys])
 
-            color  = sg_color[sg]
-            marker = sg_marker[sg]
+            color  = smg_color[smg]
+            marker = smg_marker[smg]
             line, = ax.plot(
                 xs, ys,
                 color=color, marker=marker,
                 markevery=max(1, len(xs) // 10),
                 markersize=4, linewidth=1.6,
-                label=f"{strategy} / {gpus}",
+                label=f"{smg[0]} / {smg[1]} / {smg[2]}g",
             )
             if not legend_built:
                 legend_handles.append(line)
-                legend_labels.append(f"{strategy} / {gpus}")
+                legend_labels.append(f"{smg[0]} / {smg[1]} / {smg[2]}g")
 
         if not has_data:
             ax.text(0.5, 0.5, "no data above threshold",
@@ -1531,11 +1412,9 @@ def _plot_ecdf_by_placement(
         ax.grid(True, linewidth=0.4, alpha=0.6)
         ax.tick_params(labelsize=9)
 
-    # Hide unused subplots
     for p_idx in range(n_placements, n_rows * n_cols):
         axes[p_idx // n_cols][p_idx % n_cols].set_visible(False)
 
-    # Shared legend below the figure
     if legend_handles:
         fig.legend(
             legend_handles, legend_labels,
@@ -1543,7 +1422,7 @@ def _plot_ecdf_by_placement(
             bbox_to_anchor=(0.5, 0.0),
             ncol=min(6, len(legend_handles)),
             fontsize=10,
-            title="strategy / GPUs",
+            title="strategy / model / GPUs",
             title_fontsize=10,
             frameon=True,
         )
@@ -1558,7 +1437,7 @@ def _plot_ecdf_by_placement(
 
 def _plot_exceedance(
     groups:    dict[str, list[tuple[dict, pd.DataFrame]]],
-    baseline:  dict[tuple[str, int, str], float],
+    baseline:  dict[RunKey, float],
     metric:    str,
     agg:       str,
     threshold: float = SLOWDOWN_THRESHOLD_PCT,
@@ -1567,74 +1446,61 @@ def _plot_exceedance(
     """
     Two-panel exceedance summary across all experiments.
 
-    Panel 1 — Exceedance rate bar chart.
-        For each (strategy, gpus, placement) group: the fraction of all
-        repetitions (across all experiments) whose slowdown_pct >= threshold.
-        Bars are grouped on the x-axis first by placement, then by
-        (strategy, gpus) within each placement block, so the placement
-        structure is immediately visible.
+    Panel 1 — Exceedance rate: fraction of reps with slowdown_pct >= threshold.
+    Panel 2 — Conditional mean excess: mean slowdown of exceeding reps only.
 
-    Panel 2 — Conditional mean excess bar chart.
-        For the same groups: the mean slowdown_pct of only the repetitions
-        that exceeded the threshold.  Empty when a group has zero exceedances.
-
-    Both panels share the same x-axis layout and colour scheme
-    (colour = strategy/gpus pair, consistent with the eCDF plot).
+    Groups are sorted by placement then (strategy, model, gpus) within each
+    placement block.
     """
     cross = _collect_cross_experiment_data(groups, baseline, metric, agg, cap=cap)
     if not cross:
         return None
 
-    # Sort groups: primary key = placement, secondary = (strategy, gpus)
-    all_gks = sorted(cross.keys(), key=lambda gk: (gk[2], gk[0], gk[1]))
-    if not all_gks:
+    # Sort: primary = placement, secondary = (strategy, model, gpus)
+    all_rkeys = sorted(cross.keys(), key=lambda rk: (rk.placement, rk.strategy, rk.model, rk.gpus))
+    if not all_rkeys:
         return None
 
-    strat_gpu_pairs = sorted({(gk[0], gk[1]) for gk in cross})
-    sg_color: dict[tuple[str, str], str] = {
-        sg: _COLOR_POOL[i % len(_COLOR_POOL)]
-        for i, sg in enumerate(strat_gpu_pairs)
+    smg_pairs = sorted({(rk.strategy, rk.model, rk.gpus) for rk in cross})
+    smg_color: dict[tuple, str] = {
+        smg: _COLOR_POOL[i % len(_COLOR_POOL)] for i, smg in enumerate(smg_pairs)
     }
 
-    # Compute per-group stats
     exceedance_rate: list[float] = []
     mean_excess:     list[float] = []
     bar_colors:      list[str]   = []
     x_labels:        list[str]   = []
 
-    for gk in all_gks:
-        strategy, gpus, placement = gk
-        pct_all      = cross[gk]
+    for rk in all_rkeys:
+        pct_all      = cross[rk]
         pct_exceeded = [v for v in pct_all if v >= threshold]
         rate         = len(pct_exceeded) / len(pct_all) if pct_all else 0.0
         excess       = float(np.mean(pct_exceeded)) if pct_exceeded else float("nan")
 
-        exceedance_rate.append(rate * 100.0)   # convert to %
+        exceedance_rate.append(rate * 100.0)
         mean_excess.append(excess)
-        bar_colors.append(sg_color.get((strategy, gpus), "#888888"))
-        x_labels.append(f"{strategy}\n{gpus}\n{placement or '—'}")
+        bar_colors.append(smg_color.get((rk.strategy, rk.model, rk.gpus), "#888888"))
+        x_labels.append(rk.short())
 
-    n_groups = len(all_gks)
+    n_groups = len(all_rkeys)
     x_pos    = np.arange(n_groups)
 
-    fig, (ax_rate, ax_excess) = plt.subplots(2, 1, figsize=(max(10, n_groups * 0.9 + 3), 12))
+    fig, (ax_rate, ax_excess) = plt.subplots(
+        2, 1, figsize=(max(10, n_groups * 0.9 + 3), 12)
+    )
     fig.suptitle(
         f"Cross-experiment exceedance analysis  (threshold >= {threshold:+.0f}%)\n"
         f"groups sorted by placement",
         fontsize=13,
     )
 
-    # ------------------------------------------------------------------ #
-    # Panel 1 — exceedance rate                                           #
-    # ------------------------------------------------------------------ #
+    # --- Panel 1 ---
     bars1 = ax_rate.bar(
         x_pos, exceedance_rate,
         color=bar_colors, edgecolor="black", linewidth=0.5,
     )
     ax_rate.set_ylabel("Exceedance rate (%)", fontsize=13)
-    ax_rate.set_title(
-        f"Fraction of reps with slowdown >= {threshold:+.0f}%", fontsize=12,
-    )
+    ax_rate.set_title(f"Fraction of reps with slowdown >= {threshold:+.0f}%", fontsize=12)
     ax_rate.set_xticks(x_pos)
     ax_rate.set_xticklabels(x_labels, rotation=0, ha="center", fontsize=9)
     ax_rate.set_ylim(0, 110)
@@ -1650,27 +1516,14 @@ def _plot_exceedance(
             ha="center", va="bottom", fontsize=9, fontweight="bold",
         )
 
-    # Draw placement block separators and labels on top
+    # Placement block shading (helper extracted below)
     placement_blocks: dict[str, list[int]] = defaultdict(list)
-    for i, gk in enumerate(all_gks):
-        placement_blocks[gk[2]].append(i)
+    for i, rk in enumerate(all_rkeys):
+        placement_blocks[rk.placement].append(i)
 
-    y_sep = 107
-    for plac, indices in sorted(placement_blocks.items(), key=lambda kv: kv[1][0]):
-        lo = indices[0] - 0.5
-        hi = indices[-1] + 0.5
-        ax_rate.axvspan(lo, hi, alpha=0.06, color="steelblue")
-        ax_rate.text(
-            (lo + hi) / 2, y_sep,
-            plac or "(none)",
-            ha="center", va="bottom", fontsize=8, style="italic", color="steelblue",
-        )
-        if lo > -0.5:
-            ax_rate.axvline(lo, color="steelblue", linewidth=0.8, linestyle="--", alpha=0.5)
+    _shade_placement_blocks(ax_rate, placement_blocks, y_label=107)
 
-    # ------------------------------------------------------------------ #
-    # Panel 2 — conditional mean excess                                   #
-    # ------------------------------------------------------------------ #
+    # --- Panel 2 ---
     mean_excess_plot = [v if not np.isnan(v) else 0.0 for v in mean_excess]
     bars2 = ax_excess.bar(
         x_pos, mean_excess_plot,
@@ -1701,34 +1554,18 @@ def _plot_exceedance(
             ha="center", va="bottom", fontsize=9, fontweight="bold",
         )
 
-    # Same placement block shading as panel 1
     y_sep2 = ax_excess.get_ylim()[1] * 0.97 if ax_excess.get_ylim()[1] > 0 else threshold * 2
-    for plac, indices in sorted(placement_blocks.items(), key=lambda kv: kv[1][0]):
-        lo = indices[0] - 0.5
-        hi = indices[-1] + 0.5
-        ax_excess.axvspan(lo, hi, alpha=0.06, color="steelblue")
-        ax_excess.text(
-            (lo + hi) / 2, y_sep2,
-            plac or "(none)",
-            ha="center", va="top", fontsize=8, style="italic", color="steelblue",
-        )
-        if lo > -0.5:
-            ax_excess.axvline(lo, color="steelblue", linewidth=0.8, linestyle="--", alpha=0.5)
+    _shade_placement_blocks(ax_excess, placement_blocks, y_label=y_sep2, label_va="top")
 
-    # Shared legend for (strategy, gpus) colour coding
-    sg_handles = [
-        plt.Rectangle((0, 0), 1, 1, color=sg_color[sg])
-        for sg in strat_gpu_pairs
-    ]
-    sg_labels = [f"{sg[0]} / {sg[1]}" for sg in strat_gpu_pairs]
+    # Shared colour legend for (strategy, model, gpus)
+    sg_handles = [plt.Rectangle((0, 0), 1, 1, color=smg_color[smg]) for smg in smg_pairs]
+    sg_labels  = [f"{smg[0]} / {smg[1]} / {smg[2]}g" for smg in smg_pairs]
     fig.legend(
         sg_handles, sg_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 0.0),
         ncol=min(15, len(sg_handles)),
         fontsize=10,
-        # title="Strategy / GPUs  (bar colour)",
-        # title_fontsize=10,
         frameon=True,
     )
 
@@ -1740,9 +1577,29 @@ def _plot_exceedance(
     return out_path
 
 
+def _shade_placement_blocks(
+    ax:               plt.Axes,
+    placement_blocks: dict[str, list[int]],
+    y_label:          float,
+    label_va:         str = "bottom",
+) -> None:
+    """Draw shaded placement-block bands and labels on *ax*."""
+    for plac, indices in sorted(placement_blocks.items(), key=lambda kv: kv[1][0]):
+        lo = indices[0] - 0.5
+        hi = indices[-1] + 0.5
+        ax.axvspan(lo, hi, alpha=0.06, color="steelblue")
+        ax.text(
+            (lo + hi) / 2, y_label,
+            plac or "(none)",
+            ha="center", va=label_va, fontsize=8, style="italic", color="steelblue",
+        )
+        if lo > -0.5:
+            ax.axvline(lo, color="steelblue", linewidth=0.8, linestyle="--", alpha=0.5)
+
+
 def _plot_slowdown_heatmap(
     groups:   dict[str, list[tuple[dict, pd.DataFrame]]],
-    baseline: dict[tuple[str, int, str], float],
+    baseline: dict[RunKey, float],
     metric:   str,
     agg:      str,
 ) -> Path | None:
@@ -1759,14 +1616,14 @@ def _plot_slowdown_heatmap(
     if not rows:
         return None
 
-    df      = pd.DataFrame(rows, index=row_tags).sort_index(axis=1).fillna(np.nan)
-    n_cols  = len(df.columns)
-    n_rows  = len(df.index)
+    df     = pd.DataFrame(rows, index=row_tags).sort_index(axis=1).fillna(np.nan)
+    n_cols = len(df.columns)
+    n_rows = len(df.index)
 
     fig_w = max(8, n_cols * 1.0 + 2)
     fig_h = max(4, n_rows * 0.55 + 1.5)
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-    im  = ax.imshow(df.values, aspect="auto", cmap="RdYlGn_r", vmin=1.0)
+    im = ax.imshow(df.values, aspect="auto", cmap="RdYlGn_r", vmin=1.0)
 
     ax.set_xticks(range(n_cols))
     ax.set_xticklabels(df.columns, rotation=45, ha="right",
@@ -1775,15 +1632,16 @@ def _plot_slowdown_heatmap(
     ax.set_yticklabels(df.index, fontsize=max(6, 10 - n_rows // 8))
     ax.set_xlabel("Job name (slot)", fontsize=9)
     ax.set_ylabel("sbm_job_id", fontsize=9)
-    ax.set_title("Slowdown heatmap  (sigma_j, mean over repetitions)", fontsize=10)
-    fig.colorbar(im, ax=ax, pad=0.01).set_label("sigma_j", fontsize=8)
+    ax.set_title("Slowdown heatmap  (σ_j, mean over repetitions)", fontsize=10)
+    fig.colorbar(im, ax=ax, pad=0.01).set_label("σ_j", fontsize=8)
 
     cell_fontsize = max(5, 10 - n_cols // 8)
     for r in range(n_rows):
         for c in range(n_cols):
             v = df.values[r, c]
             if not np.isnan(v):
-                ax.text(c, r, f"{(v*100)-100:.1f}%", ha="center", va="center",
+                ax.text(c, r, f"{(v * 100) - 100:.1f}%",
+                        ha="center", va="center",
                         fontsize=cell_fontsize, color="black")
 
     fig.tight_layout()
@@ -1802,9 +1660,7 @@ def _plot_placements(
     tag:        str,
     entries:    list[tuple[dict, pd.DataFrame]],
 ) -> list[Path]:
-    """
-    Create one SVG for the first repetition showing the node placement of each job.
-    """
+    """Create one SVG for the first repetition showing node placements."""
     first_rep   = min(meta["repetition"] for meta, _ in entries)
     rep_entries = [(meta, df) for meta, df in entries if meta["repetition"] == first_rep]
 
@@ -1830,7 +1686,7 @@ def _plot_placements(
         return []
 
     try:
-        base = Path(__file__).parent.parent / "common" / "JobPlacer"
+        base   = Path(__file__).parent.parent / "common" / "JobPlacer"
         kwargs: dict = dict(
             system        = system,
             topology_file = str(base / f"{system}_topo.txt"),
@@ -1840,11 +1696,9 @@ def _plot_placements(
         toml_path = base / "systems" / f"{system.upper()}.toml"
         if toml_path.exists():
             kwargs["topology_toml_file"] = str(toml_path)
-
         placer = JobPlacer(**kwargs)
     except Exception as exc:
-        print(f"  [placements] {tag} rep={first_rep}: failed to create JobPlacer for "
-              f"system '{system}' — {exc}")
+        print(f"  [placements] {tag} rep={first_rep}: failed to create JobPlacer — {exc}")
         return []
 
     out_path = OUT_DIR / f"{tag}_rep{first_rep}_placement.svg"
@@ -1862,11 +1716,11 @@ def _plot_placements(
 # ===========================================================================
 
 def _print_summary(
-    tag:       str,
-    entries:   list[tuple[dict, pd.DataFrame]],
-    perf_path: Path | None,
-    slow_path: Path | None = None,
-    summ_path: Path | None = None,
+    tag:        str,
+    entries:    list[tuple[dict, pd.DataFrame]],
+    perf_path:  Path | None,
+    slow_path:  Path | None      = None,
+    summ_path:  Path | None      = None,
     plac_paths: list[Path] | None = None,
 ) -> None:
     job_names  = sorted({e[0]["job_name"] for e in entries})
@@ -1876,9 +1730,9 @@ def _print_summary(
     }
     total_rows = sum(len(df) for _, df in entries)
     parts = [
-        f"perf->{perf_path}"     if perf_path  else None,
-        f"timeline->{slow_path}" if slow_path  else None,
-        f"summary->{summ_path}"  if summ_path  else None,
+        f"perf->{perf_path}"     if perf_path else None,
+        f"timeline->{slow_path}" if slow_path else None,
+        f"summary->{summ_path}"  if summ_path else None,
     ]
     if plac_paths:
         parts.append(f"placements({len(plac_paths)})->{OUT_DIR}")
@@ -1906,7 +1760,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--baseline", "-b", metavar="PARQUET", nargs="+",
-        help="Baseline parquet file(s). Multiple files are merged before building the T0 table.",
+        help="Baseline parquet file(s). Multiple files are merged.",
     )
     parser.add_argument(
         "--metric", default=SLOWDOWN_METRIC,
@@ -1923,27 +1777,20 @@ def main() -> None:
     )
     parser.add_argument(
         "--show-placements", action="store_true", default=False,
-        help=(
-            "Produce one SVG per repetition showing node placements, "
-            "using JobPlacer.  Requires 'system' and 'nodelist' fields "
-            "in the run metadata."
-        ),
+        help="Produce one SVG per repetition showing node placements via JobPlacer.",
     )
     parser.add_argument(
         "--threshold", type=float, default=SLOWDOWN_THRESHOLD_PCT,
         help=(
-            f"Minimum slowdown percentage to include in cross-experiment "
-            f"eCDF and exceedance plots (default: {SLOWDOWN_THRESHOLD_PCT})."
+            f"Minimum slowdown %% to include in cross-experiment eCDF and "
+            f"exceedance plots (default: {SLOWDOWN_THRESHOLD_PCT})."
         ),
     )
     parser.add_argument(
-        "--cap", type=float, default=CAP_THRESHOLD_PCT,
-        metavar="PCT",
+        "--cap", type=float, default=CAP_THRESHOLD_PCT, metavar="PCT",
         help=(
-            "Drop cross-experiment slowdown values strictly above this "
-            "percentage before plotting.  Useful for removing spurious "
-            "outliers.  Disabled by default.  Removed values are reported "
-            "in a warning."
+            "Drop cross-experiment slowdown values strictly above this %% before "
+            "plotting.  Removed values are reported in a warning."
         ),
     )
     args = parser.parse_args()
@@ -1954,9 +1801,7 @@ def main() -> None:
     metric: str = args.metric
     agg:    str = args.agg
 
-    # ------------------------------------------------------------------
-    # Load concurrent data
-    # ------------------------------------------------------------------
+    # --- Load concurrent data ---
     mapping: list[tuple[dict, dict[str, pd.DataFrame]]] = []
     for p in [Path(f) for f in args.parquet_files]:
         if not p.exists():
@@ -1973,10 +1818,8 @@ def main() -> None:
     groups = _group_by_sbm_job(mapping)
     print(f"\n{len(groups)} sbatchman job(s) found.")
 
-    # ------------------------------------------------------------------
-    # Load baseline (optional)
-    # ------------------------------------------------------------------
-    baseline: dict[tuple[str, int, str], float] | None = None
+    # --- Load baseline (optional) ---
+    baseline: dict[RunKey, float] | None = None
     if args.baseline:
         baseline_mapping: list[tuple[dict, dict[str, pd.DataFrame]]] = []
         for bp in [Path(f) for f in args.baseline]:
@@ -1994,17 +1837,25 @@ def main() -> None:
                 f"\nBuilding T0 table from {len(baseline_mapping)} run(s)  "
                 f"[metric={metric}, agg={agg}]"
             )
-            baseline, counts = _build_baseline_table_from_mapping(baseline_mapping, metric, agg)
+            baseline, counts = _build_baseline_table_from_mapping(
+                baseline_mapping, metric, agg
+            )
             _print_baseline_table(baseline, metric, counts)
 
-    # ------------------------------------------------------------------
-    # Per-sbatchman-job plots + debug output
-    # ------------------------------------------------------------------
+    # --- Per-sbatchman-job plots ---
     print(f"Generating plots -> {OUT_DIR}/\n")
     skipped = 0
 
     for sbm_job_id, entries in sorted(groups.items()):
-        tag = sbm_job_id  # FIXME: replace with human-readable tag if available
+        tag = f'{sbm_job_id}_{entries[0][0].get("sbm_tag", sbm_job_id)}'
+
+        # Enrich metadata with model derived from the app command
+        for meta, _ in entries:
+            meta['model'] = command_map.get_model_from_command(meta['app'])
+            name_parts    = str(meta['job_name']).split('_')
+            meta['job_name'] = '_'.join([name_parts[0], meta['model']] + name_parts[1:])
+            # if 'FSDP' in meta['job_name']:
+            #     print(f"{meta['job_name']}    {meta['model']}")
 
         perf_path = _plot_performance(sbm_job_id, tag, entries)
 
@@ -2013,7 +1864,6 @@ def main() -> None:
 
         if baseline is not None:
             slowdowns = _compute_slowdowns(entries, baseline, metric, agg)
-
             if slowdowns:
                 agg_metrics = _aggregate_slowdowns(slowdowns, entries)
                 if agg_metrics:
@@ -2041,18 +1891,16 @@ def main() -> None:
                 )
                 print(
                     f"  Aggregates:  "
-                    f"sigma_bar={agg_metrics['mean']:.3f}  "
-                    f"sigma_max={agg_metrics['worst_case']:.3f}  "
+                    f"σ̄={agg_metrics['mean']:.3f}  "
+                    f"σ_max={agg_metrics['worst_case']:.3f}  "
                     f"per-strategy: {strat_str}\n"
                 )
 
         _print_summary(tag, entries, perf_path, slow_path, summ_path, plac_paths)
         if perf_path is None:
             skipped += 1
-
-    # ------------------------------------------------------------------
-    # Cross-job heatmap
-    # ------------------------------------------------------------------
+    
+    # --- Cross-job plots ---
     if baseline is not None and len(groups) > 1:
         print("\nGenerating cross-job slowdown heatmap...")
         hmap_path = _plot_slowdown_heatmap(groups, baseline, metric, agg)
