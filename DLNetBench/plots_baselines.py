@@ -465,7 +465,7 @@ def main():
         return meta
         
     pairs, meta_df = import_export.read_multiple_from_parquet(args.parquet_files, meta_transform)
-    exit()
+
     print(meta_df.to_string(index=False))
 
     summary = build_summary(meta_df, pairs)
