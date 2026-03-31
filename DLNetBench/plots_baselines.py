@@ -196,7 +196,7 @@ def plot_scaling(
     strategies: Optional[List[str]] = None,
     clusters: Optional[List[str]] = None,
     output_file: Optional[str] = None,
-    figsize: Tuple[int, int] = (10, 6),
+    figsize: Tuple[int, int] = (20, 7),
     title: str = "Scaling: Throughput vs Number of GPUs",
     show_ideal: bool = True,
     plot_efficiency: bool = False,
@@ -206,27 +206,28 @@ def plot_scaling(
         df = df[df['strategy'].isin(strategies)]
     if clusters:
         df = df[df['cluster'].isin(clusters)]
-
+ 
     if 'base_strategy' not in df.columns:
         df[['base_strategy', 'class_tag']] = df['strategy'].apply(
             lambda s: pd.Series(split_strategy(s))
         )
-
+ 
     fig, ax = plt.subplots(figsize=figsize)
-
+ 
     # Optional second figure
     if plot_efficiency:
         fig_eff, ax_eff = plt.subplots(figsize=figsize)
-
+ 
     clust_color    = _cluster_colors(df['cluster'].unique())
     place_ls       = _placement_linestyles(df['class_tag'].unique())
     base_markers   = _base_strategy_markers(df['base_strategy'].unique())
-
+ 
+    min_eff = 1.0
     for (strategy, cluster), grp in df.groupby(['strategy', 'cluster']):
         grp = grp.sort_values('gpus')
         base_strat = grp['base_strategy'].iloc[0]
         class_tag  = grp['class_tag'].iloc[0]
-
+ 
         color  = clust_color[cluster]
         ls     = place_ls[class_tag]
         marker = base_markers[base_strat]
@@ -236,18 +237,18 @@ def plot_scaling(
         if grp['gpus'].duplicated().any():
             dup_counts = grp['gpus'].value_counts()
             dups = dup_counts[dup_counts > 1]
-
+ 
             print(f"[WARN] Duplicate GPU entries detected for {label}:")
             for gpu, count in dups.items():
                 sub = grp[grp['gpus'] == gpu]
                 best_idx = sub['throughput_mean'].idxmax()
                 best_val = sub.loc[best_idx, 'throughput_mean']
                 print(f"  - gpus={gpu}: {count} rows → keeping max throughput {best_val:.3f}")
-
+ 
             grp = grp.loc[
                 grp.groupby('gpus')['throughput_mean'].idxmax()
             ].sort_values('gpus')
-
+ 
         # --- MAIN SCALING PLOT ---
         ax.errorbar(
             grp['gpus'], grp['throughput_mean'],
@@ -256,69 +257,76 @@ def plot_scaling(
             color=color, marker=marker, linestyle=ls,
             linewidth=1, markersize=2, capsize=2,
         )
-
+ 
         if show_ideal:
             base = grp.iloc[0]
             gpus_range = np.array(sorted(df['gpus'].unique()))
             gpus_range = gpus_range[gpus_range >= base['gpus']]
             ideal = base['throughput_mean'] * (gpus_range / base['gpus'])
             ax.plot(gpus_range, ideal, color=color, linestyle=':', linewidth=1, alpha=0.4)
-
+ 
         # --- EFFICIENCY PLOT ---
         if plot_efficiency:
             base = grp.iloc[0]
             g0   = base['gpus']
             T0   = base['throughput_mean']
-
+ 
             eff = (grp['throughput_mean'] / T0) * (g0 / grp['gpus'])
-
+            min_eff = min(min_eff, eff.min())
+ 
             ax_eff.plot(
                 grp['gpus'], eff,
                 label=label,
                 color=color, marker=marker, linestyle=ls,
                 linewidth=1, markersize=2,
             )
-
+ 
     # --- FINALIZE MAIN PLOT ---
     if show_ideal:
         ax.plot([], [], color='gray', linestyle=':', linewidth=1, alpha=0.7, label='Ideal scaling')
-
+ 
     all_gpus = sorted(df['gpus'].unique())
+    ax.set_xscale('log', base=2)
+    ax.set_yscale('log', base=2)
     ax.set_xticks(all_gpus)
     ax.set_xticklabels([str(g) for g in all_gpus])
     ax.set_xlabel('Number of GPUs', fontsize=12)
     ax.set_ylabel('Throughput (samples/s)', fontsize=12)
-    ax.set_xscale('log', base=2)
-    ax.set_yscale('log', base=2)
     ax.set_title(title, fontsize=14, fontweight='bold')
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=9, loc='center left', bbox_to_anchor=(1.01, 0.5), borderaxespad=0)
     ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
+ 
+    fig.tight_layout(rect=[0, 0, 0.78, 1])
     _save_or_show(fig, output_file, "Scaling plot")
-
+ 
     # --- FINALIZE EFFICIENCY PLOT ---
     if plot_efficiency:
         ax_eff.axhline(1.0, linestyle=':', linewidth=1, alpha=0.7, color='gray', label='Ideal efficiency')
-
+ 
+        ax_eff.set_xscale('log', base=2)
+        ax_eff.set_yscale('log', base=2)
         ax_eff.set_xticks(all_gpus)
         ax_eff.set_xticklabels([str(g) for g in all_gpus])
+        ax_eff.set_yticks(
+            [e for e in np.linspace(min_eff, 1.0, 10)],
+            labels=[f'{int(e*100.0)}%' for e in np.linspace(min_eff, 1.0, 10)]
+        )
         ax_eff.set_xlabel('Number of GPUs', fontsize=12)
         ax_eff.set_ylabel('Parallel Efficiency', fontsize=12)
         ax_eff.set_title("Scaling Efficiency", fontsize=14, fontweight='bold')
-        ax_eff.legend(fontsize=8)
+        ax_eff.legend(fontsize=8, loc='center left', bbox_to_anchor=(1.01, 0.5), borderaxespad=0)
         ax_eff.grid(True, alpha=0.3)
-
-        plt.tight_layout()
-
+ 
+        fig_eff.tight_layout(rect=[0, 0, 0.78, 1])
+ 
         eff_file = None
         if output_file:
             eff_file = output_file.replace(".png", "_efficiency.png")
-
+ 
         _save_or_show(fig_eff, eff_file, "Efficiency plot")
-
+ 
         return (fig, ax), (fig_eff, ax_eff)
-
+ 
     return fig, ax, (None, None)
 
 
@@ -515,6 +523,7 @@ def main():
             "instead of drawing one line/bar-group per placement."
         ),
     )
+    parser.add_argument("--only-all", action="store_true", help=("Produce only *all* plots"))
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -563,62 +572,63 @@ def main():
         base_strategies = [s for s in base_strategies if s in args.strategies]
     all_strategies = sorted(summary['strategy'].unique())
 
-    # ------------------------------------------------------------------
-    # 1) Per-cluster, per-base-strategy: compare placements (class_tags)
-    #    → saved under output_dir/per_cluster/
-    # ------------------------------------------------------------------
-    print("\n[Per-cluster placement comparison]")
-    for cluster in clusters:
-        for base_strat in base_strategies:
-            strats_here = summary[
-                (summary['cluster'] == cluster) &
-                (summary['base_strategy'] == base_strat)
-            ]['strategy'].unique().tolist()
-            if not strats_here:
-                continue
+    if not args.only_all:
+        # ------------------------------------------------------------------
+        # 1) Per-cluster, per-base-strategy: compare placements (class_tags)
+        #    → saved under output_dir/per_cluster/
+        # ------------------------------------------------------------------
+        print("\n[Per-cluster placement comparison]")
+        for cluster in clusters:
+            for base_strat in base_strategies:
+                strats_here = summary[
+                    (summary['cluster'] == cluster) &
+                    (summary['base_strategy'] == base_strat)
+                ]['strategy'].unique().tolist()
+                if not strats_here:
+                    continue
 
-            tag = f"{base_strat}_on_{cluster}"
-            print(f"  {tag}  placements={strats_here}")
+                tag = f"{base_strat}_on_{cluster}"
+                print(f"  {tag}  placements={strats_here}")
 
-            plot_scaling(
-                summary, strategies=strats_here, clusters=[cluster],
-                output_file=str(per_cluster_dir / f"{pfx}{tag}_scaling.png"),
-                title=f"Scaling — {base_strat} placements on {cluster}",
-                show_ideal=not args.no_ideal,
-            )
-            plot_breakdown(
-                summary, strategies=strats_here, clusters=[cluster],
-                output_file=str(per_cluster_dir / f"{pfx}{tag}_breakdown.png"),
-                title=f"Time Breakdown — {base_strat} placements on {cluster}",
-            )
+                plot_scaling(
+                    summary, strategies=strats_here, clusters=[cluster],
+                    output_file=str(per_cluster_dir / f"{pfx}{tag}_scaling.png"),
+                    title=f"Scaling — {base_strat} placements on {cluster}",
+                    show_ideal=not args.no_ideal,
+                )
+                plot_breakdown(
+                    summary, strategies=strats_here, clusters=[cluster],
+                    output_file=str(per_cluster_dir / f"{pfx}{tag}_breakdown.png"),
+                    title=f"Time Breakdown — {base_strat} placements on {cluster}",
+                )
 
-    # ------------------------------------------------------------------
-    # 2) Cross-cluster, per strategy+placement: compare systems
-    #    → saved under output_dir/cross_cluster/
-    # ------------------------------------------------------------------
-    if len(clusters) > 1:
-        print("\n[Cross-cluster comparison per strategy+placement]")
-        for strategy in all_strategies:
-            base = summary[summary['strategy'] == strategy]['base_strategy'].iloc[0]
-            if args.strategies and base not in args.strategies:
-                continue
-            clust_here = summary[summary['strategy'] == strategy]['cluster'].unique().tolist()
-            if not clust_here:
-                continue
+        # ------------------------------------------------------------------
+        # 2) Cross-cluster, per strategy+placement: compare systems
+        #    → saved under output_dir/cross_cluster/
+        # ------------------------------------------------------------------
+        if len(clusters) > 1:
+            print("\n[Cross-cluster comparison per strategy+placement]")
+            for strategy in all_strategies:
+                base = summary[summary['strategy'] == strategy]['base_strategy'].iloc[0]
+                if args.strategies and base not in args.strategies:
+                    continue
+                clust_here = summary[summary['strategy'] == strategy]['cluster'].unique().tolist()
+                if not clust_here:
+                    continue
 
-            print(f"  {strategy}  clusters={clust_here}")
+                print(f"  {strategy}  clusters={clust_here}")
 
-            plot_scaling(
-                summary, strategies=[strategy], clusters=clust_here,
-                output_file=str(cross_cluster_dir / f"{pfx}{strategy}_xcluster_scaling.png"),
-                title=f"Scaling — {strategy} across clusters",
-                show_ideal=not args.no_ideal
-            )
-            plot_breakdown(
-                summary, strategies=[strategy], clusters=clust_here,
-                output_file=str(cross_cluster_dir / f"{pfx}{strategy}_xcluster_breakdown.png"),
-                title=f"Time Breakdown — {strategy} across clusters",
-            )
+                plot_scaling(
+                    summary, strategies=[strategy], clusters=clust_here,
+                    output_file=str(cross_cluster_dir / f"{pfx}{strategy}_xcluster_scaling.png"),
+                    title=f"Scaling — {strategy} across clusters",
+                    show_ideal=not args.no_ideal
+                )
+                plot_breakdown(
+                    summary, strategies=[strategy], clusters=clust_here,
+                    output_file=str(cross_cluster_dir / f"{pfx}{strategy}_xcluster_breakdown.png"),
+                    title=f"Time Breakdown — {strategy} across clusters",
+                )
 
     # ------------------------------------------------------------------
     # 3) Cross-cluster overview per base-strategy: all placements × all clusters
@@ -644,16 +654,45 @@ def main():
 
         plot_scaling(
             plot_summary, strategies=strats_here,
-            output_file=str(output_dir / f"{pfx}{base_strat}_all_scaling.png"),
+            output_file=str(output_dir / f"{pfx}{base_strat}_all_scaling{'_aggr' if args.aggregate_placements else ''}.png"),
             title=f"Scaling — {base_strat} (all clusters{agg_label})",
             show_ideal=not args.no_ideal,
             plot_efficiency=True,
         )
         plot_breakdown(
             plot_summary, strategies=strats_here,
-            output_file=str(output_dir / f"{pfx}{base_strat}_all_breakdown.png"),
+            output_file=str(output_dir / f"{pfx}{base_strat}_all_breakdown{'_aggr' if args.aggregate_placements else ''}.png"),
             title=f"Time Breakdown — {base_strat} (all clusters{agg_label})",
         )
+
+    # ------------------------------------------------------------------
+    # 4) Global overview: all strategies × all placements × all clusters
+    #    → saved directly in output_dir/
+    #
+    #    With --aggregate-placements: average across class_tags per
+    #    (base_strategy, cluster) before plotting.
+    # ------------------------------------------------------------------
+    print("\n[Global overview: all strategies × all placements × all clusters]")
+
+    if args.aggregate_placements:
+        global_summary = aggregate_placements(summary)
+        agg_label = " (placements averaged)"
+    else:
+        global_summary = summary
+        agg_label = ""
+
+    all_strats_global = global_summary['strategy'].unique().tolist()
+    mode_tag = "agg" if args.aggregate_placements else "all"
+    print(f"  [{mode_tag}] strategies={sorted(all_strats_global)}")
+
+    plot_scaling(
+        global_summary,
+        strategies=all_strats_global,
+        output_file=str(output_dir / f"{pfx}global_all_scaling{'_aggr' if args.aggregate_placements else ''}.png"),
+        title=f"Scaling — all strategies, all clusters{agg_label}",
+        show_ideal=not args.no_ideal,
+        plot_efficiency=True,
+    )
 
     print(f"\nDone.")
     print(f"  Overview plots  → {output_dir}/")
