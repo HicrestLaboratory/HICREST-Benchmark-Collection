@@ -255,7 +255,7 @@ def plot_scaling(
             yerr=grp['throughput_std'],
             label=label,
             color=color, marker=marker, linestyle=ls,
-            linewidth=1, markersize=2, capsize=2,
+            linewidth=1, markersize=5, capsize=2,
         )
  
         if show_ideal:
@@ -278,7 +278,7 @@ def plot_scaling(
                 grp['gpus'], eff,
                 label=label,
                 color=color, marker=marker, linestyle=ls,
-                linewidth=1, markersize=2,
+                linewidth=1, markersize=5,
             )
  
     # --- FINALIZE MAIN PLOT ---
@@ -304,7 +304,7 @@ def plot_scaling(
         ax_eff.axhline(1.0, linestyle=':', linewidth=1, alpha=0.7, color='gray', label='Ideal efficiency')
  
         ax_eff.set_xscale('log', base=2)
-        ax_eff.set_yscale('log', base=2)
+        # ax_eff.set_yscale('log', base=2)
         ax_eff.set_xticks(all_gpus)
         ax_eff.set_xticklabels([str(g) for g in all_gpus])
         ax_eff.set_yticks(
@@ -509,6 +509,125 @@ def split_strategy(s: str):
         return m.group(1), m.group(2)
     return s, ''
 
+
+def generate_comm_pct_table(
+    summary: pd.DataFrame,
+    output_file: Optional[str] = None,
+    gpus: Optional[int] = None,
+) -> str:
+    """
+    Build a LaTeX table of communication-time percentages.
+ 
+    Rows    : (base_strategy, model)  — derived from the 'strategy' column
+              which is expected to have the form  <base>_<model>_<PLACEMENT>
+    Columns : cluster
+    Cells   : min–max range of comm_pct across placements (class_tags).
+              When only one placement exists the single value is shown without a range.
+ 
+    Parameters
+    ----------
+    summary     : DataFrame produced by build_summary() (must already have
+                  base_strategy / class_tag columns, or they will be derived).
+    output_file : If given, write the .tex file here.
+    gpus        : If given, filter to this GPU count before aggregating.
+                  Useful when different GPU counts give very different numbers.
+                  When None, all GPU counts are included and the range spans them too.
+ 
+    Returns
+    -------
+    The LaTeX source as a string.
+    """
+    df = summary.copy()
+ 
+    if 'base_strategy' not in df.columns or 'class_tag' not in df.columns:
+        df[['base_strategy', 'class_tag']] = df['strategy'].apply(
+            lambda s: pd.Series(split_strategy(s))
+        )
+ 
+    if gpus is not None:
+        df = df[df['gpus'] == gpus]
+ 
+    # Extract model name: strategy is "<base>_<model>_<PLACEMENT_TAG>"
+    # base_strategy already consumed the base, class_tag consumed the PLACEMENT.
+    # The model sits between them; reconstruct it from the original strategy string.
+    def _extract_model(row):
+        # strategy = base_strategy + "_" + model + ("_" + class_tag if class_tag else "")
+        suffix = row['strategy'][len(row['base_strategy']):]  # e.g. "_gpt2_INTRA_GROUP"
+        suffix = suffix.lstrip('_')
+        if row['class_tag']:
+            # remove trailing "_CLASS_TAG"
+            suffix = suffix[:-(len(row['class_tag']) + 1)]  # strip "_CLASS_TAG"
+        return suffix  # what remains is the model name
+ 
+    df['model'] = df.apply(_extract_model, axis=1)
+    df['row_key'] = df['base_strategy'] + ' / ' + df['model']
+ 
+    clusters    = sorted(df['cluster'].unique())
+    row_keys    = sorted(df['row_key'].unique())
+ 
+    # Build cell strings: min–max (or single value) of comm_pct across placements
+    def _cell(sub: pd.DataFrame) -> str:
+        """Format the comm_pct range for a (row_key, cluster) group."""
+        # Aggregate to one value per placement (mean across GPU counts if not filtered)
+        per_placement = sub.groupby('class_tag')['comm_pct'].mean()
+        lo = per_placement.min()
+        hi = per_placement.max()
+        if len(per_placement) == 1 or abs(hi - lo) < 0.05:
+            return f"{lo:.1f}\\%"
+        return f"{lo:.1f}--{hi:.1f}\\%"
+ 
+    cells: Dict[Tuple[str, str], str] = {}
+    for (row_key, cluster), grp in df.groupby(['row_key', 'cluster']):
+        cells[(row_key, cluster)] = _cell(grp)
+ 
+    # ------------------------------------------------------------------
+    # Render LaTeX
+    # ------------------------------------------------------------------
+    n_cols   = len(clusters)
+    col_spec = 'll' + 'c' * n_cols        # row_key col + one col per cluster
+ 
+    # Escape underscores for LaTeX
+    def _esc(s: str) -> str:
+        return s.replace('_', r'\_')
+ 
+    header_cols = ' & '.join([r'\textbf{Strategy / Model}'] +
+                              [r'\textbf{' + _esc(c) + '}' for c in clusters])
+ 
+    rows_tex = []
+    for rk in row_keys:
+        cells_for_row = [cells.get((rk, c), '---') for c in clusters]
+        row_str = _esc(rk) + ' & ' + ' & '.join(cells_for_row) + r' \\'
+        rows_tex.append(row_str)
+ 
+    gpu_note = f"GPU count: {gpus}" if gpus is not None else "all GPU counts"
+    caption  = f"Communication time (\\%) by strategy, model and system ({gpu_note}). " \
+               f"Cells show the min--max range across placements."
+ 
+    lines = [
+        r'\begin{table}[ht]',
+        r'  \centering',
+        r'  \caption{' + caption + '}',
+        r'  \label{tab:comm_pct}',
+        r'  \begin{tabular}{' + col_spec + '}',
+        r'    \toprule',
+        f'    {header_cols} \\\\',
+        r'    \midrule',
+    ] + [f'    {r}' for r in rows_tex] + [
+        r'    \bottomrule',
+        r'  \end{tabular}',
+        r'\end{table}',
+    ]
+ 
+    tex = '\n'.join(lines) + '\n'
+ 
+    if output_file:
+        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_file).write_text(tex)
+        print(f"  Comm-pct table saved to: {output_file}")
+ 
+    return tex
+
+
 def main():
     parser = ArgumentParser(description="Plot distributed training results from parquet files")
     parser.add_argument("parquet_files", nargs="+", help="Parquet file(s) to plot")
@@ -692,6 +811,17 @@ def main():
         title=f"Scaling — all strategies, all clusters{agg_label}",
         show_ideal=not args.no_ideal,
         plot_efficiency=True,
+    )
+    
+    # ------------------------------------------------------------------
+    # 5) Comm-pct LaTeX table: rows = strategy/model, cols = cluster,
+    #    cells = min-max range across placements.
+    # ------------------------------------------------------------------
+    print("\n[Comm-pct LaTeX table]")
+    generate_comm_pct_table(
+        summary,
+        output_file=str(output_dir / f"{pfx}comm_pct_table.tex"),
+        gpus=args.table_gpus,
     )
 
     print(f"\nDone.")

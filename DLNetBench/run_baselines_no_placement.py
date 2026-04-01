@@ -82,7 +82,7 @@ def main(args: argparse.Namespace, config_prefix:str) -> None:
             else:
                 command = f"srun -N{nodes} -n{num_gpus} --ntasks-per-node={args.gpus_per_node} --cpus-per-task={args.cpus_per_task} {' '.join(EXTRA_SRUN_FLAGS.get(args.system, []))} {comm}"
 
-            print(f"[{i:02d}--{comm_i:02d}/~{len(runs):02d}] strategy={strategy}  gpus={num_gpus}")
+            print(f"[{i:02d}--{comm_i:02d}/~{len(runs):02d}]  strategy={strategy}  gpus={num_gpus}")
             print(f"        command: {command}")
             if previous_job_id is not None:
                 print(f"        waiting for job_id={previous_job_id}")

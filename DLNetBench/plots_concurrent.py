@@ -514,6 +514,8 @@ def _build_baseline_table_from_mapping(
     counts:      dict[RunKey, int]         = defaultdict(int)
 
     for meta, dfs in mapping:
+        if str(meta['strategy']).endswith('orig'):
+            meta['strategy'] = str(meta['strategy']).strip('orig')
         df = dfs.get("main")
         if df is None or df.empty:
             continue
@@ -1863,12 +1865,18 @@ def main() -> None:
         tag = f'{sbm_job_id}_{entries[0][0].get("sbm_tag", sbm_job_id)}'
 
         # Enrich metadata with model derived from the app command
-        for meta, _ in entries:
+        for meta, df in entries:
+            # print(meta)
+            # if str(meta['strategy']).endswith('orig'):
+            #     meta['strategy'] = str(meta['strategy']).strip('orig')
             meta['model'] = command_map.get_model_from_command(meta['app'])
             name_parts    = str(meta['job_name']).split('_')
             meta['job_name'] = '_'.join([name_parts[0], meta['model']] + name_parts[1:])
             # if 'FSDP' in meta['job_name']:
             #     print(f"{meta['job_name']}   {meta['model']}   {meta['app']}")
+            # print(meta)
+            # print(df.keys())
+            # exit()
                 
         # continue
 

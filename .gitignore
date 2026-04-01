@@ -6,6 +6,7 @@
 **SbatchMan/
 **results/
 **plots/
+**raw_data/
 **__pycache__/
 *.png
 *.jpeg
