@@ -698,12 +698,6 @@ def generate_comm_pct_table(
 #  Per-system orchestration + CLI
 # ============================================================================
 
-SYSTEMS = {
-    s: os.path.join(os.path.dirname(os.path.abspath(__file__)), "raw_data", s)
-    for s in ["jupiter", "leonardo", "nvl72", "alps", "dgxA100", "lumi"]
-}
-
-
 def process_system(
     system_name: str,
     backup_dir: str,

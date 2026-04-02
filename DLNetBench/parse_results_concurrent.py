@@ -288,7 +288,7 @@ def main() -> None:
     out_file = OUT_DIR / f"DLNetBenchConcurrent_{cluster_name}_data.parquet"
 
     jobs = sbm.jobs_list(
-        status=[sbm.Status.COMPLETED],
+        status=[sbm.Status.COMPLETED, sbm.Status.TIMEOUT],
         from_active=True,
         from_archived=False,
     )
@@ -379,7 +379,8 @@ def main() -> None:
                 # print(f'PARSING {run}')
                 try:
                     stdout = compact_all(stdout_path.read_text(errors="replace"), warn_within_rank=True)
-                except:
+                except Exception as e:
+                    print(e)
                     pass
                 
                 # dict_df = {}
@@ -401,7 +402,7 @@ def main() -> None:
 
             if dict_df is None:
                 # print(f"\033[93mUID: {uid}\033[0m")
-                # print(run['stdout'])
+                # print('stdout')
                 n_bad_csv += 1
                 issues.append((
                     str(sbm_job.job_id), str(sbm_job.tag), uid, OUTCOME_BAD_CSV,

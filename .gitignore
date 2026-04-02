@@ -4,6 +4,7 @@
 **build/
 **bin/
 **SbatchMan/
+**workerpool_out/
 **results/
 **plots/
 **raw_data/

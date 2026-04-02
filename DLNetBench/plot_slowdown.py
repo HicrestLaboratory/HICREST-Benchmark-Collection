@@ -20,6 +20,7 @@ Usage
 
 import argparse
 import os
+import pprint
 
 import numpy as np
 import matplotlib
@@ -29,9 +30,12 @@ import matplotlib.ticker as mticker
 from matplotlib.patches import Patch    # for legend colour swatches
 
 from parse_raw_data import (
+    SYSTEMS,
+    build_baselines_dict,
     parse_baselines,
     parse_concurrent,
     compute_slowdowns,
+    print_baseline_table,
 )
 from plot_commons import *
 
@@ -540,96 +544,16 @@ def plot_slowdown_boxplot_stacked(slowdowns, output_path):
 
 
 # ============================================================================
-#  Per-system orchestration
-# ============================================================================
-
-def process_system(system_name, backup_dir, skip_first, output_dir):
-    """Parse data and generate all plots for a single system."""
-    print(f"{'='*60}")
-    print(f"  System     : {system_name}")
-    print(f"  Backup dir : {backup_dir}")
-    print(f"  Skip first : {skip_first} iterations")
-    print(f"{'='*60}\n")
-
-    print("Parsing baselines ...")
-    baselines = parse_baselines(backup_dir, skip_first, system_name=system_name)
-    print(f"  {len(baselines)} baseline T0 values\n")
-
-    print("Parsing concurrent runs ...")
-    concurrent = parse_concurrent(backup_dir, skip_first, system_name=system_name)
-    print(f"  {len(concurrent)} concurrent run throughputs\n")
-
-    print("Computing slowdowns ...")
-    slowdowns = compute_slowdowns(baselines, concurrent)
-    print(f"  {len(slowdowns)} categories\n")
-
-    # --- summary table ---
-    print(f"{'Category':50s} {'Runs':>5s}  {'Mean':>6s}  {'Median':>6s}  {'%>1':>5s}")
-    print("-" * 82)
-    for cat in sorted(slowdowns.keys(), key=_sort_key):
-        v = np.array(slowdowns[cat])
-        gpus = cat[1] * GPUS_PER_NODE
-        display_s = STRATEGY_DISPLAY.get(cat[0], cat[0])
-        model_name = cat[3] if len(cat) > 3 else "unknown"
-        lbl = f"{display_s} / {format_gpus(gpus)} / {cat[2]} / {model_name}"
-        print(
-            f"{lbl:50s} {len(v):5d}  {v.mean():6.3f}  {np.median(v):6.3f}  "
-            f"{100*np.mean(v>1):5.1f}%"
-        )
-    print()
-
-    # --- generate plots ---
-    os.makedirs(output_dir, exist_ok=True)
-    base_path = os.path.join(output_dir, f"slowdown_{system_name}.png")
-
-    plot_slowdown(slowdowns, base_path)
-    plot_slowdown_violin(slowdowns, base_path.replace(".png", "_violin.png"))
-
-    # Determine a y-clip that keeps all box upper-whiskers visible.
-    max_whisker = 1.0
-    for v in slowdowns.values():
-        arr = np.array(v)
-        q1, q3 = float(np.percentile(arr, 25)), float(np.percentile(arr, 75))
-        whisker_hi = min(float(arr.max()), q3 + 1.5 * (q3 - q1))
-        max_whisker = max(max_whisker, whisker_hi)
-    boxplot_y_clip = max(1.2, round(max_whisker * 1.1, 1))
-
-    plot_slowdown_boxplot(slowdowns, base_path.replace(".png", "_boxplot.png"),
-                          y_clip=boxplot_y_clip)
-    plot_slowdown_strip(slowdowns, base_path.replace(".png", "_strip.png"))
-    plot_slowdown_boxplot_stacked(slowdowns,
-                                  base_path.replace(".png", "_boxplot_stacked.png"))
-
-
-# ============================================================================
 #  CLI entry point
 # ============================================================================
-
-# Per-system backup directory configuration.
-SYSTEMS = {
-    "jupiter": os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "raw_data", "jupiter"
-    ),
-    "leonardo": os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "raw_data", "leonardo"
-    ),
-    "nvl72": os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "raw_data", "nvl72"
-    ),
-}
-
 
 def main():
     ap = argparse.ArgumentParser(
         description="Plot congestion impact of concurrent vs isolated baselines."
     )
     ap.add_argument(
-        "--systems", nargs="+", default=list(SYSTEMS.keys()),
-        help=f"Systems to process (default: {list(SYSTEMS.keys())})",
-    )
-    ap.add_argument(
-        "--skip-first", type=int, default=1,
-        help="Iterations to skip per rank before taking median (default: 1)",
+        "--systems", nargs="+", default=SYSTEMS,
+        help=f"Systems to process (default: {SYSTEMS}",
     )
     ap.add_argument(
         "-o", "--output-dir", default="plots",
@@ -637,17 +561,53 @@ def main():
     )
     args = ap.parse_args()
 
-    for system_name in args.systems:
-        backup_dir = SYSTEMS.get(system_name)
-        if backup_dir is None:
-            print(f"ERROR: unknown system '{system_name}'. "
-                  f"Known systems: {list(SYSTEMS.keys())}")
-            continue
-        if not os.path.isdir(backup_dir):
-            print(f"WARNING: backup dir not found for {system_name}: {backup_dir}")
-            continue
-        process_system(system_name, backup_dir, args.skip_first, args.output_dir)
-        print()
+    baselines = parse_baselines(args.systems)
+    baselines_dict = build_baselines_dict(baselines)
+    print_baseline_table(baselines_dict)
+    
+    concurrent = parse_concurrent(args.systems)
+    print(f"  {len(concurrent)} concurrent runs\n")
+
+    # print("Computing slowdowns ...")
+    # slowdowns = compute_slowdowns(baselines, concurrent)
+    # print(f"  {len(slowdowns)} categories\n")
+
+    # # --- summary table ---
+    # print(f"{'Category':50s} {'Runs':>5s}  {'Mean':>6s}  {'Median':>6s}  {'%>1':>5s}")
+    # print("-" * 82)
+    # for cat in sorted(slowdowns.keys(), key=_sort_key):
+    #     v = np.array(slowdowns[cat])
+    #     gpus = cat[1] * GPUS_PER_NODE
+    #     display_s = STRATEGY_DISPLAY.get(cat[0], cat[0])
+    #     model_name = cat[3] if len(cat) > 3 else "unknown"
+    #     lbl = f"{display_s} / {format_gpus(gpus)} / {cat[2]} / {model_name}"
+    #     print(
+    #         f"{lbl:50s} {len(v):5d}  {v.mean():6.3f}  {np.median(v):6.3f}  "
+    #         f"{100*np.mean(v>1):5.1f}%"
+    #     )
+    # print()
+
+    # # --- generate plots ---
+    # os.makedirs(output_dir, exist_ok=True)
+    # base_path = os.path.join(output_dir, f"slowdown_{system_name}.png")
+
+    # plot_slowdown(slowdowns, base_path)
+    # plot_slowdown_violin(slowdowns, base_path.replace(".png", "_violin.png"))
+
+    # # Determine a y-clip that keeps all box upper-whiskers visible.
+    # max_whisker = 1.0
+    # for v in slowdowns.values():
+    #     arr = np.array(v)
+    #     q1, q3 = float(np.percentile(arr, 25)), float(np.percentile(arr, 75))
+    #     whisker_hi = min(float(arr.max()), q3 + 1.5 * (q3 - q1))
+    #     max_whisker = max(max_whisker, whisker_hi)
+    # boxplot_y_clip = max(1.2, round(max_whisker * 1.1, 1))
+
+    # plot_slowdown_boxplot(slowdowns, base_path.replace(".png", "_boxplot.png"),
+    #                       y_clip=boxplot_y_clip)
+    # plot_slowdown_strip(slowdowns, base_path.replace(".png", "_strip.png"))
+    # plot_slowdown_boxplot_stacked(slowdowns,
+    #                               base_path.replace(".png", "_boxplot_stacked.png"))
 
 
 if __name__ == "__main__":
