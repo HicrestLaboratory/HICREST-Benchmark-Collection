@@ -19,11 +19,15 @@ Usage
 """
 
 import argparse
+from collections import defaultdict
 import os
 import pprint
+from typing import Dict, List
 
 import numpy as np
 import matplotlib
+
+from data_types import GPUS_PER_NODE_MAP, PLACEMENT_ORDER, STRATEGY_ORDER
 matplotlib.use("Agg")                   # non-interactive backend (headless)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -31,16 +35,13 @@ from matplotlib.patches import Patch    # for legend colour swatches
 
 from parse_raw_data import (
     SYSTEMS,
+    RunKey,
     build_baselines_dict,
     parse_baselines,
     parse_concurrent,
     compute_slowdowns,
     print_baseline_table,
 )
-from plot_commons import *
-
-# Leonardo cluster: each node has 4 GPUs (used to convert nodes -> GPUs).
-GPUS_PER_NODE = 4
 
 # Y-axis clip threshold: values above this are visually clipped and annotated.
 Y_CLIP = 2.0
@@ -49,12 +50,6 @@ Y_CLIP = 2.0
 # ============================================================================
 #  Formatting helpers
 # ============================================================================
-
-def format_placement_label(placement):
-    if placement == "na" or not placement:
-        return ""
-    return PLACEMENT_DISPLAY.get(placement, placement)
-
 
 def format_gpus(gpus):
     """Return a concise GPU label, e.g. 1024 -> '1K GPU'."""
@@ -69,26 +64,30 @@ def format_gpus(gpus):
 #  Sorting and grouping
 # ============================================================================
 
-def _sort_key(cat):
-    """
-    Sort key for (strategy, nodes, placement, model_name) tuples.
+# def _sort_concurrent(c: ConcurrentRun):
+#     """
+#     Sort key for  tuples.
+#     """
+#     s, g, p, m = run.strategy, run.gpus, run.placement_class, run.model
+#     si = STRATEGY_ORDER.index(s) if s in STRATEGY_ORDER else 99
+#     pi = PLACEMENT_ORDER.index(p) if p in PLACEMENT_ORDER else 99
+#     return (pi, si, g, m)
 
-    Primary:    placement index   (groups bars by allocation policy)
-    Secondary:  strategy index    (consistent order within each group)
-    Tertiary:   node count        (ascending)
-    Quaternary: model name        (stable alphabetical)
+def _sort_run(run: RunKey):
     """
-    s, n, p, m = cat
+    Sort key for (strategy, gpus, placement, model_name) tuples.
+    """
+    s, g, p, m = run.strategy, run.gpus, run.placement_class, run.model
     si = STRATEGY_ORDER.index(s) if s in STRATEGY_ORDER else 99
     pi = PLACEMENT_ORDER.index(p) if p in PLACEMENT_ORDER else 99
-    return (pi, si, n, m)
+    return (pi, si, g, m)
 
 
-def _placement_groups(categories):
+def _placement_groups(categories: List[RunKey]):
     """
     Identify contiguous runs of bars that share the same placement.
 
-    Since categories are sorted placement-first by _sort_key, consecutive
+    Since categories are sorted placement-first by _sort_run, consecutive
     entries with the same placement naturally form a group.
 
     Returns
@@ -98,12 +97,12 @@ def _placement_groups(categories):
     if not categories:
         return []
     groups = []
-    current = categories[0][2]
+    current = categories[0].placement_class
     start = 0
     for i, cat in enumerate(categories):
-        if cat[2] != current:
+        if cat.placement_class != current:
             groups.append((current, start, i - 1))
-            current = cat[2]
+            current = cat.placement_class
             start = i
     groups.append((current, start, len(categories) - 1))
     return groups
@@ -113,7 +112,7 @@ def _placement_groups(categories):
 #  Shared axis helpers
 # ============================================================================
 
-def _setup_grouped_xaxis(ax, categories, groups, y_offset=-0.36):
+def _setup_grouped_xaxis(ax, categories: List[RunKey], groups, system, y_offset=-0.36):
     """
     Create a two-level x-axis layout.
 
@@ -127,10 +126,10 @@ def _setup_grouped_xaxis(ax, categories, groups, y_offset=-0.36):
 
     labels = []
     for cat in categories:
-        strategy, nodes, _placement, m = cat
-        gpus = nodes * GPUS_PER_NODE
-        display_strategy = STRATEGY_DISPLAY.get(strategy, strategy)
-        model_label = STRATEGY_MODEL.get(m, m)
+        print(cat)
+        gpus = cat.gpus
+        display_strategy = cat.strategy.short()
+        model_label = cat.model.short()
         labels.append(f"{display_strategy}\n{model_label}\n{format_gpus(gpus)}")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, fontsize=11, ha="center")
@@ -141,7 +140,7 @@ def _setup_grouped_xaxis(ax, categories, groups, y_offset=-0.36):
         if placement == "na":
             continue
         center = (start + end) / 2.0
-        display_name = PLACEMENT_DISPLAY.get(placement, placement)
+        display_name = placement.display()
 
         bracket_y = y_offset + 0.01
         ax.plot(
@@ -167,9 +166,9 @@ def _make_legend(ax, strats):
     seen = set()
     for s in strats:
         if s not in seen:
-            display = STRATEGY_DISPLAY.get(s, s)
+            display = s.short()
             handles.append(
-                Patch(facecolor=STRATEGY_COLORS.get(s, "#888"), label=display)
+                Patch(facecolor=s.color(), label=display)
             )
             seen.add(s)
     ax.legend(
@@ -202,7 +201,7 @@ def _annotate_clipped(ax, categories, slowdowns, y_clip=Y_CLIP):
 #  Plot 1: Two-panel bar chart (% slowdown + mean extent)
 # ============================================================================
 
-def plot_slowdown(slowdowns, output_path):
+def plot_slowdown(slowdowns, system, output_path):
     """
     Two-panel bar chart.
 
@@ -210,7 +209,7 @@ def plot_slowdown(slowdowns, output_path):
                   (ratio > 1.05, i.e. > 5% to filter noise).
     Bottom panel: mean slowdown ratio among only the slowed-down runs.
     """
-    categories = sorted(slowdowns.keys(), key=_sort_key)
+    categories = sorted(slowdowns.keys(), key=_sort_run)
     if not categories:
         print("No data to plot.")
         return
@@ -227,7 +226,7 @@ def plot_slowdown(slowdowns, output_path):
         mean_ratio.append(float(np.mean(slow_vals)) if len(slow_vals) > 0 else 1.0)
         strats.append(cat[0])
 
-    colors = [STRATEGY_COLORS.get(s, "#888888") for s in strats]
+    colors = [s.color() for s in strats]
     x = np.arange(len(categories))
     bw = 0.72
     fig_w = max(14, len(categories) * 0.7)
@@ -255,7 +254,7 @@ def plot_slowdown(slowdowns, output_path):
     y_max = max(1.25, max(mean_ratio) * 1.08)
     ax_bot.set_ylim(0.95, y_max)
 
-    _setup_grouped_xaxis(ax_bot, categories, groups, y_offset=-0.32)
+    _setup_grouped_xaxis(ax_bot, categories, groups, system, y_offset=-0.32)
     _make_legend(ax_top, strats)
 
     fig.subplots_adjust(bottom=0.15, top=0.97, hspace=0.06)
@@ -267,17 +266,17 @@ def plot_slowdown(slowdowns, output_path):
 #  Plot 2: Violin
 # ============================================================================
 
-def plot_slowdown_violin(slowdowns, output_path):
+def plot_slowdown_violin(slowdowns: Dict[RunKey, List[float]], system, output_path):
     """Violin plot: full distribution of slowdown ratios per category."""
-    categories = sorted(slowdowns.keys(), key=_sort_key)
+    categories: List[RunKey] = list(sorted(slowdowns.keys(), key=_sort_run))
     if not categories:
         print("No data to plot (violin).")
         return
 
     groups = _placement_groups(categories)
     data = [np.array(slowdowns[cat]) for cat in categories]
-    strats = [cat[0] for cat in categories]
-    colors = [STRATEGY_COLORS.get(s, "#888888") for s in strats]
+    strats = [cat.strategy for cat in categories]
+    colors = [s.color() for s in strats]
 
     x = np.arange(len(categories))
     fig_w = max(14, len(categories) * 0.7)
@@ -296,7 +295,7 @@ def plot_slowdown_violin(slowdowns, output_path):
     ax.axhline(1.0, color="black", ls="--", lw=1, alpha=0.8)
     ax.set_ylim(0.95, Y_CLIP)
     _annotate_clipped(ax, categories, slowdowns)
-    _setup_grouped_xaxis(ax, categories, groups)
+    _setup_grouped_xaxis(ax, categories, groups, system)
     ax.set_ylabel("Congestion Impact (σ)", fontsize=14)
     _make_legend(ax, strats)
 
@@ -309,14 +308,14 @@ def plot_slowdown_violin(slowdowns, output_path):
 #  Plot 3: Boxplot
 # ============================================================================
 
-def plot_slowdown_boxplot(slowdowns, output_path, y_clip=1.2):
+def plot_slowdown_boxplot(slowdowns, system, output_path, y_clip=1.2):
     """
     Box-and-whisker plot per category.
 
     Shows IQR (box), median (black line), mean (diamond), whiskers at
     1.5 * IQR, and individual outliers beyond the whiskers.
     """
-    categories = sorted(slowdowns.keys(), key=_sort_key)
+    categories = sorted(slowdowns.keys(), key=_sort_run)
     if not categories:
         print("No data to plot (boxplot).")
         return
@@ -324,7 +323,7 @@ def plot_slowdown_boxplot(slowdowns, output_path, y_clip=1.2):
     groups = _placement_groups(categories)
     data = [np.array(slowdowns[cat]) for cat in categories]
     strats = [cat[0] for cat in categories]
-    colors = [STRATEGY_COLORS.get(s, "#888888") for s in strats]
+    colors = [s.color() for s in strats]
 
     x = np.arange(len(categories))
     fig_w = max(14, len(categories) * 0.7)
@@ -352,7 +351,7 @@ def plot_slowdown_boxplot(slowdowns, output_path, y_clip=1.2):
     ax.axhline(1.0, color="black", ls="--", lw=1, alpha=0.8)
     ax.set_ylim(0.95, y_clip)
     _annotate_clipped(ax, categories, slowdowns, y_clip=y_clip)
-    _setup_grouped_xaxis(ax, categories, groups)
+    _setup_grouped_xaxis(ax, categories, groups, system)
     ax.set_ylabel("Congestion Impact (σ)", fontsize=14)
     _make_legend(ax, strats)
 
@@ -365,20 +364,20 @@ def plot_slowdown_boxplot(slowdowns, output_path, y_clip=1.2):
 #  Plot 4: Strip / Jitter
 # ============================================================================
 
-def plot_slowdown_strip(slowdowns, output_path):
+def plot_slowdown_strip(slowdowns, system, output_path):
     """
     Strip (jitter) plot: every data point shown with random horizontal offset.
 
     A solid median line is overlaid per category for quick comparison.
     """
-    categories = sorted(slowdowns.keys(), key=_sort_key)
+    categories = sorted(slowdowns.keys(), key=_sort_run)
     if not categories:
         print("No data to plot (strip).")
         return
 
     groups = _placement_groups(categories)
     strats = [cat[0] for cat in categories]
-    colors = [STRATEGY_COLORS.get(s, "#888888") for s in strats]
+    colors = [s.color() for s in strats]
 
     x = np.arange(len(categories))
     fig_w = max(14, len(categories) * 0.7)
@@ -400,7 +399,7 @@ def plot_slowdown_strip(slowdowns, output_path):
 
     ax.set_ylim(0.95, Y_CLIP)
     _annotate_clipped(ax, categories, slowdowns)
-    _setup_grouped_xaxis(ax, categories, groups)
+    _setup_grouped_xaxis(ax, categories, groups, system)
     ax.set_ylabel("Congestion Impact (σ)", fontsize=14)
     _make_legend(ax, strats)
 
@@ -421,7 +420,7 @@ def plot_slowdown_boxplot_stacked(slowdowns, output_path):
     present in the data).  Missing positions are left blank so cross-placement
     comparison is straightforward by vertical alignment.
     """
-    categories = sorted(slowdowns.keys(), key=_sort_key)
+    categories = sorted(slowdowns.keys(), key=_sort_run)
     if not categories:
         print("No data to plot (boxplot_stacked).")
         return
@@ -479,7 +478,7 @@ def plot_slowdown_boxplot_stacked(slowdowns, output_path):
             positions = sorted(data_by_col.keys())
             box_data = [data_by_col[p] for p in positions]
             box_colors = [
-                STRATEGY_COLORS.get(col_keys[p][0], "#888") for p in positions
+                col_keys[p][0].color() for p in positions
             ]
 
             bp = ax.boxplot(
@@ -516,7 +515,7 @@ def plot_slowdown_boxplot_stacked(slowdowns, output_path):
                     )
 
         ax.axhline(1.0, color="black", ls="--", lw=0.6, alpha=0.7)
-        display_name = PLACEMENT_DISPLAY.get(placement, placement)
+        display_name = placement.short()
         ax.set_ylabel(display_name.replace("\n", " "), fontsize=10.5,
                       rotation=90, labelpad=8)
         ax.set_xlim(-0.6, n_cols - 0.4)
@@ -528,8 +527,8 @@ def plot_slowdown_boxplot_stacked(slowdowns, output_path):
     ax_bot = axes[-1]
     col_labels = []
     for s, n, m in col_keys:
-        gpus = n * GPUS_PER_NODE
-        ds = STRATEGY_DISPLAY.get(s, s)
+        gpus = n * GPUS_PER_NODE_MAP
+        ds = s.short()
         col_labels.append(f"{ds}\n{m or 'unknown'}\n{format_gpus(gpus)}")
     ax_bot.set_xticks(x_positions)
     ax_bot.set_xticklabels(col_labels, fontsize=8.5, ha="center")
@@ -556,8 +555,8 @@ def main():
         help=f"Systems to process (default: {SYSTEMS}",
     )
     ap.add_argument(
-        "-o", "--output-dir", default="plots",
-        help="Output directory for plots (default: ./plots)",
+        "-o", "--output-dir", default="plots/slowdown_all",
+        help="Output directory for plots (default: ./plots/slowdown_all)",
     )
     args = ap.parse_args()
 
@@ -566,48 +565,61 @@ def main():
     print_baseline_table(baselines_dict)
     
     concurrent = parse_concurrent(args.systems)
-    print(f"  {len(concurrent)} concurrent runs\n")
+    print('Loaded concurrent runs:')
+    for s, c in concurrent.items():
+        print(f"{s} -> {len(c)}")
 
-    # print("Computing slowdowns ...")
-    # slowdowns = compute_slowdowns(baselines, concurrent)
-    # print(f"  {len(slowdowns)} categories\n")
+    print("Computing slowdowns ...")
+    compute_slowdowns(baselines_dict, concurrent)
+    
+    # all_concurrent: List[ConcurrentRun] = []
+    # for c in concurrent.values():
+    #     all_concurrent.extend(c)
 
-    # # --- summary table ---
-    # print(f"{'Category':50s} {'Runs':>5s}  {'Mean':>6s}  {'Median':>6s}  {'%>1':>5s}")
-    # print("-" * 82)
-    # for cat in sorted(slowdowns.keys(), key=_sort_key):
-    #     v = np.array(slowdowns[cat])
-    #     gpus = cat[1] * GPUS_PER_NODE
-    #     display_s = STRATEGY_DISPLAY.get(cat[0], cat[0])
-    #     model_name = cat[3] if len(cat) > 3 else "unknown"
-    #     lbl = f"{display_s} / {format_gpus(gpus)} / {cat[2]} / {model_name}"
-    #     print(
-    #         f"{lbl:50s} {len(v):5d}  {v.mean():6.3f}  {np.median(v):6.3f}  "
-    #         f"{100*np.mean(v>1):5.1f}%"
-    #     )
-    # print()
+    # all_concurrent_slowdowns = defaultdict(list)
+    # for c in all_concurrent:
+    #     for key, s in c.slowdowns.items():
+    #         all_concurrent_slowdowns[key].extend(s)
+            
+    for system, sys_concurrent in concurrent.items():
+        slowdowns: Dict[RunKey, List[float]] = defaultdict(list)
+        for c in sys_concurrent:
+            for key, s in c.slowdowns.items():
+                slowdowns[key].extend(s)
+                
+        print(f'System: {system}')
+        print(f"{'Category':50s} {'Runs':>5s}  {'Mean':>6s}  {'Median':>6s}  {'%>1':>5s}")
+        print("-" * 82)
+        for cat in sorted(slowdowns, key=_sort_run):
+            v = np.array(slowdowns[cat])
+            lbl = f"{STRATEGY_DISPLAY[cat.strategy]} / {format_gpus(cat.gpus)} / {cat.placement_class} / {cat.model}"
+            print(
+                f"{lbl:50s} {len(v):5d}  {v.mean():6.3f}  {np.median(v):6.3f}  "
+                f"{100*np.mean(v>1):5.1f}%"
+            )
+        print()
 
-    # # --- generate plots ---
-    # os.makedirs(output_dir, exist_ok=True)
-    # base_path = os.path.join(output_dir, f"slowdown_{system_name}.png")
+        # --- generate plots ---
+        os.makedirs(args.output_dir, exist_ok=True)
+        base_path = os.path.join(args.output_dir, f"slowdown_{system}.png")
 
-    # plot_slowdown(slowdowns, base_path)
-    # plot_slowdown_violin(slowdowns, base_path.replace(".png", "_violin.png"))
+        plot_slowdown(slowdowns, system, base_path)
+        plot_slowdown_violin(slowdowns, system, base_path.replace(".png", "_violin.png"))
 
-    # # Determine a y-clip that keeps all box upper-whiskers visible.
-    # max_whisker = 1.0
-    # for v in slowdowns.values():
-    #     arr = np.array(v)
-    #     q1, q3 = float(np.percentile(arr, 25)), float(np.percentile(arr, 75))
-    #     whisker_hi = min(float(arr.max()), q3 + 1.5 * (q3 - q1))
-    #     max_whisker = max(max_whisker, whisker_hi)
-    # boxplot_y_clip = max(1.2, round(max_whisker * 1.1, 1))
+        # Determine a y-clip that keeps all box upper-whiskers visible.
+        max_whisker = 1.0
+        for v in slowdowns.values():
+            arr = np.array(v)
+            q1, q3 = float(np.percentile(arr, 25)), float(np.percentile(arr, 75))
+            whisker_hi = min(float(arr.max()), q3 + 1.5 * (q3 - q1))
+            max_whisker = max(max_whisker, whisker_hi)
+        boxplot_y_clip = max(1.2, round(max_whisker * 1.1, 1))
 
-    # plot_slowdown_boxplot(slowdowns, base_path.replace(".png", "_boxplot.png"),
-    #                       y_clip=boxplot_y_clip)
-    # plot_slowdown_strip(slowdowns, base_path.replace(".png", "_strip.png"))
-    # plot_slowdown_boxplot_stacked(slowdowns,
-    #                               base_path.replace(".png", "_boxplot_stacked.png"))
+        plot_slowdown_boxplot(slowdowns, system, base_path.replace(".png", "_boxplot.png"),
+                            y_clip=boxplot_y_clip)
+        plot_slowdown_strip(slowdowns, system, base_path.replace(".png", "_strip.png"))
+        plot_slowdown_boxplot_stacked(slowdowns,
+                                    base_path.replace(".png", "_boxplot_stacked.png"))
 
 
 if __name__ == "__main__":

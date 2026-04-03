@@ -25,21 +25,16 @@ Public API
   min_throughput_across_ranks(ranks, skip_first, adaptive_skip) -> float | None
 """
 
-from dataclasses import dataclass, field
-import io
 from pathlib import Path
 from pprint import pprint
 import re
-from statistics import geometric_mean, median
 from collections import defaultdict
-from typing import Any, Dict, List, NamedTuple, Tuple, Union
+from typing import Dict, List, Union
 from warnings import warn
 import sbatchman as sbm
-import numpy as np
 import pandas as pd
 
-from experiments_generator import PLACEMENT_CLASS_DEFS
-from plot_commons import GPUS_PER_NODE_MAP
+from data_types import GPUS_PER_NODE_MAP, Baseline, ConcurrentRun, Model, Placement, RunKey, RunMeasurements, RunMetrics, Strategy, parse_placement
 from parsers import parse_scheduler_output, stdout_file_to_csv_multi, stdout_to_csv_multi
 from command_map import get_model_from_command
 
@@ -47,26 +42,8 @@ SYSTEMS = ["jupiter", "leonardo", "nvl72", "alps", "dgxA100", "lumi", "intel"]
 SBM_SYSTEM_NAME_MAP = {"dgxA100": "baldo", "intel": "enea"}
 
 SBM_SYSTEM_ARCHIVES = {
-    'alps': ['dp_vitl', 'dppp_ccs', 'duplicates', 'preliminary_tests'],
+    'alps': ['dppp_ccs', 'duplicates', 'preliminary_tests'],
     'jupiter': ['DP_baselines_run1', 'DP_baselines_run2', 'baseline_correct_compute', 'baselines_prod'],
-}
-
-# ============================================================================
-#  Placement mapping
-# ============================================================================
-
-# Mapping from concurrent-run filename placement tags to the corresponding
-# baseline placement class stored in SbatchMan metadata.yaml files.
-# This lets us pair each concurrent run with the correct isolated baseline.
-PLACEMENT_MAP = {
-    "intra-l1":              "INTRA_L1_RANDOM",
-    "intra-group":           "INTRA_GROUP_RANDOM",
-    "inter-group":           "INTER_GROUP_RANDOM",
-    "intra-group-same-l1-2": "INTRA_GROUP_SAME_L1_2",
-    "inter-group-same-l1-2": "INTER_GROUP_SAME_L1_2",
-    "intra-group-same-l1-4": "INTRA_GROUP_SAME_L1_4",
-    "inter-group-same-l1-4": "INTER_GROUP_SAME_L1_4",
-    "na": "na",
 }
 
 # ============================================================================
@@ -87,124 +64,6 @@ def parse_model_name_from_stdout(filepath):
 #  Baseline parsing
 # ============================================================================
 
-@dataclass
-class RunMeasurements:
-    n_ranks: int
-    _df: pd.DataFrame  # main DataFrame, kept as-is
-
-    @classmethod
-    def from_df_dict(cls, df_dict: Dict[str, pd.DataFrame], n_ranks: int) -> 'RunMeasurements':
-        return cls(n_ranks=n_ranks, _df=df_dict['main'])
-
-    def _get_niter(self) -> int:
-        niter, remainder = divmod(len(self._df), self.n_ranks)
-        if remainder != 0:
-            print(f'WARNING len(df) is not divisible by n_ranks: {len(self._df)=} {self.n_ranks=}')
-        return niter
-
-    def get_throughput_min_of_medians(self, skip_first_n: int = 1) -> Union[Tuple[float, float, float], None]:
-        """
-        Aggregates per-rank iterations using min
-        Returns (min, max, median) of these mins
-        """
-        mins = []
-        for _, rank_df in self._df.groupby('rank'):
-            usable = rank_df['throughput'].iloc[skip_first_n:]
-            if not usable.empty:
-                mins.append(usable.min())
-            else:
-                print('WARNING no usable throughputs in job')
-        return (float(min(mins)), float(max(mins)), float(median(mins))) if mins else None
-
-    def get_comm_relevance(self, skip_first_n: int = 1) -> Union[Tuple[float, float, float], None]:
-        """
-        Aggregates per-rank iterations using max
-        Returns (min, max, median) of these maxes
-        """
-        
-        if 'sync_time' not in self._df.columns:
-            return None
-
-        maxes = []
-        for _, rank_df in self._df.groupby('rank'):
-            usable = rank_df.iloc[skip_first_n:]
-            if not usable.empty:
-                maxes.append((usable['sync_time'] / usable['runtime']).max())
-            else:
-                print('WARNING no usable sync_time in job')
-
-        return (float(min(maxes)), float(max(maxes)), float(median(maxes))) if maxes else None
-    
-    
-class RunKey(NamedTuple):
-    """Canonical identifier for a training run configuration."""
-    system:          str
-    strategy:        str
-    model:           str
-    gpus:            int
-    placement_class: str
-
-    def display(self) -> str:
-        """Human-readable label used in plot titles and table columns."""
-        return f"{self.strategy}/{self.model}/{self.gpus}g/{self.placement_class}"
-
-    def short(self) -> str:
-        """Compact label used in legend entries and bar-chart x-ticks."""
-        return f"{self.strategy}\n{self.model}\n{self.gpus}g\n{self.placement_class}"
-
-class RunMetrics(NamedTuple):
-    throughput:     Union[Tuple[float, float, float], None]
-    comm_relevance: Union[Tuple[float, float, float], None]
-
-@dataclass
-class Baseline:
-    system: str
-    comm_lib: str
-    gpu_model: str
-    strategy: str
-    model: str
-    gpus: int
-    nodes: int
-    placement_class: Union[str,None]
-    
-    in_reservation: bool
-    
-    data: Union[RunMeasurements, None] = field(init=False)
-    
-    def display(self) -> str:
-        """Human-readable representation of the baseline configuration."""
-        return (
-            f"Baseline({self.system}, {self.strategy}, {self.model}, "
-            f"gpus={self.gpus}, nodes={self.nodes}, placement={self.placement_class}, "
-            f"in_reservation={self.in_reservation})"
-        )
-    
-    
-    def get_id_tuple(self) -> RunKey:
-        return RunKey(
-            system=self.system,
-            strategy=self.strategy,
-            model=self.model,
-            gpus=self.gpus,
-            placement_class=self.placement_class or 'na'
-        )
-    
-    def get_throughput_min_of_medians(self):
-        """
-        Aggregates per-rank iterations using min
-        Returns (min, max, median) of these mins
-        """
-        return self.data.get_throughput_min_of_medians() if self.data else None
-    
-    def get_comm_relevance(self):
-        """
-        Aggregates per-rank iterations using max
-        Returns (min, max, median) of these maxes
-        """
-        return self.data.get_comm_relevance() if self.data else None
-    
-    # TODO add more class methods
-    
 
 def get_system_jobs(system: str) -> List[sbm.Job]:
     jobs = sbm.jobs_list(
@@ -233,6 +92,7 @@ def parse_proxy_stdout_data(stdout: Union[str, Path], gpus: int) -> Union[None, 
         else stdout_file_to_csv_multi(stdout, return_dataframes=True)
     )
     return RunMeasurements.from_df_dict(df_dict, n_ranks=gpus) if 'main' in df_dict else None
+    
                     
 
 def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
@@ -262,12 +122,12 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
             if system == "nvl72" and v.get("gpu_model", "").upper() != "GB300":
                 continue
 
-            strategy  = str(v.get("strategy")).strip('orig')
+            strategy  = Strategy(str(v.get("strategy")).strip('orig'))
             nodes     = int(v.get("nodes", 1))
             comm_lib  = v.get("comm_lib")
             gpu_model = v.get("gpu_model")
             gpus      = int(v.get("gpus", nodes * GPUS_PER_NODE_MAP[system]))
-            placement_class = v.get("placement_class") or v.get("placement", "na")
+            placement_class = parse_placement(v.get("placement_class") or v.get("placement", "na"))
             model_name = v.get("model") or v.get("model_name")
             
             
@@ -281,6 +141,7 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
                 model_name = get_model_from_command(job.command)
             if not model_name:
                 model_name = parse_model_name_from_stdout(stdout)
+            model = Model(model_name)
                 
             if strategy == 'DP' and model_name == 'vit-l':
                 continue
@@ -294,13 +155,13 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
             baseline = Baseline(
                 system=system,
                 strategy=strategy,
-                model=model_name,
+                model=model,
                 comm_lib=comm_lib,
                 gpu_model=gpu_model,
                 gpus=gpus,
                 nodes=nodes,
                 placement_class=placement_class,
-                in_reservation=placement_class and placement_class != 'na' and system in ['leonardo', 'jupiter'], # TODO fix properly
+                in_reservation=placement_class and placement_class != Placement.NA and system in ['leonardo', 'jupiter'], # TODO fix properly
             )
 
             try:
@@ -318,11 +179,23 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
 
 
 def build_baselines_dict(baselines: Dict[str, List[Baseline]]) -> Dict[RunKey, RunMetrics]:
-    res = {}
+    """
+    This deduplicates keeping the best max throughput
+    """
+    res: Dict[RunKey, RunMetrics] = {}
     for b in baselines.values():
         for baseline in b:
-            res[baseline.get_id_tuple()] = RunMetrics(
-                throughput=baseline.get_throughput_min_of_medians(),
+            key = baseline.get_id_tuple()
+            throughput = baseline.get_throughput()
+            if key in res:
+                if throughput[1] <= res[key].throughput[1]:
+                    print(f'Ignoring worse performing duplicate for baseline {key}')
+                    continue
+                else:
+                    print(f'Substituting baseline {key}')
+    
+            res[key] = RunMetrics(
+                throughput=baseline.get_throughput(),
                 comm_relevance=baseline.get_comm_relevance()
             )
     return res
@@ -344,78 +217,59 @@ def _table(rows: list[list[str]], header: list[str], title: str = "", indent: in
     print()
 
 
-def print_baseline_table(baseline_dict: Dict[RunKey, RunMetrics]) -> None:
-    """Print a summary table of all baseline values."""
+# def print_baseline_table(baseline_dict: Dict[RunKey, RunMetrics]) -> None:
+#     """Print a summary table of all baseline values."""
+#     if not baseline_dict:
+#         print("  (no baseline entries)\n")
+#         return
+#     rows = []
+#     for k, v in sorted(baseline_dict.items()):
+#         rows.append([
+#             k.system, k.strategy, k.model, str(k.gpus), k.placement_class,
+#             ' / '.join([f'{t:7.1f}' for t in v.throughput]) if v.throughput else '(none)',
+#             ' / '.join([f'{r*100.0:7.1f}' for r in v.comm_relevance]) if v.comm_relevance else '(none)',
+#         ])
+#     _table(
+#         rows,
+#         header=["System", "Strategy", "Model", "GPUs", "Placement", "Throughput (min/max/median)", "Comm relevance (min/max/median)"],
+#         title=" Baseline T0 summary ",
+#     )
+
+def print_baseline_table(baseline_dict):
+    """Print a summary table of all baseline values using pandas."""
     if not baseline_dict:
         print("  (no baseline entries)\n")
         return
-    rows = []
+
+    data = []
     for k, v in sorted(baseline_dict.items()):
-        rows.append([
-            k.system, k.strategy, k.model, str(k.gpus), k.placement_class,
-            ' / '.join([f'{t:7.1f}' for t in v.throughput]) if v.throughput else '(none)',
-            ' / '.join([f'{r*100.0:7.1f}' for r in v.comm_relevance]) if v.comm_relevance else '(none)',
-        ])
-    _table(
-        rows,
-        header=["System", "Strategy", "Model", "GPUs", "Placement", "Throughput (min/max/median)", "Comm relevance (min/max/median)"],
-        title=" Baseline T0 summary ",
-    )
+        data.append({
+            "System": k.system,
+            "Strategy": k.strategy,
+            "Model": k.model,
+            "GPUs": k.gpus,
+            "Placement": k.placement_class,
+            "Throughput (min/max/median)": (
+                " / ".join(f"{t:7.1f}" for t in v.throughput)
+                if v.throughput else "(none)"
+            ),
+            "Comm relevance (min/max/median)": (
+                " / ".join(f"{r*100.0:7.1f}" for r in v.comm_relevance)
+                if v.comm_relevance else "(none)"
+            ),
+        })
+
+    df = pd.DataFrame(data)
+
+    # Optional: sort explicitly if needed
+    df = df.sort_values(by=["System", "Strategy", "Model", "GPUs", "Placement"])
+
+    print(df.to_string(index=False))
+    print()
 
 # ============================================================================
 #  Concurrent-run parsing
-# ============================================================================
-
-PLACEMENT_CLASS_SCORES = {
-    p: s
-    for _, p, s in PLACEMENT_CLASS_DEFS
-}
-PLACEMENT_CLASS_SCORES['na'] = 0.0
-
-class MultiRunKey(NamedTuple):
-    strategy: str
-    gpus: int
-    placement_class: str
-    
-    def display(self):
-        return f'{self.strategy:<10} / {self.gpus:<4} / {self.placement_class:<15}'
-        
-    
-
-@dataclass
-class ConcurrentRun:
-    system: str
-    gpus: int
-    nodes: int
-    job_id: int
-    tag: str
-    tot_runtime: Union[float, None]
-    
-    multi_runs: Dict[MultiRunKey, List[RunMeasurements]] = field(init=False)# FIXME
-    
-    pattern: List[int]
-    strategies: List[str]
-    placements: List[str]
-    
-    in_reservation: bool
-    
-    def get_distinct_strategies(self) -> set[str]:
-        return set(self.strategies)
-    
-    def get_placement_score(self) -> float:
-        score = 0.0
-        for p in self.placements:
-            score += PLACEMENT_CLASS_SCORES[p]
-        return score / float(len(self.placements))
-    
-    def display(self) -> str:
-        parts = [
-            f"ConcurrentRun {self.system} - {self.job_id} - {self.tag}:",
-            f"tot_gpus={self.gpus}  tot_nodes={self.nodes}  runtime={self.tot_runtime}  strategies={len(self.get_distinct_strategies())}  placement_score={self.get_placement_score()}",
-            *[f'  {k.display():<50} -> {len(v)} repetitions' for k, v in self.multi_runs.items()],
-        ]
-        return '\n'.join(parts)
-    
+# ============================================================================    
 
 # Filename convention for concurrent runs:
 #   <Strategy>_g<GPUs>_n<Nodes>_<Placement>[_<AppID>]_rep<N>_<worker>.stdout
@@ -473,7 +327,18 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
                 continue
             
             try:
-                runs, _ = parse_scheduler_output(stdout)
+                runs, lines = parse_scheduler_output(stdout)
+                placement_strategy = None
+                for l in lines:
+                    if 'Placement strategy: ' in l:
+                        match = re.search(r"(?<=Placement strategy: )(\w+)(?=,)", l)
+                        if match:
+                            placement_strategy = match.group(1)
+                        else:
+                            raise Exception("Could not parse placement strategy with regex")
+                if not placement_strategy:
+                    raise Exception("Could not find placement strategy in workerpool out")
+                
                 REQUIRED_RUN_KEYS = {
                     "uid", "job_name", "repetition", "resources",
                     "app", "start_ts", "finished_at", "exit_code",
@@ -511,8 +376,17 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
                     warn(f'Could not parse run uid: {r["uid"]}')
                     exit(1)
                 strategy, gpus, nodes, placement_class, rep = m.groups()
-                strategies.append(strategy)
-                placement_classes.append(placement_class)
+                strategies.append(Strategy(strategy))
+                placement_classes.append(parse_placement(placement_class))
+                
+            is_placement_device = placement_strategy == 'device'
+            if is_placement_device:
+                nodes = 1
+                gpus = sum(pattern)
+            else:
+                nodes = sum(pattern)
+                gpus = nodes * GPUS_PER_NODE_MAP[system]
+                pattern = [p* GPUS_PER_NODE_MAP[system] for p in pattern]
                 
             concurrent_run = ConcurrentRun(
                 system=job.cluster_name,
@@ -522,12 +396,14 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
                 placements=placement_classes,
                 pattern=pattern,
                 strategies=strategies,
-                nodes=sum(pattern),
-                gpus=sum(pattern) * GPUS_PER_NODE_MAP[system],
+                nodes=nodes,
+                gpus=gpus,
                 in_reservation=False, # FIXME
             )
-            if concurrent_run.gpus != sum(pattern):
-                warn(f'Mismatch between {tot_nodes*GPUS_PER_NODE_MAP[system]=} and {sum(pattern)*GPUS_PER_NODE_MAP[system]=}')
+            
+            if concurrent_run.gpus / sum(pattern) < 0.8:
+                warn(f'Large mismatch between {tot_nodes*GPUS_PER_NODE_MAP[system]=} and {sum(pattern)*GPUS_PER_NODE_MAP[system]=} -> {concurrent_run.gpus / sum(pattern)}')
+            
             n_ok = n_nonzero = n_no_data = n_bad_csv = 0
 
             multi_runs = defaultdict(list)
@@ -539,6 +415,7 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
                     warn(f'Could not parse run uid: {uid}')
                     exit(1)
                 strategy, gpus, nodes, placement_class, rep = m.groups()
+                model = get_model_from_command(run["app"])
 
                 # --- exit code check ---
                 if not run["success"]:
@@ -564,26 +441,28 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
                     try:
                         # FIXME shall we exclude the first run here as well?
                         measurements = parse_proxy_stdout_data(stdout_path, int(gpus))
-                        multi_runs[MultiRunKey(
-                            strategy=strategy,
+                        multi_runs[RunKey(
+                            system=system,
+                            strategy=Strategy(strategy),
+                            model=Model(model),
                             gpus=int(gpus),
-                            placement_class=placement_class
+                            placement_class=parse_placement(placement_class)
                         )].append(measurements)
                         
                         n_ok      += 1
                         total_ok  += 1
+                    except FileNotFoundError:
+                        n_no_data += 1
                     except Exception as e:
                         n_bad_csv += 1
                         if str(e) != 'No ccutils sections found in stdout':
                             print('PARSE ERROR:')
                             print(e)
                             raise e
-                        pass
                 else:
                     warn('Parser not implemented for "if not stdout.startswith(\'stdout: \')"')
                 
                     
-                concurrent_run.multi_runs = multi_runs
 
             job_summaries.append({
                 "sbm_job_id": job.job_id,
@@ -595,9 +474,11 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
                 "bad_csv":    n_bad_csv,
                 "exception":  0,
             })
+            concurrent_run.multi_runs = multi_runs
+            concurrent[system].append(concurrent_run)
             
-            print(concurrent_run.display())
-            print()
+            # print(concurrent_run.display())
+            # print()
             
         # ------------------------------------------------------------------
         # Summary table
@@ -625,7 +506,7 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
         divider = "-" * len(header)
 
         print()
-        print("=== Per-job summary ===")
+        print(f"================== Concurrent runs of {system}:  Per-job summary ==================")
         print(header)
         print(divider)
         for r in job_summaries:
@@ -670,61 +551,39 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
 #  Slowdown computation
 # ============================================================================
 
-def compute_slowdowns(baselines, concurrent):
+
+def compute_slowdowns(baselines: Dict[RunKey, RunMetrics], concurrent: Dict[str, List[ConcurrentRun]]):
     """
     Match each concurrent run to its isolated baseline and compute the
     congestion impact (slowdown ratio).
-
-    Matching uses (strategy, nodes, model_name) and maps the concurrent
-    placement name to the baseline's placement class via PLACEMENT_MAP.
-
-    Parameters
-    ----------
-    baselines : dict
-        ``{(strategy, nodes, placement, model_name): throughput}`` from
-        ``parse_baselines``.
-    concurrent : list of dict
-        Concurrent run records from ``parse_concurrent``.
-
-    Returns
-    -------
-    dict
-        ``{(strategy, nodes, placement, model_name): [ratio, ...]}``
-
-        ratio = baseline_throughput / concurrent_throughput.
-        Values > 1.0 indicate congestion-induced slowdown.
     """
-    slowdowns = defaultdict(list)
     unmatched = set()
-    skipped_na = 0
+    no_throughput = set()
 
-    for run in concurrent:
-        placement = run["placement"]
-
-        baseline_placement = PLACEMENT_MAP.get(placement)
-        if baseline_placement is None:
-            skipped_na += 1
-            continue
-
-        model_name = run.get("model_name", "unknown")
-        bkey = (run["strategy"], run["nodes"], baseline_placement, model_name)
-        t0 = baselines.get(bkey)
-        if t0 is None or t0 == 0:
-            unmatched.add(bkey)
-            continue
-
-        sigma = t0 / run["throughput"]
-        cat = (run["strategy"], run["nodes"], placement, model_name)
-        slowdowns[cat].append(sigma)
-
-    if skipped_na:
-        print(
-            f"  Skipped {skipped_na} concurrent runs with unmapped placement "
-            f"(e.g. 'na')"
-        )
+    for system, conc_runs in concurrent.items():
+        for conc_run in conc_runs:
+            slowdowns = defaultdict(list)
+            for key, runs in conc_run.multi_runs.items():
+                t0 = baselines.get(key)
+                if not t0 or not t0.throughput:
+                    unmatched.add(key)
+                    continue
+                t0_min, t0_max, t0_median = t0.throughput
+                for m_i, measure in enumerate(runs):
+                    t = measure.get_throughput()
+                    if not t:
+                        no_throughput.add((key, m_i))
+                        continue
+                    t_min, t_max, t_median = t
+                    slowdowns[key].append(t0_median / t_median)
+        
+            conc_run.slowdowns = slowdowns
+            
     if unmatched:
         print(f"  WARNING: {len(unmatched)} combos had no matching baseline:")
         for u in sorted(unmatched, key=str):
             print(f"    {u}")
-
-    return slowdowns
+    if no_throughput:
+        print(f"  WARNING: {len(no_throughput)} combos had no throughput:")
+        for u in sorted(no_throughput, key=str):
+            print(f"    {u}")

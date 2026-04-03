@@ -73,6 +73,9 @@ def stdout_to_csv_multi(stdout_content, return_dataframes: bool = False) -> Tupl
             runtimes = parsed.get("runtimes", [])
             sync_times = parsed.get("barrier_time", [])
             comm_times = parsed.get("comm_time", [])
+            # Bugfix
+            if len(comm_times) > len(runtimes):
+                comm_times = comm_times[1:]
             
             for run_idx, (throughput, runtime, sync_time, comm_time) in enumerate(
                 zip(throughputs, runtimes, sync_times, comm_times)
@@ -129,13 +132,21 @@ def stdout_to_csv_multi(stdout_content, return_dataframes: bool = False) -> Tupl
                     sync_times[run_idx] += rs_time
                     
             for run_idx in range(num_runs):
-                main_rows.append((
-                    run_idx, rank, runtimes[run_idx],
-                    sync_times[run_idx] + allgather_times[run_idx] + barrier_times[run_idx],
-                    allgather_times[run_idx] if run_idx < len(allgather_times) else 0.0,
-                    barrier_times[run_idx] if run_idx < len(barrier_times) else 0.0,
-                    throughputs[run_idx],
-                ))
+                try:
+                    main_rows.append((
+                        run_idx, rank, runtimes[run_idx],
+                        sync_times[run_idx] + allgather_times[run_idx] + (barrier_times[run_idx] if run_idx < len(barrier_times) else 0.0),
+                        allgather_times[run_idx] if run_idx < len(allgather_times) else 0.0,
+                        barrier_times[run_idx] if run_idx < len(barrier_times) else 0.0,
+                        throughputs[run_idx],
+                    ))
+                except Exception as e:
+                    print(sync_times)
+                    print()
+                    print(allgather_times)
+                    print()
+                    print(barrier_times)
+                    raise e
         
         _finalise('main',           ["run_id", "rank", "runtime", "sync_time", "allgather", "barrier", "throughput"],   main_rows)
         _finalise('allgather',      ["run_id", "rank", "unit_id", "phase", "comm_time", "wait_time"],                   allgather_rows)

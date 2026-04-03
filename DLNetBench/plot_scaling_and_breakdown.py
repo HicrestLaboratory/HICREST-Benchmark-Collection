@@ -36,9 +36,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from parse_raw_data import (
-    parse_stdout_throughputs,
     parse_model_name_from_stdout,
-    PLACEMENT_MAP,
 )
 from plot_commons import *
 from plots_baselines import PLACEMENT_SHORT_NAME_MAP
