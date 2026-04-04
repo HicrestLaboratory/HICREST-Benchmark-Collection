@@ -28,6 +28,8 @@ import numpy as np
 import matplotlib
 
 from data_types import GPUS_PER_NODE_MAP, PLACEMENT_ORDER, STRATEGY_ORDER
+from data_types import ensure_model, ensure_placement, ensure_strategy
+
 matplotlib.use("Agg")                   # non-interactive backend (headless)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -40,7 +42,6 @@ from parse_raw_data import (
     parse_baselines,
     parse_concurrent,
     compute_slowdowns,
-    print_baseline_table,
 )
 
 # Y-axis clip threshold: values above this are visually clipped and annotated.
@@ -126,7 +127,6 @@ def _setup_grouped_xaxis(ax, categories: List[RunKey], groups, system, y_offset=
 
     labels = []
     for cat in categories:
-        print(cat)
         gpus = cat.gpus
         display_strategy = cat.strategy.short()
         model_label = cat.model.short()
@@ -308,22 +308,22 @@ def plot_slowdown_violin(slowdowns: Dict[RunKey, List[float]], system, output_pa
 #  Plot 3: Boxplot
 # ============================================================================
 
-def plot_slowdown_boxplot(slowdowns, system, output_path, y_clip=1.2):
+def plot_slowdown_boxplot(slowdowns: Dict[RunKey, np.ndarray], system, output_path, y_clip=1.2):
     """
     Box-and-whisker plot per category.
 
     Shows IQR (box), median (black line), mean (diamond), whiskers at
     1.5 * IQR, and individual outliers beyond the whiskers.
     """
-    categories = sorted(slowdowns.keys(), key=_sort_run)
+    categories = sorted([k for k, v in slowdowns.items() if len(v) > 0], key=_sort_run)
     if not categories:
         print("No data to plot (boxplot).")
         return
 
     groups = _placement_groups(categories)
-    data = [np.array(slowdowns[cat]) for cat in categories]
-    strats = [cat[0] for cat in categories]
-    colors = [s.color() for s in strats]
+    data = [slowdowns[cat] for cat in categories]
+    strats = [cat.strategy for cat in categories]
+    colors = [ensure_strategy(s).color() for s in strats]
 
     x = np.arange(len(categories))
     fig_w = max(14, len(categories) * 0.7)
@@ -352,7 +352,7 @@ def plot_slowdown_boxplot(slowdowns, system, output_path, y_clip=1.2):
     ax.set_ylim(0.95, y_clip)
     _annotate_clipped(ax, categories, slowdowns, y_clip=y_clip)
     _setup_grouped_xaxis(ax, categories, groups, system)
-    ax.set_ylabel("Congestion Impact (σ)", fontsize=14)
+    ax.set_ylabel("Slowdown %", fontsize=14)
     _make_legend(ax, strats)
 
     fig.tight_layout()
@@ -560,17 +560,17 @@ def main():
     )
     args = ap.parse_args()
 
-    baselines = parse_baselines(args.systems)
-    baselines_dict = build_baselines_dict(baselines)
-    print_baseline_table(baselines_dict)
+    # baselines = parse_baselines(args.systems)
+    # baselines_dict = build_baselines_dict(baselines)
+    # print_baseline_table(baselines_dict)
     
-    concurrent = parse_concurrent(args.systems)
-    print('Loaded concurrent runs:')
-    for s, c in concurrent.items():
-        print(f"{s} -> {len(c)}")
+    # concurrent = parse_concurrent(args.systems)
+    # print('Loaded concurrent runs:')
+    # for s, c in concurrent.items():
+    #     print(f"{s} -> {len(c)}")
 
-    print("Computing slowdowns ...")
-    compute_slowdowns(baselines_dict, concurrent)
+    # print("Computing slowdowns ...")
+    # compute_slowdowns(baselines_dict, concurrent)
     
     # all_concurrent: List[ConcurrentRun] = []
     # for c in concurrent.values():
@@ -581,45 +581,45 @@ def main():
     #     for key, s in c.slowdowns.items():
     #         all_concurrent_slowdowns[key].extend(s)
             
-    for system, sys_concurrent in concurrent.items():
-        slowdowns: Dict[RunKey, List[float]] = defaultdict(list)
-        for c in sys_concurrent:
-            for key, s in c.slowdowns.items():
-                slowdowns[key].extend(s)
+    # for system, sys_concurrent in concurrent.items():
+    #     slowdowns: Dict[RunKey, List[float]] = defaultdict(list)
+    #     for c in sys_concurrent:
+    #         for key, s in c.slowdowns.items():
+    #             slowdowns[key].extend(s)
                 
-        print(f'System: {system}')
-        print(f"{'Category':50s} {'Runs':>5s}  {'Mean':>6s}  {'Median':>6s}  {'%>1':>5s}")
-        print("-" * 82)
-        for cat in sorted(slowdowns, key=_sort_run):
-            v = np.array(slowdowns[cat])
-            lbl = f"{STRATEGY_DISPLAY[cat.strategy]} / {format_gpus(cat.gpus)} / {cat.placement_class} / {cat.model}"
-            print(
-                f"{lbl:50s} {len(v):5d}  {v.mean():6.3f}  {np.median(v):6.3f}  "
-                f"{100*np.mean(v>1):5.1f}%"
-            )
-        print()
+    #     print(f'System: {system}')
+    #     print(f"{'Category':50s} {'Runs':>5s}  {'Mean':>6s}  {'Median':>6s}  {'%>1':>5s}")
+    #     print("-" * 82)
+    #     for cat in sorted(slowdowns, key=_sort_run):
+    #         v = np.array(slowdowns[cat])
+    #         lbl = f"{STRATEGY_DISPLAY[cat.strategy]} / {format_gpus(cat.gpus)} / {cat.placement_class} / {cat.model}"
+    #         print(
+    #             f"{lbl:50s} {len(v):5d}  {v.mean():6.3f}  {np.median(v):6.3f}  "
+    #             f"{100*np.mean(v>1):5.1f}%"
+    #         )
+    #     print()
 
-        # --- generate plots ---
-        os.makedirs(args.output_dir, exist_ok=True)
-        base_path = os.path.join(args.output_dir, f"slowdown_{system}.png")
+    #     # --- generate plots ---
+    #     os.makedirs(args.output_dir, exist_ok=True)
+    #     base_path = os.path.join(args.output_dir, f"slowdown_{system}.png")
 
-        plot_slowdown(slowdowns, system, base_path)
-        plot_slowdown_violin(slowdowns, system, base_path.replace(".png", "_violin.png"))
+    #     plot_slowdown(slowdowns, system, base_path)
+    #     plot_slowdown_violin(slowdowns, system, base_path.replace(".png", "_violin.png"))
 
-        # Determine a y-clip that keeps all box upper-whiskers visible.
-        max_whisker = 1.0
-        for v in slowdowns.values():
-            arr = np.array(v)
-            q1, q3 = float(np.percentile(arr, 25)), float(np.percentile(arr, 75))
-            whisker_hi = min(float(arr.max()), q3 + 1.5 * (q3 - q1))
-            max_whisker = max(max_whisker, whisker_hi)
-        boxplot_y_clip = max(1.2, round(max_whisker * 1.1, 1))
+    #     # Determine a y-clip that keeps all box upper-whiskers visible.
+    #     max_whisker = 1.0
+    #     for v in slowdowns.values():
+    #         arr = np.array(v)
+    #         q1, q3 = float(np.percentile(arr, 25)), float(np.percentile(arr, 75))
+    #         whisker_hi = min(float(arr.max()), q3 + 1.5 * (q3 - q1))
+    #         max_whisker = max(max_whisker, whisker_hi)
+    #     boxplot_y_clip = max(1.2, round(max_whisker * 1.1, 1))
 
-        plot_slowdown_boxplot(slowdowns, system, base_path.replace(".png", "_boxplot.png"),
-                            y_clip=boxplot_y_clip)
-        plot_slowdown_strip(slowdowns, system, base_path.replace(".png", "_strip.png"))
-        plot_slowdown_boxplot_stacked(slowdowns,
-                                    base_path.replace(".png", "_boxplot_stacked.png"))
+    #     plot_slowdown_boxplot(slowdowns, system, base_path.replace(".png", "_boxplot.png"),
+    #                         y_clip=boxplot_y_clip)
+    #     plot_slowdown_strip(slowdowns, system, base_path.replace(".png", "_strip.png"))
+    #     plot_slowdown_boxplot_stacked(slowdowns,
+    #                                 base_path.replace(".png", "_boxplot_stacked.png"))
 
 
 if __name__ == "__main__":

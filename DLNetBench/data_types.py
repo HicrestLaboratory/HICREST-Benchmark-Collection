@@ -1,11 +1,17 @@
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 import re
-from statistics import median
+from statistics import geometric_mean, mean, median, stdev
+import sys
 from typing import Dict, List, NamedTuple, Tuple, Union
 import pandas as pd
+import numpy as np
 from experiments_generator import PLACEMENT_CLASS_DEFS
+
+sys.path.append(str(Path(__file__).parent.parent / "common"))
+from JobPlacer.cli_wrapper import PlacementStats
 
 GPUS_PER_NODE_MAP = {
     'dgxA100':      8,
@@ -19,7 +25,7 @@ GPUS_PER_NODE_MAP = {
 
 SYSTEM_NAMES_MAP = {
     'dgxA100':      'DGX A100',
-    'jupiter':      'Jupiter',
+    'jupiter':      'JUPITER',
     'leonardo':     'Leonardo',
     'nvl72':        'NVL 72',
     'alps':         'Alps (Daint)',
@@ -141,17 +147,29 @@ class Placement(StrEnum):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value})"
     
-    def display(self, new_line=True):
-        p = {
-            Placement.INTRA_L1_RANDOM: "Intra L1",
-            Placement.INTRA_GROUP_RANDOM: "Intra Group",
-            Placement.INTER_GROUP_RANDOM: "Inter Group",
-            Placement.INTRA_GROUP_SAME_L1_2: "Intra Group\n2 Nodes/Switch",
-            Placement.INTER_GROUP_SAME_L1_2: "Inter Group\n2 Nodes/Switch",
-            Placement.INTRA_GROUP_SAME_L1_4: "Intra Group\n4 Nodes/Switch",
-            Placement.INTER_GROUP_SAME_L1_4: "Inter Group\n4 Nodes/Switch",
-            Placement.NA: "N/A",
-        }[self]
+    def display(self, new_line=True, short=False):
+        if short:
+            p = {
+                Placement.INTRA_L1_RANDOM: "L1",
+                Placement.INTRA_GROUP_RANDOM: "Intra Gr",
+                Placement.INTER_GROUP_RANDOM: "Multi Gr",
+                Placement.INTRA_GROUP_SAME_L1_2: "Intra Gr 2N/S",
+                Placement.INTER_GROUP_SAME_L1_2: "Multi Gr 2N/S",
+                Placement.INTRA_GROUP_SAME_L1_4: "Intra Gr 4N/S",
+                Placement.INTER_GROUP_SAME_L1_4: "Multi Gr 4N/S",
+                Placement.NA: "N/A",
+            }[self]
+        else:
+            p = {
+                Placement.INTRA_L1_RANDOM: "Intra L1",
+                Placement.INTRA_GROUP_RANDOM: "Intra Group",
+                Placement.INTER_GROUP_RANDOM: "Inter Group",
+                Placement.INTRA_GROUP_SAME_L1_2: "Intra Group\n2 Nodes/Switch",
+                Placement.INTER_GROUP_SAME_L1_2: "Inter Group\n2 Nodes/Switch",
+                Placement.INTRA_GROUP_SAME_L1_4: "Intra Group\n4 Nodes/Switch",
+                Placement.INTER_GROUP_SAME_L1_4: "Inter Group\n4 Nodes/Switch",
+                Placement.NA: "N/A",
+            }[self]
         return p if new_line else p.replace('\n', ' ')
 
     def linestyle(self):
@@ -187,8 +205,28 @@ def parse_placement(value: str) -> Placement:
 
     raise ValueError(f"Unknown placement: {value}")
 
+# Utils
+
+def ensure_strategy(x: Union[str, Strategy]) -> Strategy:
+    return x if isinstance(x, Strategy) else Strategy(x)
+
+def ensure_model(x: Union[str, Model]) -> Model:
+    return x if isinstance(x, Model) else Model(x)
+
+def ensure_placement(x: Union[str, Placement]) -> Placement:
+    return x if isinstance(x, Placement) else parse_placement(x)
 
 # FOR PLOTS
+
+SYSTEM_ORDER = [
+    "dgxA100",
+    "nvl72",
+    "intel",
+    "leonardo",
+    "alps",
+    "jupiter",
+    "lumi"
+]
 
 STRATEGY_ORDER = [
     Strategy.DP,
@@ -210,6 +248,44 @@ PLACEMENT_ORDER = [
 ]
 
 # Classes
+@dataclass
+class MeasurementStats:
+    min: float
+    max: float
+    median: float
+    mean: float
+    geomean: float
+    std: float
+    
+    def get(self, stat: str) -> float:
+        """
+        Returns the requested statistic value.
+        
+        Args:
+            stat: One of 'min', 'max', 'median', 'mean', 'geomean', 'std'
+            
+        Returns:
+            The requested statistic value
+            
+        Raises:
+            ValueError: If the stat name is not available
+        """
+        if not hasattr(self, stat):
+            raise ValueError(f"Unknown statistic: {stat}. Available: min, max, median, mean, geomean, std")
+        return getattr(self, stat)
+
+def _compute_measurements_stats(values) -> Union[MeasurementStats, None]:
+    if not values:
+        return None
+    values = np.array(values)
+    return MeasurementStats(
+        min=float(np.min(values)),
+        max=float(np.max(values)),
+        median=float(np.median(values)),
+        mean=float(np.mean(values)),
+        geomean=float(geometric_mean(values)),
+        std=float(np.std(values)),
+    )
 
 @dataclass
 class RunMeasurements:
@@ -225,11 +301,12 @@ class RunMeasurements:
         if remainder != 0:
             print(f'WARNING len(df) is not divisible by n_ranks: {len(self._df)=} {self.n_ranks=}')
         return niter
+    
 
-    def get_throughput(self, skip_first_n: int = 1) -> Union[Tuple[float, float, float], None]:
+    def get_throughput(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
         """
         Aggregates per-rank iterations using min
-        Returns (min, max, median) of these mins
+        Returns (min, max, median, mean, geomean, std) of these mins
         """
         mins = []
         for _, rank_df in self._df.groupby('rank'):
@@ -238,14 +315,13 @@ class RunMeasurements:
                 mins.append(usable.min())
             else:
                 print('WARNING no usable throughputs in job')
-        return (float(min(mins)), float(max(mins)), float(median(mins))) if mins else None
+        return _compute_measurements_stats(mins)
 
-    def get_comm_relevance(self, skip_first_n: int = 1) -> Union[Tuple[float, float, float], None]:
+    def get_comm_relevance(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
         """
         Aggregates per-rank iterations using max
-        Returns (min, max, median) of these maxes
+        Returns (min, max, median, mean, geomean, std) of these maxes
         """
-        
         if 'sync_time' not in self._df.columns:
             return None
 
@@ -257,7 +333,7 @@ class RunMeasurements:
             else:
                 print('WARNING no usable sync_time in job')
 
-        return (float(min(maxes)), float(max(maxes)), float(median(maxes))) if maxes else None
+        return _compute_measurements_stats(maxes)
     
     
 class RunKey(NamedTuple):
@@ -277,8 +353,8 @@ class RunKey(NamedTuple):
         return f"{self.strategy}\n{self.model}\n{self.gpus}g\n{self.placement_class}"
 
 class RunMetrics(NamedTuple):
-    throughput:     Union[Tuple[float, float, float], None]
-    comm_relevance: Union[Tuple[float, float, float], None]
+    throughput:     Union[MeasurementStats, None]
+    comm_relevance: Union[MeasurementStats, None]
 
 @dataclass
 class Baseline:
@@ -315,14 +391,14 @@ class Baseline:
     def get_throughput(self):
         """
         Aggregates per-rank iterations using min
-        Returns (min, max, median) of these mins
+        Returns (min, max, median, mean, geomean, std) of these mins
         """
         return self.data.get_throughput() if self.data else None
     
     def get_comm_relevance(self):
         """
         Aggregates per-rank iterations using max
-        Returns (min, max, median) of these maxes
+        Returns (min, max, median, mean, geomean, std) of these maxes
         """
         return self.data.get_comm_relevance() if self.data else None
     
@@ -345,7 +421,16 @@ class ConcurrentRun:
     strategies: List[Strategy]
     placements: List[Placement]
     
-    in_reservation: bool
+    allocation_stats: Union[PlacementStats, None]
+    
+    def is_in_reservation(self) -> bool:
+        # FIXME this is specific for what we have
+        # TODO make sure is correct
+        by_system = self.system in ['leonardo', 'jupiter', 'intel', 'dgxA100', 'nvl72']
+        less_than_three_groups = None
+        if self.allocation_stats:
+            less_than_three_groups = len(self.allocation_stats.distinct_groups) > 3
+        return by_system and (less_than_three_groups is None or less_than_three_groups)
     
     def _summarize_pattern(self) -> str:
         """Summarize the pattern list as a compact string (e.g., '2x8' for [8,8])."""
@@ -369,7 +454,7 @@ class ConcurrentRun:
     def display(self, include_runs=True) -> str:
         runtime = f'{self.tot_runtime:.1f}' if self.tot_runtime else 't/o'
         parts = [
-            f"ConcurrentRun {self.system} - {self.job_id} - {self.tag}:",
+            f"ConcurrentRun {self.system} - {self.job_id} - {self.tag} - {'' if self.is_in_reservation() else 'NO'} resv:",
             f"    tot_gpus={self.gpus}  tot_nodes={self.nodes}  {runtime=}",
         ]
         strategies=self.get_distinct_strategies()

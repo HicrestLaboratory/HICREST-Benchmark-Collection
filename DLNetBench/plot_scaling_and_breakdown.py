@@ -7,15 +7,15 @@ ccutils stdout files and SbatchMan metadata via parse_results.parse_baselines.
 
 Produced plot sets (one per system, saved under --output-dir):
   <output_dir>/
-      <sys>_<base_strategy>_all_scaling[_aggr].png
-      <sys>_<base_strategy>_all_breakdown[_aggr].png
+      <sys>_<strategy>_all_scaling[_aggr].png
+      <sys>_<strategy>_all_breakdown[_aggr].png
       <sys>_global_all_scaling[_aggr].png
       <sys>_comm_pct_table.tex
-  <output_dir>/per_cluster/
-      <sys>_<base_strategy>_on_<cluster>_scaling.png
-      <sys>_<base_strategy>_on_<cluster>_breakdown.png
-  <output_dir>/cross_cluster/   (only when multiple systems are requested)
-      <sys+strategy>_xcluster_*.png
+  <output_dir>/per_system/
+      <sys>_<strategy>_on_<system>_scaling.png
+      <sys>_<strategy>_on_<system>_breakdown.png
+  <output_dir>/cross_system/   (only when multiple systems are requested)
+      <sys+strategy>_xsystem_*.png
 """
 
 import os
@@ -26,69 +26,88 @@ import yaml
 from argparse import ArgumentParser
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import matplotlib
 
+from data_types import PLACEMENT_ORDER, STRATEGY_ORDER, SYSTEM_NAMES_MAP, SYSTEM_ORDER, Model, Placement, Strategy
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from parse_raw_data import (
-    parse_model_name_from_stdout,
-)
-from plot_commons import *
-from plots_baselines import PLACEMENT_SHORT_NAME_MAP
-
-try:
-    from command_map import get_model_from_command, get_default_model
-except ImportError:
-    def get_model_from_command(_cmd): return None
-    def get_default_model(_strategy): return "unknown"
+def get_model_from_command(_cmd): return None
+def get_default_model(_strategy): return "unknown"
 
 # ============================================================================
 #  Style helpers  (unchanged from original)
 # ============================================================================
 
-def _placement_linestyles(class_tags: List[str]) -> Dict[str, str]:
-    styles = ['-', '--', '-.', ':', (0, (3, 1, 1, 1)), (0, (5, 1))]
-    return {t: styles[i % len(styles)] for i, t in enumerate(sorted(set(class_tags)))}
+# --- utilities ---------------------------------------------------------------
+from data_types import ensure_model, ensure_placement, ensure_strategy
 
-def _model_linestyles(models: List[str]) -> Dict[str, str]:
-    styles = ['-', '--', '-.', ':', (0, (3, 1, 1, 1)), (0, (5, 1))]
-    return {t: styles[i % len(styles)] for i, t in enumerate(sorted(set(models)))}
 
-def _base_strategy_markers(base_strategies: List[str]) -> Dict[str, str]:
-    markers = ['o', 's', '^', 'D', 'v', 'P', '*', 'X', 'h', '8']
-    return {s: markers[i % len(markers)] for i, s in enumerate(sorted(set(base_strategies)))}
+# --- placement ---------------------------------------------------------------
 
-def _base_strategy_colors(base_strategies: List[str]) -> Dict[str, str]:
-    return STRATEGY_COLORS
+def _placement_linestyles(placements: List[Union[str, Placement]]) -> Dict[str, str]:
+    ps = {ensure_placement(p) for p in placements}
+    return {str(p): p.linestyle() for p in PLACEMENT_ORDER if p in ps}
 
-def _placement_markers(class_tags: List[str]) -> Dict[str, str]:
-    markers = ['o', 's', '^', 'D', 'v', 'P', '*', 'X', 'h', '8']
-    return {t: markers[i % len(markers)] for i, t in enumerate(sorted(set(class_tags)))}
+def _placement_markers(placements: List[Union[str, Placement]]) -> Dict[str, str]:
+    ps = {ensure_placement(p) for p in placements}
+    return {str(p): p.marker() for p in PLACEMENT_ORDER if p in ps}
 
-def _base_strategy_linestyles(base_strategies: List[str]) -> Dict[str, str]:
-    styles = ['-', '--', '-.', ':']
-    return {s: styles[i % len(styles)] for i, s in enumerate(sorted(set(base_strategies)))}
 
-def _strategy_styles(strategies: List[str]) -> Dict[str, dict]:
-    palette = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    markers = ['o', 's', '^', 'D', 'v', 'P', '*']
+# --- strategy ----------------------------------------------------------------
+
+def _strategy_linestyles(strategies: List[Union[str, Strategy]]) -> Dict[str, str]:
+    ss = {ensure_strategy(s) for s in strategies}
+    return {str(s): s.linestyle() for s in STRATEGY_ORDER if s in ss}
+
+def _strategy_markers(strategies: List[Union[str, Strategy]]) -> Dict[str, str]:
+    ss = {ensure_strategy(s) for s in strategies}
+    return {str(s): s.marker() for s in STRATEGY_ORDER if s in ss}
+
+def _strategy_colors(strategies: List[Union[str, Strategy]]) -> Dict[str, str]:
+    ss = {ensure_strategy(s) for s in strategies}
+    return {str(s): s.color() for s in STRATEGY_ORDER if s in ss}
+
+def _strategy_styles(strategies: List[Union[str, Strategy]]) -> Dict[str, dict]:
+    ss = {ensure_strategy(s) for s in strategies}
     return {
-        s: {'color': palette[i % len(palette)], 'marker': markers[i % len(markers)]}
-        for i, s in enumerate(sorted(set(strategies)))
+        str(s): {
+            "color": s.color(),
+            "marker": s.marker(),
+            "linestyle": s.linestyle(),
+        }
+        for s in STRATEGY_ORDER if s in ss
     }
 
-def _cluster_linestyles(clusters: List[str]) -> Dict[str, str]:
-    styles = ['-', '--', '-.', ':']
-    return {c: styles[i % len(styles)] for i, c in enumerate(sorted(set(clusters)))}
 
-def _cluster_colors(clusters: List[str]) -> Dict[str, str]:
+# --- model -------------------------------------------------------------------
+
+def _model_markers(models: List[Union[str, Model]]) -> Dict[str, str]:
+    ms = {ensure_model(m) for m in models}
+    return {str(m): m.marker() for m in sorted(ms, key=lambda x: x.value)}
+
+def _model_colors(models: List[Union[str, Model]]) -> Dict[str, str]:
+    ms = {ensure_model(m) for m in models}
+    return {str(m): m.color() for m in sorted(ms, key=lambda x: x.value)}
+
+def _model_linestyles(models: List[Union[str, Model]]) -> Dict[str, str]:
+    # Models don't define linestyles → fallback (clean, deterministic)
+    styles = ['-', '--', '-.', ':', (0, (3, 1, 1, 1)), (0, (5, 1))]
+    ms = sorted({ensure_model(m) for m in models}, key=lambda x: x.value)
+    return {str(m): styles[i % len(styles)] for i, m in enumerate(ms)}
+
+def _system_linestyles(systems: List[str]) -> Dict[str, str]:
+    styles = ['-', '--', '-.', ':']
+    return {c: styles[i % len(styles)] for i, c in enumerate(sorted(set(systems)))}
+
+def _system_colors(systems: List[str]) -> Dict[str, str]:
     palette = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    return {c: palette[i % len(palette)] for i, c in enumerate(sorted(set(clusters)))}
+    return {c: palette[i % len(palette)] for i, c in enumerate(sorted(set(systems)))}
 
 def _lighten_color(color, amount: float):
     import matplotlib.colors as mc, colorsys
@@ -99,8 +118,8 @@ def _lighten_color(color, amount: float):
     except Exception:
         return color
 
-def _cluster_placement_colors(
-    cluster: str, class_tags: List[str], base_color: str
+def _system_placement_colors(
+    system: str, placements: List[str], base_color: str
 ) -> Dict[str, tuple]:
     import matplotlib.colors as mc, colorsys
     lightness_levels = [0.35, 0.50, 0.65, 0.75, 0.45, 0.60]
@@ -108,7 +127,7 @@ def _cluster_placement_colors(
     h, l, s = colorsys.rgb_to_hls(*c)
     return {
         tag: colorsys.hls_to_rgb(h, lightness_levels[i % len(lightness_levels)], s)
-        for i, tag in enumerate(sorted(class_tags))
+        for i, tag in enumerate(sorted(placements))
     }
 
 
@@ -164,8 +183,8 @@ def _build_baseline_records(
     of flat per-job dicts suitable for building a summary DataFrame.
 
     Each dict contains:
-        system, cluster, gpu_model, strategy, base_strategy, class_tag,
-        model_name, gpus, nodes,
+        system, system, gpu_model, strategy, strategy, placement,
+        model, gpus, nodes,
         throughputs        (list[float], post-warmup, bottleneck rank)
         iteration_times    (list[float] | None)
         barrier_times      (list[float] | None)
@@ -203,15 +222,15 @@ def _build_baseline_records(
         if not os.path.isfile(stdout):
             continue
 
-        model_name = v.get("model_name")
-        if not model_name:
-            model_name = get_model_from_command(meta.get("command", ""))
-        if not model_name:
-            model_name = parse_model_name_from_stdout(stdout)
-        if not model_name:
-            model_name = get_default_model(strategy)
-        if not model_name:
-            model_name = "unknown"
+        model = v.get("model")
+        if not model:
+            model = get_model_from_command(meta.get("command", ""))
+        if not model:
+            model = parse_model_from_stdout(stdout)
+        if not model:
+            model = get_default_model(strategy)
+        if not model:
+            model = "unknown"
 
         rank_records = parse_stdout_throughputs(stdout)
         if not rank_records:
@@ -242,12 +261,12 @@ def _build_baseline_records(
 
         records.append({
             "system":          system_name,
-            "cluster":         system_name,        # display cluster = system name
+            "system":         system_name,        # display system = system name
             "gpu_model":       gpu_model,
             "strategy":        strategy,
-            "base_strategy":   strategy,            # will be refined if placement encodes it
-            "class_tag":       placement,
-            "model_name":      model_name,
+            "strategy":   strategy,            # will be refined if placement encodes it
+            "placement":       placement,
+            "model":      model,
             "gpus":            int(gpus),
             "nodes":           int(nodes),
             "throughputs":     tp_usable,
@@ -269,8 +288,8 @@ def build_summary(records: List[dict]) -> pd.DataFrame:
 
     Columns
     -------
-    system, cluster, gpu_model, strategy, base_strategy, class_tag,
-    model_name, gpus, nodes,
+    system, system, gpu_model, strategy, strategy, placement,
+    model, gpus, nodes,
     throughput_mean, throughput_std,
     runtime_mean,
     barrier_mean,    (NaN when no barrier data available)
@@ -305,12 +324,12 @@ def build_summary(records: List[dict]) -> pd.DataFrame:
 
         rows.append({
             "system":          r["system"],
-            "cluster":         r["cluster"],
+            "system":         r["system"],
             "gpu_model":       r["gpu_model"],
             "strategy":        r["strategy"],
-            "base_strategy":   r["base_strategy"],
-            "class_tag":       r["class_tag"],
-            "model_name":      r["model_name"],
+            "strategy":   r["strategy"],
+            "placement":       r["placement"],
+            "model":      r["model"],
             "gpus":            r["gpus"],
             "nodes":           r["nodes"],
             "throughput_mean": throughput_mean,
@@ -330,25 +349,25 @@ def build_summary(records: List[dict]) -> pd.DataFrame:
 #  Aggregation helper  (unchanged semantics from original)
 # ============================================================================
 
-def aggregate_placements(summary: pd.DataFrame, agg_type: str = "mean") -> pd.DataFrame:
+def aggregate_placements(summary: pd.DataFrame, agg_type: str = "geomean") -> pd.DataFrame:
     """
-    Collapse all placements (class_tags) of the same
-    (base_strategy, model_name, cluster, gpus, gpu_model) into a single row
+    Collapse all placements (placements) of the same
+    (strategy, model, system, gpus, gpu_model) into a single row
     by averaging throughput and time metrics.
 
-    model_name is kept as a groupby key so that different models that share
-    the same base_strategy are never merged together.
+    model is kept as a groupby key so that different models that share
+    the same strategy are never merged together.
     """
     agg = (
         summary
         .groupby(
-            ["base_strategy", "model_name", "cluster", "gpus", "gpu_model"],
+            ["strategy", "model", "system", "gpus"],
             as_index=False,
         )
         .agg(
             system         =("system",          "first"),
-            nodes          =("nodes",           "first"),
-            throughput_mean=("throughput_mean", agg_type),
+            nodes          =("gpus",            "first"),
+            throughput_median=("throughput_median", agg_type),
             throughput_std =("throughput_std",  agg_type),
             runtime_mean   =("runtime_mean",    agg_type),
             barrier_mean   =("barrier_mean",    agg_type),
@@ -357,8 +376,8 @@ def aggregate_placements(summary: pd.DataFrame, agg_type: str = "mean") -> pd.Da
             compute_pct    =("compute_pct",     agg_type),
         )
     )
-    agg["strategy"]  = agg["base_strategy"]
-    agg["class_tag"] = ""
+    agg["strategy"]  = agg["strategy"]
+    agg["placement"] = ""
     return agg
 
 
@@ -377,34 +396,35 @@ def _save_or_show(fig, output_file: Optional[str], label: str = "Plot"):
 
 
 def _make_label(
-    base_strat: str,
-    model_name: str,
-    class_tag: str,
-    cluster: str,
-    gpu_model: str,
+    strategy: str,
+    model: str,
+    placement: str,
+    system: str,
     include_system: bool = True,
 ) -> str:
     """Human-readable series label including model name."""
-    place = PLACEMENT_SHORT_NAME_MAP.get(class_tag, class_tag)
-    # cluster_disp = f"{cluster}/{gpu_model}" if gpu_model and gpu_model != "unknown" else cluster
-    cluster_disp = cluster
-    parts = [base_strat, STRATEGY_MODEL[model_name]] if model_name and model_name != "unknown" else [base_strat]
-    if place and place != 'N/A':
-        parts.append(place)
+    place = ensure_placement(placement).display(new_line=False, short=True)
+    # system_disp = f"{system}/{gpu_model}" if gpu_model and gpu_model != "unknown" else system
+    system_disp = system
+    strategy = ensure_strategy(strategy)
+    model = ensure_model(model)
+    parts = [strategy.short(), model.short()]
+    # if place and place != 'N/A':
+    parts.append(place)
     if include_system:
-        parts.append(cluster_disp)
+        parts.append(system_disp)
     return " - ".join(parts)
 
 
-def _dedup_gpus(grp: pd.DataFrame, label: str) -> pd.DataFrame:
+def _dedup_gpus(grp: pd.DataFrame, label: str, metric: str) -> pd.DataFrame:
     """Keep the highest-throughput row when the same (GPU count, model) appears twice."""
     if grp["gpus"].duplicated().any():
         dup_counts = grp["gpus"].value_counts()
         for gpu, count in dup_counts[dup_counts > 1].items():
-            best = grp[grp["gpus"] == gpu]["throughput_mean"].max()
+            best = grp[grp["gpus"] == gpu][f"throughput_{metric}"].max()
             print(f"[WARN] Duplicate GPU entries for {label}: gpus={gpu} "
                   f"({count} rows) → keeping max {best:.3f}")
-        grp = grp.loc[grp.groupby("gpus")["throughput_mean"].idxmax()]
+        grp = grp.loc[grp.groupby("gpus")[f"throughput_{metric}"].idxmax()]
     return grp.sort_values("gpus")
 
 
@@ -414,8 +434,9 @@ def _dedup_gpus(grp: pd.DataFrame, label: str) -> pd.DataFrame:
 
 def plot_scaling(
     summary: pd.DataFrame,
+    metric: str,
     strategies: Optional[List[str]] = None,
-    clusters: Optional[List[str]] = None,
+    systems: Optional[List[str]] = None,
     output_file: Optional[str] = None,
     figsize: Tuple[int, int] = (20, 7),
     title: str = "Scaling: Throughput vs Number of GPUs",
@@ -425,35 +446,35 @@ def plot_scaling(
     df = summary.copy()
     if strategies:
         df = df[df["strategy"].isin(strategies)]
-    if clusters:
-        df = df[df["cluster"].isin(clusters)]
+    if systems:
+        df = df[df["system"].isin(systems)]
 
     fig, ax = plt.subplots(figsize=figsize)
     if plot_efficiency:
         fig_eff, ax_eff = plt.subplots(figsize=figsize)
 
-    clust_color  = _cluster_colors(df["cluster"].unique())
-    place_ls     = _placement_linestyles(df["class_tag"].unique())
-    base_markers = _base_strategy_markers(df["base_strategy"].unique())
+    clust_color  = _system_colors(df["system"].unique())
+    place_ls     = _placement_linestyles(df["placement"].unique())
+    base_markers = _strategy_markers(df["strategy"].unique())
 
     min_eff = 1.0        
 
-    for (strategy, cluster, model_name), grp in df.groupby(
-        ["strategy", "cluster", "model_name"]
+    for (system, strategy, model), grp in df.groupby(
+        ["system", "strategy", "model"]
     ):
-        base_strat = grp["base_strategy"].iloc[0]
-        class_tag  = grp["class_tag"].iloc[0]
+        strategy = grp["strategy"].iloc[0]
+        placement  = grp["placement"].iloc[0]
         gpu_model  = grp["gpu_model"].iloc[0]
 
-        color  = clust_color[cluster]
-        ls     = place_ls.get(class_tag, "-")
-        marker = base_markers.get(base_strat, "o")
-        label  = _make_label(base_strat, model_name, class_tag, cluster, gpu_model)
+        color  = clust_color[system]
+        ls     = place_ls.get(placement, "-")
+        marker = base_markers.get(strategy, "o")
+        label  = _make_label(strategy, model, placement, system, gpu_model)
 
-        grp = _dedup_gpus(grp, label)
+        grp = _dedup_gpus(grp, label, metric)
 
         ax.errorbar(
-            grp["gpus"], grp["throughput_mean"],
+            grp["gpus"], grp[f"throughput_{metric}"],
             yerr=grp["throughput_std"],
             label=label, color=color, marker=marker, linestyle=ls,
             linewidth=1, markersize=5, capsize=2,
@@ -463,13 +484,13 @@ def plot_scaling(
             base_row = grp.iloc[0]
             gpus_range = np.array(sorted(df["gpus"].unique()))
             gpus_range = gpus_range[gpus_range >= base_row["gpus"]]
-            ideal = base_row["throughput_mean"] * (gpus_range / base_row["gpus"])
+            ideal = base_row[f"throughput_{metric}"] * (gpus_range / base_row["gpus"])
             ax.plot(gpus_range, ideal, color=color, linestyle=":", linewidth=1, alpha=0.4)
 
         if plot_efficiency:
             g0  = grp.iloc[0]["gpus"]
-            T0  = grp.iloc[0]["throughput_mean"]
-            eff = (grp["throughput_mean"] / T0) * (g0 / grp["gpus"])
+            T0  = grp.iloc[0][f"throughput_{metric}"]
+            eff = (grp[f"throughput_{metric}"] / T0) * (g0 / grp["gpus"])
             min_eff = min(min_eff, eff.min())
             ax_eff.plot(grp["gpus"], eff, label=label,
                         color=color, marker=marker, linestyle=ls,
@@ -527,7 +548,7 @@ def plot_scaling(
 def plot_breakdown(
     summary: pd.DataFrame,
     strategies: Optional[List[str]] = None,
-    clusters: Optional[List[str]] = None,
+    systems: Optional[List[str]] = None,
     output_file: Optional[str] = None,
     figsize: Tuple[int, int] = (20, 9),
     title: str = "Time Breakdown: Compute vs Communication (%)",
@@ -535,8 +556,8 @@ def plot_breakdown(
     df = summary.copy()
     if strategies:
         df = df[df["strategy"].isin(strategies)]
-    if clusters:
-        df = df[df["cluster"].isin(clusters)]
+    if systems:
+        df = df[df["system"].isin(systems)]
 
     # Drop rows where comm/compute data is unavailable
     has_breakdown = df["comm_pct"].notna() & df["compute_pct"].notna()
@@ -547,16 +568,16 @@ def plot_breakdown(
 
     fig, ax = plt.subplots(figsize=figsize)
 
-    clust_color  = _cluster_colors(df["cluster"].unique())
+    clust_color  = _system_colors(df["system"].unique())
     place_colors: Dict[Tuple[str, str], tuple] = {}
-    for cluster in df["cluster"].unique():
-        tags = sorted(df[df["cluster"] == cluster]["class_tag"].unique())
-        shades = _cluster_placement_colors(cluster, tags, clust_color[cluster])
+    for system in df["system"].unique():
+        tags = sorted(df[df["system"] == system]["placement"].unique())
+        shades = _system_placement_colors(system, tags, clust_color[system])
         for tag, shade in shades.items():
-            place_colors[(cluster, tag)] = shade
+            place_colors[(system, tag)] = shade
 
     all_gpus = sorted(df["gpus"].unique())
-    combos   = sorted(df.groupby(["strategy", "cluster", "model_name"]).groups.keys())
+    combos   = sorted(df.groupby(["strategy", "system", "model"]).groups.keys())
     n_combos = len(combos)
 
     group_width = 0.75
@@ -566,18 +587,18 @@ def plot_breakdown(
 
     legend_added: set = set()
 
-    for i, (strategy, cluster, model_name) in enumerate(combos):
+    for i, (strategy, system, model) in enumerate(combos):
         grp = df[
             (df["strategy"] == strategy) &
-            (df["cluster"]  == cluster)  &
-            (df["model_name"] == model_name)
+            (df["system"]  == system)  &
+            (df["model"] == model)
         ].copy()
-        base_strat = grp["base_strategy"].iloc[0]
-        class_tag  = grp["class_tag"].iloc[0]
+        strategy = grp["strategy"].iloc[0]
+        placement  = grp["placement"].iloc[0]
         gpu_model  = grp["gpu_model"].iloc[0]
 
-        color = place_colors.get((cluster, class_tag), clust_color[cluster])
-        label_base = _make_label(base_strat, model_name, class_tag, cluster, gpu_model)
+        color = place_colors.get((system, placement), clust_color[system])
+        label_base = _make_label(strategy, model, placement, system, gpu_model)
 
         if grp["gpus"].duplicated().any():
             grp = (
@@ -626,21 +647,21 @@ def generate_comm_pct_table(
     """
     Build a LaTeX table of communication-time percentages.
 
-    Rows    : (base_strategy, model_name)
-    Columns : cluster
-    Cells   : min–max range of comm_pct across placements (class_tags).
+    Rows    : (strategy, model)
+    Columns : system
+    Cells   : min–max range of comm_pct across placements (placements).
     """
     df = summary.copy()
     if gpus is not None:
         df = df[df["gpus"] == gpus]
 
-    df["row_key"] = df["base_strategy"] + " / " + df["model_name"]
+    df["row_key"] = df["strategy"] + " / " + df["model"]
 
-    clusters = sorted(df["cluster"].unique())
+    systems = sorted(df["system"].unique())
     row_keys = sorted(df["row_key"].unique())
 
     def _cell(sub: pd.DataFrame) -> str:
-        per_placement = sub.groupby("class_tag")["comm_pct"].mean()
+        per_placement = sub.groupby("placement")["comm_pct"].mean()
         # Drop NaN placements (jobs without barrier data)
         per_placement = per_placement.dropna()
         if per_placement.empty:
@@ -651,20 +672,20 @@ def generate_comm_pct_table(
         return f"{lo:.1f}--{hi:.1f}\\%"
 
     cells: Dict[Tuple[str, str], str] = {}
-    for (row_key, cluster), grp in df.groupby(["row_key", "cluster"]):
-        cells[(row_key, cluster)] = _cell(grp)
+    for (row_key, system), grp in df.groupby(["row_key", "system"]):
+        cells[(row_key, system)] = _cell(grp)
 
     def _esc(s: str) -> str:
         return s.replace("_", r"\_")
 
-    col_spec   = "ll" + "c" * len(clusters)
+    col_spec   = "ll" + "c" * len(systems)
     header_cols = " & ".join(
         [r"\textbf{Strategy / Model}"] +
-        [r"\textbf{" + _esc(c) + "}" for c in clusters]
+        [r"\textbf{" + _esc(c) + "}" for c in systems]
     )
 
     rows_tex = [
-        _esc(rk) + " & " + " & ".join(cells.get((rk, c), "---") for c in clusters) + r" \\"
+        _esc(rk) + " & " + " & ".join(cells.get((rk, c), "---") for c in systems) + r" \\"
         for rk in row_keys
     ]
 
@@ -706,12 +727,12 @@ def process_system(
     aggregate_placements_flag: bool = False,
     only_all: bool = False,
     table_gpus: Optional[int] = None,
-    base_strategies_filter: Optional[List[str]] = None,
+    strategyegies_filter: Optional[List[str]] = None,
 ):
     pfx = f"{prefix}_" if prefix else ""
     output_dir = Path(output_dir)
-    per_cluster_dir   = output_dir / "per_cluster"
-    cross_cluster_dir = output_dir / "cross_cluster"
+    per_system_dir   = output_dir / "per_system"
+    cross_system_dir = output_dir / "cross_system"
 
     print(f"\n{'='*60}")
     print(f"  System     : {system_name}")
@@ -728,82 +749,82 @@ def process_system(
 
     summary = build_summary(records)
     print(f"Summary ({len(summary)} jobs):")
-    print(summary[["cluster", "gpu_model", "strategy", "class_tag",
+    print(summary[["system", "gpu_model", "strategy", "placement",
                    "gpus", "throughput_mean", "comm_pct", "compute_pct"]
                   ].to_string(index=False))
     print()
 
-    clusters        = sorted(summary["cluster"].unique())
-    base_strategies = sorted(summary["base_strategy"].unique())
-    if base_strategies_filter:
-        base_strategies = [s for s in base_strategies if s in base_strategies_filter]
+    systems        = sorted(summary["system"].unique())
+    strategyegies = sorted(summary["strategy"].unique())
+    if strategyegies_filter:
+        strategyegies = [s for s in strategyegies if s in strategyegies_filter]
     all_strategies  = sorted(summary["strategy"].unique())
-    all_models      = sorted(summary["model_name"].unique())
+    all_models      = sorted(summary["model"].unique())
 
-    # 1) Per-cluster, per-base-strategy, per-model: compare placements
+    # 1) Per-system, per-base-strategy, per-model: compare placements
     if not only_all:
-        print("[Per-cluster placement comparison]")
-        for cluster in clusters:
-            for base_strat in base_strategies:
+        print("[Per-system placement comparison]")
+        for system in systems:
+            for strategy in strategyegies:
                 for model in all_models:
                     strats_here = summary[
-                        (summary["cluster"]       == cluster) &
-                        (summary["base_strategy"] == base_strat) &
-                        (summary["model_name"]    == model)
+                        (summary["system"]       == system) &
+                        (summary["strategy"] == strategy) &
+                        (summary["model"]    == model)
                     ]["strategy"].unique().tolist()
                     if not strats_here:
                         continue
 
-                    tag = f"{pfx}{system_name}_{base_strat}_{model}_on_{cluster}"
+                    tag = f"{pfx}{system_name}_{strategy}_{model}_on_{system}"
                     print(f"  {tag}  placements={strats_here}")
 
                     plot_scaling(
-                        summary, strategies=strats_here, clusters=[cluster],
-                        output_file=str(per_cluster_dir / f"{tag}_scaling.png"),
-                        title=f"Scaling — {base_strat} / {model} placements on {cluster}",
+                        summary, strategies=strats_here, systems=[system],
+                        output_file=str(per_system_dir / f"{tag}_scaling.png"),
+                        title=f"Scaling — {strategy} / {model} placements on {system}",
                         show_ideal=not no_ideal,
                     )
                     plot_breakdown(
-                        summary, strategies=strats_here, clusters=[cluster],
-                        output_file=str(per_cluster_dir / f"{tag}_breakdown.png"),
-                        title=f"Time Breakdown — {base_strat} / {model} placements on {cluster}",
+                        summary, strategies=strats_here, systems=[system],
+                        output_file=str(per_system_dir / f"{tag}_breakdown.png"),
+                        title=f"Time Breakdown — {strategy} / {model} placements on {system}",
                     )
 
-        # 2) Cross-cluster per strategy+placement+model
+        # 2) Cross-system per strategy+placement+model
         if not only_all:
-            if len(clusters) > 1:
-                print("\n[Cross-cluster comparison per strategy+placement+model]")
+            if len(systems) > 1:
+                print("\n[Cross-system comparison per strategy+placement+model]")
                 for strategy in all_strategies:
-                    base = summary[summary["strategy"] == strategy]["base_strategy"].iloc[0]
-                    if base_strategies_filter and base not in base_strategies_filter:
+                    base = summary[summary["strategy"] == strategy]["strategy"].iloc[0]
+                    if strategyegies_filter and base not in strategyegies_filter:
                         continue
                     for model in all_models:
                         clust_here = summary[
                             (summary["strategy"]   == strategy) &
-                            (summary["model_name"] == model)
-                        ]["cluster"].unique().tolist()
+                            (summary["model"] == model)
+                        ]["system"].unique().tolist()
                         if not clust_here:
                             continue
-                        print(f"  {strategy} / {model}  clusters={clust_here}")
+                        print(f"  {strategy} / {model}  systems={clust_here}")
                         plot_scaling(
-                            summary, strategies=[strategy], clusters=clust_here,
-                            output_file=str(cross_cluster_dir / f"{pfx}{system_name}_{strategy}_{model}_xcluster_scaling.png"),
-                            title=f"Scaling — {strategy} / {model} across clusters",
+                            summary, strategies=[strategy], systems=clust_here,
+                            output_file=str(cross_system_dir / f"{pfx}{system_name}_{strategy}_{model}_xsystem_scaling.png"),
+                            title=f"Scaling — {strategy} / {model} across systems",
                             show_ideal=not no_ideal,
                         )
                         plot_breakdown(
-                            summary, strategies=[strategy], clusters=clust_here,
-                            output_file=str(cross_cluster_dir / f"{pfx}{system_name}_{strategy}_{model}_xcluster_breakdown.png"),
-                            title=f"Time Breakdown — {strategy} / {model} across clusters",
+                            summary, strategies=[strategy], systems=clust_here,
+                            output_file=str(cross_system_dir / f"{pfx}{system_name}_{strategy}_{model}_xsystem_breakdown.png"),
+                            title=f"Time Breakdown — {strategy} / {model} across systems",
                         )
     if not only_all:
-        # 3) Cross-cluster overview per base-strategy, per-model
-        print("\n[Cross-cluster + cross-placement overview per base strategy / model]")
-        for base_strat in base_strategies:
+        # 3) Cross-system overview per base-strategy, per-model
+        print("\n[Cross-system + cross-placement overview per base strategy / model]")
+        for strategy in strategyegies:
             for model in all_models:
                 sub = summary[
-                    (summary["base_strategy"] == base_strat) &
-                    (summary["model_name"]    == model)
+                    (summary["strategy"] == strategy) &
+                    (summary["model"]    == model)
                 ]
                 if sub.empty:
                     continue
@@ -811,19 +832,19 @@ def process_system(
                 agg_label    = " (placements averaged)" if aggregate_placements_flag else ""
                 strats_here  = plot_summary["strategy"].unique().tolist()
                 mode_tag     = "aggr" if aggregate_placements_flag else "all"
-                print(f"  {base_strat} / {model}  [{mode_tag}] strategies={strats_here}")
+                print(f"  {strategy} / {model}  [{mode_tag}] strategies={strats_here}")
 
                 plot_scaling(
                     plot_summary, strategies=strats_here,
-                    output_file=str(output_dir / f"{pfx}{system_name}_{base_strat}_{model}_{mode_tag}_scaling.png"),
-                    title=f"Scaling — {base_strat} / {model} (all clusters{agg_label})",
+                    output_file=str(output_dir / f"{pfx}{system_name}_{strategy}_{model}_{mode_tag}_scaling.png"),
+                    title=f"Scaling — {strategy} / {model} (all systems{agg_label})",
                     show_ideal=not no_ideal,
                     plot_efficiency=True,
                 )
                 plot_breakdown(
                     plot_summary, strategies=strats_here,
-                    output_file=str(output_dir / f"{pfx}{system_name}_{base_strat}_{model}_{mode_tag}_breakdown.png"),
-                    title=f"Time Breakdown — {base_strat} / {model} (all clusters{agg_label})",
+                    output_file=str(output_dir / f"{pfx}{system_name}_{strategy}_{model}_{mode_tag}_breakdown.png"),
+                    title=f"Time Breakdown — {strategy} / {model} (all systems{agg_label})",
                 )
 
     # 4) Comm-pct LaTeX table
@@ -884,6 +905,7 @@ def plot_global(
 def plot_global_faceted(
     combined: pd.DataFrame,
     output_dir: Path,
+    metric: str,
     pfx: str = "",
     no_ideal: bool = False,
     aggregate_placements_flag: bool = False,
@@ -911,7 +933,7 @@ def plot_global_faceted(
         as ceil(n_systems / n_rows).  Set n_rows=1 for a single row of panels,
         n_rows=n_systems for a single column, or anything in between.
     plot_type : str
-        Which metric to draw in each panel:
+        What to draw in each panel:
           "scaling"    — throughput vs GPUs (log/log)
           "efficiency" — parallel efficiency vs GPUs
           "breakdown"  — stacked bar of compute vs comm %
@@ -922,7 +944,7 @@ def plot_global_faceted(
     import math
     from matplotlib.ticker import FuncFormatter
 
-    systems = sorted(combined["system"].unique())
+    systems = [s for s in SYSTEM_ORDER if s in combined["system"].unique()]
     n_sys   = len(systems)
     if n_sys == 0:
         print("  [SKIP] No systems in combined summary.")
@@ -932,7 +954,6 @@ def plot_global_faceted(
     n_cols  = math.ceil(n_sys / n_rows)
 
     mode_tag  = "aggr" if aggregate_placements_flag else "all"
-    sys_label = "+".join(systems)
 
     fig_w = n_cols * figsize_per_cell[0]
     fig_h = n_rows * figsize_per_cell[1]
@@ -951,68 +972,75 @@ def plot_global_faceted(
         if throughput < 100:
             return str(int(throughput))
         if throughput < 1e3:
-            return f"{int(throughput / 100)}H"
+            return f"{(throughput / 1e3):.1f}K"
         if throughput < 1e6:
             return f"{int(throughput / 1e3)}K"
         if throughput < 1e9:
             return f"{int(throughput / 1e6)}M"
         return f"{int(throughput / 1e9)}B"
+    
+    def format_gpus(gpus: int, *_):
+        if gpus == 224:
+            return ''
+        if gpus > 512:
+            return f'{int(gpus / 1e3)}K'
+        return str(gpus)
 
     for idx, system_name in enumerate(systems):
         ax = axes_flat[idx]
         sub = combined[combined["system"] == system_name].copy()
 
         plot_summary = aggregate_placements(sub) if aggregate_placements_flag else sub
-        strats_here  = plot_summary["strategy"].unique().tolist()
+        # plot_summary = sub
+        # print(plot_summary)
 
         # Local GPU domain per subplot
         gpus_local = sorted(plot_summary["gpus"].unique())
 
-        clust_color     = _cluster_colors(plot_summary["cluster"].unique())
-        place_ls        = _placement_linestyles(plot_summary["class_tag"].unique())
-        model_ls        = _model_linestyles(plot_summary["model_name"].unique())
-        place_markers   = _placement_markers(plot_summary["class_tag"].unique())
-        base_markers    = _base_strategy_markers(plot_summary["base_strategy"].unique())
-        base_color      = _base_strategy_colors(plot_summary["base_strategy"].unique())
+        clust_color     = _system_colors(plot_summary["system"].unique())
+        place_ls        = _placement_linestyles(plot_summary["placement"].unique())
+        model_ls        = _model_linestyles(plot_summary["model"].unique())
+        place_markers   = _placement_markers(plot_summary["placement"].unique())
+        base_markers    = _strategy_markers(plot_summary["strategy"].unique())
+        base_color      = _strategy_colors(plot_summary["strategy"].unique())
 
         if plot_type in ("scaling", "efficiency"):
             min_eff = 1.0
 
-            for (strategy, cluster, model_name), grp in plot_summary.groupby(
-                ["strategy", "cluster", "model_name"]
+            for (strategy, system, model, placement), grp in plot_summary.groupby(
+                ["strategy", "system", "model", "placement"]
             ):
-                base_strat = grp["base_strategy"].iloc[0]
-                class_tag  = grp["class_tag"].iloc[0]
-                gpu_model  = grp["gpu_model"].iloc[0]
-                model_name = grp["model_name"].iloc[0]
+                # strategy = grp["strategy"].iloc[0]
+                # placement  = grp["placement"].iloc[0]
+                # model = grp["model"].iloc[0]
 
-                color    = base_color[base_strat]
-                ls       = model_ls[model_name]
-                marker   = place_markers.get(class_tag, "o")
+                color    = base_color[strategy]
+                ls       = model_ls[model]
+                marker   = place_markers.get(placement, "o")
                 
-                label  = _make_label(base_strat, model_name, class_tag, cluster, gpu_model, include_system=False)
+                label  = _make_label(strategy, model, placement, system, include_system=False)
 
-                grp = _dedup_gpus(grp, label)
+                grp = _dedup_gpus(grp, label, metric)
 
                 if plot_type == "scaling":
                     ax.errorbar(
-                        grp["gpus"], grp["throughput_mean"],
+                        grp["gpus"], grp[f"throughput_{metric}"],
                         yerr=grp["throughput_std"],
                         label=label, color=color, marker=marker, linestyle=ls,
-                        linewidth=1, markersize=4, capsize=2,
+                        linewidth=2, markersize=4, capsize=1,
                     )
                     if not no_ideal:
                         base_row   = grp.iloc[0]
-                        gpus_range = np.array([g for g in gpus_local
+                        gpus_range = np.array([g for g in grp["gpus"].unique()
                                                if g >= base_row["gpus"]])
-                        ideal = base_row["throughput_mean"] * (gpus_range / base_row["gpus"])
+                        ideal = base_row[f"throughput_{metric}"] * (gpus_range / base_row["gpus"])
                         ax.plot(gpus_range, ideal, color=color,
-                                linestyle=":", linewidth=0.8, alpha=0.35)
+                                linestyle=":", linewidth=2, alpha=0.35)
 
                 else:  # efficiency
                     g0  = grp.iloc[0]["gpus"]
-                    T0  = grp.iloc[0]["throughput_mean"]
-                    eff = (grp["throughput_mean"] / T0) * (g0 / grp["gpus"])
+                    T0  = grp.iloc[0][f"throughput_{metric}"]
+                    eff = (grp[f"throughput_{metric}"] / T0) * (g0 / grp["gpus"])
                     min_eff = min(min_eff, float(eff.min()))
                     ax.plot(grp["gpus"], eff, label=label,
                             color=color, marker=marker, linestyle=ls,
@@ -1024,7 +1052,7 @@ def plot_global_faceted(
                 if idx == 0:
                     ax.set_ylabel("Throughput (samples/s)", fontsize=18)
                 if not no_ideal:
-                    ax.plot([], [], color="gray", linestyle=":", linewidth=1,
+                    ax.plot([], [], color="gray", linestyle=":", linewidth=2,
                             alpha=0.9, label="Ideal")
             else:
                 ax.axhline(1.0, linestyle=":", linewidth=1, alpha=0.6,
@@ -1037,7 +1065,9 @@ def plot_global_faceted(
             ax.yaxis.set_major_formatter(FuncFormatter(format_throughput))
             ax.yaxis.set_tick_params(labelsize=16)
             ax.set_xticks(gpus_local)
-            ax.set_xticklabels([str(g) if g != 224 else '' for g in gpus_local], fontsize=16)
+            ax.xaxis.set_major_formatter(FuncFormatter(format_gpus))
+            ax.xaxis.set_tick_params(labelsize=16)
+            # ax.set_xticklabels([str(g) if g != 224 else '' for g in gpus_local], fontsize=16)
 
         elif plot_type == "breakdown":
             has_breakdown = plot_summary["comm_pct"].notna() & plot_summary["compute_pct"].notna()
@@ -1046,7 +1076,7 @@ def plot_global_faceted(
                         transform=ax.transAxes, fontsize=9, color="gray")
             else:
                 df_b = plot_summary[has_breakdown].copy()
-                combos   = sorted(df_b.groupby(["strategy", "cluster", "model_name"]).groups.keys())
+                combos   = sorted(df_b.groupby(["strategy", "system", "model"]).groups.keys())
                 n_combos = len(combos)
                 group_width = 0.75
                 gap         = 0.04
@@ -1055,25 +1085,25 @@ def plot_global_faceted(
                 gpus_local = sorted(df_b["gpus"].unique())
                 x_pos      = np.arange(len(gpus_local))
 
-                clust_color_b  = _cluster_colors(df_b["cluster"].unique())
+                clust_color_b  = _system_colors(df_b["system"].unique())
                 place_colors_b: Dict[Tuple[str, str], tuple] = {}
-                for cl in df_b["cluster"].unique():
-                    tags   = sorted(df_b[df_b["cluster"] == cl]["class_tag"].unique())
-                    shades = _cluster_placement_colors(cl, tags, clust_color_b[cl])
+                for cl in df_b["system"].unique():
+                    tags   = sorted(df_b[df_b["system"] == cl]["placement"].unique())
+                    shades = _system_placement_colors(cl, tags, clust_color_b[cl])
                     place_colors_b.update({(cl, t): s for t, s in shades.items()})
 
                 legend_added: set = set()
-                for bi, (strategy, cluster, model_name) in enumerate(combos):
+                for bi, (strategy, system, model) in enumerate(combos):
                     grp = df_b[
                         (df_b["strategy"]   == strategy) &
-                        (df_b["cluster"]    == cluster)  &
-                        (df_b["model_name"] == model_name)
+                        (df_b["system"]    == system)  &
+                        (df_b["model"] == model)
                     ].copy()
-                    base_strat = grp["base_strategy"].iloc[0]
-                    class_tag  = grp["class_tag"].iloc[0]
+                    strategy = grp["strategy"].iloc[0]
+                    placement  = grp["placement"].iloc[0]
                     gpu_model  = grp["gpu_model"].iloc[0]
-                    color      = place_colors_b.get((cluster, class_tag), clust_color_b[cluster])
-                    lbl        = _make_label(base_strat, model_name, class_tag, cluster, gpu_model)
+                    color      = place_colors_b.get((system, placement), clust_color_b[system])
+                    lbl        = _make_label(strategy, model, placement, system, gpu_model)
 
                     if grp["gpus"].duplicated().any():
                         grp = grp.groupby("gpus", as_index=False).agg(
@@ -1099,7 +1129,7 @@ def plot_global_faceted(
                 ax.set_ylabel("Time (%)", fontsize=9)
 
         ax.set_title(SYSTEM_NAMES_MAP.get(system_name, system_name), fontsize=16, fontweight="bold")
-        ax.set_xlabel("Number of GPUs", fontsize=16)
+        ax.set_xlabel("GPUs", fontsize=16)
         ax.grid(True, alpha=0.45)
 
         # Collect legend entries
@@ -1120,14 +1150,14 @@ def plot_global_faceted(
             list(global_labels),
             loc="lower center",
             # nrows=2,
-            ncol=min(7, max(1, len(global_labels))),
-            fontsize=16,
+            ncol=min(11, max(1, len(global_labels))),
+            fontsize=14,
             frameon=False,
         )
 
     fig.tight_layout(rect=[0, 0.18, 1, 1.0])
 
-    out = str(output_dir / f"{pfx}global_{sys_label}_{mode_tag}_{plot_type}_faceted.png")
+    out = str(output_dir / f"{pfx}global_{mode_tag}_{metric}_{plot_type}_faceted.png")
     _save_or_show(fig, out, f"Faceted {plot_type} plot")
 
 
@@ -1159,7 +1189,7 @@ def main():
     parser.add_argument("--aggregate-placements", action="store_true",
                         help="Average across placements before plotting")
     parser.add_argument("--only-all", action="store_true",
-                        help="Produce only cross-cluster overview plots")
+                        help="Produce only cross-system overview plots")
     parser.add_argument("--table-gpus", type=int, default=None,
                         help="GPU count to filter for the comm-pct table")
     parser.add_argument(
@@ -1203,7 +1233,7 @@ def main():
             aggregate_placements_flag = args.aggregate_placements,
             only_all                  = args.only_all,
             table_gpus                = args.table_gpus,
-            base_strategies_filter    = args.strategies,
+            strategyegies_filter    = args.strategies,
         )
         if summary is not None and not summary.empty:
             all_summaries.append(summary)
