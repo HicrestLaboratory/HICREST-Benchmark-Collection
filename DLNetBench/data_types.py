@@ -91,6 +91,7 @@ class Strategy(StrEnum):
 
 class Model(StrEnum):
     VIT_H = "vit-h"
+    VIT_L = "vit-l"
     LLAMA3_8B = "llama3-8b"
     MINERVA_7B = "minerva-7b"
     LLAMA3_70B = "llama3-70b"
@@ -105,6 +106,7 @@ class Model(StrEnum):
     def short(self):
         return {
             Model.VIT_H: "ViT-H",
+            Model.VIT_L: "ViT-L",
             Model.LLAMA3_8B: "LaM-8",
             Model.LLAMA3_70B: "LaM-70",
             Model.MINERVA_7B: "Minv",

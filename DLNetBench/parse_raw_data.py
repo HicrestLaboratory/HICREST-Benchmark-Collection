@@ -72,13 +72,13 @@ def parse_model_name_from_stdout(filepath):
 def get_system_jobs(system: str) -> List[sbm.Job]:
     jobs = sbm.jobs_list(
         cluster_name=SBM_SYSTEM_NAME_MAP.get(system, system),
-        status=[sbm.Status.COMPLETED, sbm.Status.TIMEOUT]
+        status=[sbm.Status.COMPLETED, sbm.Status.TIMEOUT, sbm.Status.CANCELLED]
     )
     
     for a in SBM_SYSTEM_ARCHIVES.get(system, []):
         a_jobs = sbm.jobs_list(
             cluster_name=SBM_SYSTEM_NAME_MAP.get(system, system),
-            status=[sbm.Status.COMPLETED, sbm.Status.TIMEOUT],
+            status=[sbm.Status.COMPLETED, sbm.Status.TIMEOUT, sbm.Status.CANCELLED],
             archive_name=a,
             from_active=False,
             from_archived=True,
@@ -120,19 +120,28 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
                 print(f'  job {j_i:<3} of {len(jobs)}')
             v = job.variables or {}
             
-            if not job.tag.startswith('baseline'):
-                continue
-            
             if system == "nvl72" and v.get("gpu_model", "").upper() != "GB300":
                 continue
-
-            strategy  = Strategy(str(v.get("strategy")).strip('orig'))
-            nodes     = int(v.get("nodes", 1))
-            comm_lib  = v.get("comm_lib")
-            gpu_model = v.get("gpu_model")
-            gpus      = int(v.get("gpus", nodes * GPUS_PER_NODE_MAP[system]))
-            placement_class = parse_placement(v.get("placement_class") or v.get("placement", "na"))
-            model_name = v.get("model") or v.get("model_name")
+              
+            if not job.tag.startswith('baseline'): 
+                if system in ['leonardo', 'lumi'] and "nccl_default" in job.tag:
+                    strategy = Strategy("FSDP")
+                    nodes = int(v.get("nodes", 1))
+                    gpus = int(v.get("gpus", nodes * GPUS_PER_NODE_MAP[system]))
+                    comm_lib = "nccl" if system == 'leonardo' else "rccl"
+                    gpu_model = "A100" if system == 'leonardo' else "MI250X"
+                    placement_class = Placement("na")
+                    model_name = v.get("fsdp_model")
+                else:
+                    continue
+            else:
+                strategy  = Strategy(str(v.get("strategy")).strip('orig'))
+                nodes     = int(v.get("nodes", 1))
+                comm_lib  = v.get("comm_lib")
+                gpu_model = v.get("gpu_model")
+                gpus      = int(v.get("gpus", nodes * GPUS_PER_NODE_MAP[system]))
+                placement_class = parse_placement(v.get("placement_class") or v.get("placement", "na"))
+                model_name = v.get("model") or v.get("model_name")
             
             
             stdout = job.get_stdout()
@@ -142,6 +151,7 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
                 continue
     
             if not model_name:
+                print(job.command)
                 model_name = get_model_from_command(job.command)
             if not model_name:
                 model_name = parse_model_name_from_stdout(stdout)
