@@ -151,14 +151,16 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
                 continue
     
             if not model_name:
-                print(job.command)
+                # print(job.command)
                 model_name = get_model_from_command(job.command)
+            
+            if strategy == 'DP' and (model_name == 'vit-l' or 'vit-l' in job.command):
+                continue
+            
             if not model_name:
                 model_name = parse_model_name_from_stdout(stdout)
             model = Model(model_name)
                 
-            if strategy == 'DP' and model_name == 'vit-l':
-                continue
             
             if not all([strategy, nodes, gpus, placement_class, model_name, comm_lib, gpu_model]):
                 print('WARNING: incomplete baseline meta:')
@@ -356,10 +358,8 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
             if j_i % 10 == 0:
                 print(f'  job {j_i:<3} of {len(jobs)}')
             
-            if str(job.job_id) == str(38409415):
-                print('LUI!!!')
-            if job.job_id == 38409415 and job.tag.startswith('experiments_'):
-                print('DIOOOOOOO')
+            # if str(job.job_id) == str(38409415):
+            #     print('LUI!!!')
             
             if job.tag.startswith('baseline'):
                 continue
@@ -371,7 +371,7 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
             if system == "nvl72" and "GB300" not in job.tag:
                 continue
             
-            stdout = job.get_stdout()
+            stdout = job.get_stdout()                
             if not stdout:
                 print('WARNING: could not find concurrent stdout:')
                 print(job)
@@ -628,10 +628,12 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
 # ============================================================================
 
 
-def compute_slowdowns(baselines: Dict[RunKey, RunMetrics], concurrent: Dict[str, List[ConcurrentRun]], metric: str):
+def compute_slowdowns(baselines: Dict[RunKey, RunMetrics], concurrent: Dict[str, List[ConcurrentRun]], metric: str = 'min'):
     """
     Match each concurrent run to its isolated baseline and compute the
     congestion impact (slowdown ratio).
+    
+    USE MIN AS METRIC HERE (the throughput of the rank that finished last)
     """
     unmatched = set()
     no_throughput = set()
@@ -645,7 +647,7 @@ def compute_slowdowns(baselines: Dict[RunKey, RunMetrics], concurrent: Dict[str,
                     unmatched.add(key)
                     continue
                 for m_i, measure in enumerate(runs):
-                    t = measure.get_throughput()
+                    t = measure.get_throughput_trimmed_mean()
                     if not t:
                         no_throughput.add((key, m_i))
                         continue

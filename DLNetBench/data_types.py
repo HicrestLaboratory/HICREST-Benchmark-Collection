@@ -5,9 +5,10 @@ from pathlib import Path
 import re
 from statistics import geometric_mean, mean, median, stdev
 import sys
-from typing import Dict, List, NamedTuple, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 import pandas as pd
 import numpy as np
+from scipy.stats import trim_mean
 from experiments_generator import PLACEMENT_CLASS_DEFS
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
@@ -56,9 +57,9 @@ class Strategy(StrEnum):
         return {
             Strategy.DP: "D",
             Strategy.FSDP: "FSDP",
-            Strategy.DP_PP: "D+P",
-            Strategy.DP_PP_TP: "D+P+T",
-            Strategy.DP_PP_EXPERT: "D+P+E",
+            Strategy.DP_PP: "DP",
+            Strategy.DP_PP_TP: "DPT",
+            Strategy.DP_PP_EXPERT: "DPE",
         }[self]
 
     def color(self):
@@ -258,6 +259,8 @@ class MeasurementStats:
     mean: float
     geomean: float
     std: float
+    per_rank_std_min: Optional[float] = None  # min of per-rank stds (trimmed mean only)
+    per_rank_std_max: Optional[float] = None  # max of per-rank stds (trimmed mean only)
     
     def get(self, stat: str) -> float:
         """
@@ -276,7 +279,10 @@ class MeasurementStats:
             raise ValueError(f"Unknown statistic: {stat}. Available: min, max, median, mean, geomean, std")
         return getattr(self, stat)
 
-def _compute_measurements_stats(values) -> Union[MeasurementStats, None]:
+
+def _compute_measurements_stats(
+    values, per_rank_stds: Optional[list] = None
+) -> Union[MeasurementStats, None]:
     if not values:
         return None
     values = np.array(values)
@@ -287,6 +293,8 @@ def _compute_measurements_stats(values) -> Union[MeasurementStats, None]:
         mean=float(np.mean(values)),
         geomean=float(geometric_mean(values)),
         std=float(np.std(values)),
+        per_rank_std_min=min(per_rank_stds) if per_rank_stds else None,
+        per_rank_std_max=max(per_rank_stds) if per_rank_stds else None,
     )
 
 @dataclass
@@ -305,19 +313,46 @@ class RunMeasurements:
         return niter
     
 
-    def get_throughput(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
+    def get_throughput_median(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
         """
-        Aggregates per-rank iterations using min
-        Returns (min, max, median, mean, geomean, std) of these mins
+        Aggregates per-rank iterations using median per rank, then min across ranks.
+        Returns (min, max, median, mean, geomean, std) of these per-rank medians.
         """
-        mins = []
+        per_rank_medians = []
         for _, rank_df in self._df.groupby('rank'):
             usable = rank_df['throughput'].iloc[skip_first_n:]
             if not usable.empty:
-                mins.append(usable.min())
+                per_rank_medians.append(float(np.median(usable)))
             else:
                 print('WARNING no usable throughputs in job')
-        return _compute_measurements_stats(mins)
+        return _compute_measurements_stats(per_rank_medians)
+
+
+    def get_throughput_trimmed_mean(
+        self, skip_first_n: int = 1, trim_fraction: float = 0.1
+    ) -> Union[MeasurementStats, None]:
+        """
+        Aggregates per-rank iterations using trimmed mean per rank, then min across ranks.
+        trim_fraction: fraction to cut from each tail (e.g. 0.1 = 10% each side).
+        - std: spread across per-rank trimmed means (meaningful with many ranks)
+        - within_std: mean of per-rank stds computed on the trimmed window (reflects
+                    within-rank variance, more meaningful with few ranks)
+        """
+        per_rank_tmeans = []
+        per_rank_stds = []
+        for _, rank_df in self._df.groupby('rank'):
+            usable = rank_df['throughput'].iloc[skip_first_n:].to_numpy()
+            if len(usable) == 0:
+                print('WARNING no usable throughputs in job')
+                continue
+            sorted_vals = np.sort(usable)
+            n = len(sorted_vals)
+            n_trim = int(np.floor(trim_fraction * n))
+            trimmed = sorted_vals[n_trim: n - n_trim] if n_trim > 0 else sorted_vals
+            per_rank_tmeans.append(float(trim_mean(usable, proportiontocut=trim_fraction)))
+            per_rank_stds.append(float(np.std(trimmed)))
+
+        return _compute_measurements_stats(per_rank_tmeans, per_rank_stds=per_rank_stds)
 
     def get_comm_relevance(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
         """
@@ -395,7 +430,7 @@ class Baseline:
         Aggregates per-rank iterations using min
         Returns (min, max, median, mean, geomean, std) of these mins
         """
-        return self.data.get_throughput() if self.data else None
+        return self.data.get_throughput_trimmed_mean() if self.data else None
     
     def get_comm_relevance(self):
         """
@@ -431,7 +466,7 @@ class ConcurrentRun:
         by_system = self.system in ['leonardo', 'jupiter', 'intel', 'dgxA100', 'nvl72']
         less_than_three_groups = None
         if self.allocation_stats:
-            less_than_three_groups = len(self.allocation_stats.distinct_groups) > 3
+            less_than_three_groups = len(self.allocation_stats.distinct_groups) < 3
         return by_system and (less_than_three_groups is None or less_than_three_groups)
     
     def _summarize_pattern(self) -> str:
