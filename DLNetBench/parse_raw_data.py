@@ -30,12 +30,12 @@ from pprint import pprint
 import re
 from collections import defaultdict
 import sys
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 from warnings import warn
 import sbatchman as sbm
 import pandas as pd
 
-from data_types import GPUS_PER_NODE_MAP, SYSTEM_ORDER, Baseline, ConcurrentRun, Model, Placement, RunKey, RunMeasurements, RunMetrics, Strategy, parse_placement
+from data_types import GPUS_PER_NODE_MAP, SYSTEM_ORDER, Baseline, ConcurrentRun, MeasurementStats, Model, Placement, RunKey, RunMeasurements, RunMetrics, SlowdownStats, Strategy, parse_placement
 from parsers import parse_scheduler_output, stdout_file_to_csv_multi, stdout_to_csv_multi
 from command_map import get_model_from_command
 
@@ -196,60 +196,49 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
 
 def build_baselines_dict(baselines: Dict[str, List[Baseline]]) -> Dict[RunKey, RunMetrics]:
     """
-    This deduplicates keeping the best max throughput
+    Builds a baseline dict merging duplicate entries via MeasurementStats.merge().
+
+    Rather than deduplicating by keeping the best result (which cherry-picks the
+    luckiest run, violating Hoefler & Belli 2015 Rule 2: "report all results,
+    not just the best"), duplicate keys are merged by pooling their raw filtered
+    values and recomputing all statistics. This gives a more representative and
+    statistically robust baseline by using all available data.
     """
     res: Dict[RunKey, RunMetrics] = {}
+
     for b in baselines.values():
         for baseline in b:
             key = baseline.get_id_tuple()
             throughput = baseline.get_throughput()
-            if key in res:
-                if throughput.max <= res[key].throughput.max:
-                    print(f'Ignoring worse performing duplicate for baseline {key}')
-                    continue
+
+            if throughput is None:
+                print(f'WARNING: no throughput for baseline {key}, skipping')
+                continue
+
+            if key not in res:
+                res[key] = RunMetrics(
+                    throughput=throughput,
+                    comm_relevance=baseline.get_comm_relevance(),
+                )
+            else:
+                existing_cr = res[key].comm_relevance
+                new_cr      = baseline.get_comm_relevance()
+                if existing_cr is None:
+                    merged_cr = new_cr
+                elif new_cr is None:
+                    merged_cr = existing_cr
                 else:
-                    print(f'Substituting baseline {key}')
-    
-            res[key] = RunMetrics(
-                throughput=baseline.get_throughput(),
-                comm_relevance=baseline.get_comm_relevance()
-            )
+                    merged_cr = existing_cr.merge(new_cr)
+
+                print(f'Merging {key.system} {key.display()}')
+                res[key] = RunMetrics(
+                    throughput=res[key].throughput.merge(throughput),
+                    comm_relevance=merged_cr,
+                )
+                print()
+
     return res
 
-    
-def _table(rows: list[list[str]], header: list[str], title: str = "", indent: int = 2) -> None:
-    """Print a plain-text aligned table to stdout."""
-    all_rows   = [header] + rows
-    col_widths = [max(len(str(r[c])) for r in all_rows) for c in range(len(header))]
-    pad        = " " * indent
-    sep        = pad + "  ".join("-" * w for w in col_widths)
-    if title:
-        total_w = sum(col_widths) + 2 * (len(col_widths) - 1)
-        print(f"\n{pad}{title:=^{total_w}}")
-    print(pad + "  ".join(str(h).ljust(w) for h, w in zip(header, col_widths)))
-    print(sep)
-    for row in rows:
-        print(pad + "  ".join(str(v).ljust(w) for v, w in zip(row, col_widths)))
-    print()
-
-
-# def print_baseline_table(baseline_dict: Dict[RunKey, RunMetrics]) -> None:
-#     """Print a summary table of all baseline values."""
-#     if not baseline_dict:
-#         print("  (no baseline entries)\n")
-#         return
-#     rows = []
-#     for k, v in sorted(baseline_dict.items()):
-#         rows.append([
-#             k.system, k.strategy, k.model, str(k.gpus), k.placement_class,
-#             ' / '.join([f'{t:7.1f}' for t in v.throughput]) if v.throughput else '(none)',
-#             ' / '.join([f'{r*100.0:7.1f}' for r in v.comm_relevance]) if v.comm_relevance else '(none)',
-#         ])
-#     _table(
-#         rows,
-#         header=["System", "Strategy", "Model", "GPUs", "Placement", "Throughput (min/max/median)", "Comm relevance (min/max/median)"],
-#         title=" Baseline T0 summary ",
-#     )
 
 def get_baselines_dataframe(baseline_dict: Dict[RunKey, RunMetrics]):
     if not baseline_dict:
@@ -259,7 +248,6 @@ def get_baselines_dataframe(baseline_dict: Dict[RunKey, RunMetrics]):
     data = []
     for k, v in sorted(baseline_dict.items()):
         t_stats = v.throughput
-        c_stats = v.comm_relevance
         
         data.append({
             "system": k.system,
@@ -273,12 +261,10 @@ def get_baselines_dataframe(baseline_dict: Dict[RunKey, RunMetrics]):
             "throughput_mean": t_stats.mean if t_stats else None,
             "throughput_geomean": t_stats.geomean if t_stats else None,
             "throughput_std": t_stats.std if t_stats else None,
-            "comm_relevance_min": c_stats.min * 100.0 if c_stats else None,
-            "comm_relevance_max": c_stats.max * 100.0 if c_stats else None,
-            "comm_relevance_median": c_stats.median * 100.0 if c_stats else None,
-            "comm_relevance_mean": c_stats.mean * 100.0 if c_stats else None,
-            "comm_relevance_geomean": c_stats.geomean * 100.0 if c_stats else None,
-            "comm_relevance_std": c_stats.std * 100.0 if c_stats else None,
+            "comm_relevance": v.comm_relevance.ratio * 100.0 if v.comm_relevance else None,
+            "comm_relevance_ci_low":  v.comm_relevance.ci_low  * 100.0 if v.comm_relevance else None,
+            "comm_relevance_ci_high": v.comm_relevance.ci_high * 100.0 if v.comm_relevance else None,
+            "comm_relevance_max": (v.comm_relevance.sync.max/v.comm_relevance.runtime.max) * 100.0 if v.comm_relevance else None,
         })
 
     df = pd.DataFrame(data)
@@ -627,34 +613,58 @@ def parse_concurrent(systems=SYSTEMS) -> Dict[str, List[ConcurrentRun]]:
 #  Slowdown computation
 # ============================================================================
 
-
-def compute_slowdowns(baselines: Dict[RunKey, RunMetrics], concurrent: Dict[str, List[ConcurrentRun]], metric: str = 'min'):
+def compute_slowdowns(
+    baselines: Dict[RunKey, RunMetrics],
+    concurrent: Dict[str, List[ConcurrentRun]],
+) -> None:
     """
     Match each concurrent run to its isolated baseline and compute the
     congestion impact (slowdown ratio).
-    
-    USE MIN AS METRIC HERE (the throughput of the rank that finished last)
+
+    Following Hoefler & Belli 2015:
+    - Rule 4: slowdown is a ratio — baseline and concurrent throughputs are
+      aggregated separately via MeasurementStats.merge(), and the ratio is
+      computed once from the merged components.
+    - Section 3.1.3: the CI of the slowdown is derived from the nonparametric
+      CIs of both components (conservative: ci_low/ci_high, optimistic: ci_high/ci_low).
+    - Section 3.1.3: outlier removal is handled inside MeasurementStats, and
+      n_outliers_removed is preserved through merging.
     """
     unmatched = set()
     no_throughput = set()
 
     for system, conc_runs in concurrent.items():
         for conc_run in conc_runs:
-            slowdowns = defaultdict(list)
+            slowdowns: Dict[RunKey, SlowdownStats] = {}
+
             for key, runs in conc_run.multi_runs.items():
-                t0 = baselines.get(key)
-                if not t0 or not t0.throughput:
+                baseline_metrics = baselines.get(key)
+                if not baseline_metrics or not baseline_metrics.throughput:
                     unmatched.add(key)
                     continue
+
+                # merge all concurrent measurements for this key
+                merged_concurrent: Optional[MeasurementStats] = None
+                n_merged = 0
                 for m_i, measure in enumerate(runs):
-                    t = measure.get_throughput_trimmed_mean()
+                    t = measure.get_throughput()
                     if not t:
                         no_throughput.add((key, m_i))
                         continue
-                    slowdowns[key].append(t0.throughput.get(metric) / t.get(metric))
-        
+                    merged_concurrent = t if merged_concurrent is None else merged_concurrent.merge(t)
+                    n_merged += 1
+
+                if merged_concurrent is None:
+                    continue
+
+                slowdowns[key] = SlowdownStats(
+                    baseline=baseline_metrics.throughput,
+                    concurrent=merged_concurrent,
+                    n_measurements=n_merged,
+                )
+
             conc_run.slowdowns = slowdowns
-            
+
     if unmatched:
         print(f"  WARNING: {len(unmatched)} combos had no matching baseline:")
         for u in sorted(unmatched, key=str):

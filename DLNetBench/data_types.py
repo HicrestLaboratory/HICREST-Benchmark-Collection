@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 from statistics import geometric_mean, mean, median, stdev
 import sys
-from typing import Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Self, Tuple, Union
 import pandas as pd
 import numpy as np
 from scipy.stats import trim_mean
@@ -251,50 +251,195 @@ PLACEMENT_ORDER = [
 ]
 
 # Classes
+def _nonparametric_ci(sorted_values: np.ndarray, confidence: float = 0.95) -> tuple[float, float]:
+    """
+    Computes nonparametric CI of the median following Le Boudec (cited in Hoefler & Belli 2015,
+    Section 3.1.3). Requires n > 5.
+    Returns (ci_low, ci_high) as actual values (not indices).
+    """
+    n = len(sorted_values)
+    if n <= 5:
+        # not enough samples for a meaningful nonparametric CI
+        return (float(np.median(sorted_values)), float(np.median(sorted_values)))
+    z = {0.90: 1.645, 0.95: 1.960, 0.99: 2.576}.get(confidence, 1.960)
+    lo_rank = int(np.floor((n - z * np.sqrt(n)) / 2))
+    hi_rank = int(np.ceil(1 + (n + z * np.sqrt(n)) / 2))
+    lo_rank = max(0, lo_rank)
+    hi_rank = min(n - 1, hi_rank)
+    return (float(sorted_values[lo_rank]), float(sorted_values[hi_rank]))
+
+
+def _tukey_filter(values: np.ndarray, k: float = 3.0) -> tuple[np.ndarray, int]:
+    """
+    Removes outliers using Tukey's method (Hoefler & Belli 2015, Section 3.1.3).
+    k=3.0 for extreme outliers; increase for more conservative filtering.
+    Returns (filtered_values, n_removed).
+    """
+    q1, q3 = np.percentile(values, [25, 75])
+    iqr = q3 - q1
+    lo = q1 - k * iqr
+    hi = q3 + k * iqr
+    mask = (values >= lo) & (values <= hi)
+    return values[mask], int((~mask).sum())
+
+
 @dataclass
 class MeasurementStats:
+    # summary statistics (computed on filtered values)
     min: float
     max: float
     median: float
     mean: float
     geomean: float
     std: float
-    per_rank_std_min: Optional[float] = None  # min of per-rank stds (trimmed mean only)
-    per_rank_std_max: Optional[float] = None  # max of per-rank stds (trimmed mean only)
-    
+
+    # nonparametric 95% CI of the median (Hoefler & Belli 2015, Section 3.1.3)
+    ci_low: float
+    ci_high: float
+
+    # outlier reporting (required by Hoefler & Belli 2015, Section 3.1.3)
+    n_outliers_removed: int
+
+    # raw filtered values — kept for merging across batches (not decomposable otherwise)
+    raw_values: np.ndarray = field(repr=False)
+
     def get(self, stat: str) -> float:
         """
         Returns the requested statistic value.
-        
+
         Args:
-            stat: One of 'min', 'max', 'median', 'mean', 'geomean', 'std'
-            
+            stat: One of 'min', 'max', 'median', 'mean', 'geomean', 'std', 'ci_low', 'ci_high'
+
         Returns:
             The requested statistic value
-            
+
         Raises:
             ValueError: If the stat name is not available
         """
         if not hasattr(self, stat):
-            raise ValueError(f"Unknown statistic: {stat}. Available: min, max, median, mean, geomean, std")
+            raise ValueError(
+                f"Unknown statistic: {stat}. "
+                f"Available: min, max, median, mean, geomean, std, ci_low, ci_high"
+            )
         return getattr(self, stat)
 
+    def merge(self, other: Self) -> Self:
+        """
+        Merges two MeasurementStats by pooling raw filtered values and recomputing
+        all statistics from scratch, re-applying Tukey filtering on the pooled data.
+        This correctly handles cases where one batch contains debug/anomalous runs
+        that survived their own per-batch Tukey pass but are revealed as outliers
+        when pooled with legitimate runs.
+        Outlier counts are accumulated across all merges.
+        """
+        pooled = np.concatenate([self.raw_values, other.raw_values])
+        merged = _compute_measurements_stats(pooled)  # re-applies Tukey on pooled data
+        # accumulate total outliers removed across all original batches plus this merge
+        merged.n_outliers_removed += self.n_outliers_removed + other.n_outliers_removed
+        return merged
+
+@dataclass
+class CommRelevanceStats:
+    """
+    Holds the components needed to compute a communication-relevance ratio correctly,
+    following Hoefler & Belli 2015 Rule 4: never aggregate ratios directly.
+    The ratio is computed once from the aggregated components.
+
+    Both runtime and sync are MeasurementStats over per-run values of the
+    bottleneck rank (the rank with the largest median runtime), with independent
+    Tukey filtering applied to each series.
+    """
+    runtime: MeasurementStats   # per-run median runtime of the bottleneck rank
+    sync:    MeasurementStats   # per-run median sync_time of the bottleneck rank
+
+    @property
+    def ratio(self) -> float:
+        """Ratio computed once from aggregated medians (Rule 4)."""
+        return self.sync.median / self.runtime.median
+
+    @property
+    def ci_low(self) -> float:
+        """Conservative bound: weakest sync / strongest runtime."""
+        return self.sync.ci_low / self.runtime.ci_high
+
+    @property
+    def ci_high(self) -> float:
+        """Optimistic bound: strongest sync / weakest runtime."""
+        return self.sync.ci_high / self.runtime.ci_low
+
+    def merge(self, other: Self) -> Self:
+        """
+        Merges two CommRelevanceStats by pooling raw values for each component
+        independently and recomputing, re-applying Tukey on the pooled data.
+        Outlier counts are accumulated via MeasurementStats.merge().
+        """
+        return CommRelevanceStats(
+            runtime=self.runtime.merge(other.runtime),
+            sync=self.sync.merge(other.sync),
+        )
 
 def _compute_measurements_stats(
-    values, per_rank_stds: Optional[list] = None
+    values,
+    tukey_k: float = 1.5,
+    ci_confidence: float = 0.95,
+    _already_filtered: bool = False,
 ) -> Union[MeasurementStats, None]:
-    if not values:
+    """
+    Computes summary statistics with Tukey outlier removal and nonparametric CI.
+
+    Args:
+        values:            raw per-run values (e.g. per-run geomeans)
+        tukey_k:           Tukey's constant (1.5 standard, higher = more conservative)
+        ci_confidence:     confidence level for the median CI (default 0.95)
+        _already_filtered: if True, skip Tukey filtering (used internally by merge)
+    """
+    if values is None or len(values) == 0:
         return None
-    values = np.array(values)
+
+    values = np.array(values, dtype=float)
+
+    if _already_filtered:
+        filtered, n_removed = values, 0
+    else:
+        filtered, n_removed = _tukey_filter(values, k=tukey_k)
+
+    if len(filtered) == 0:
+        return None
+
+    sorted_vals = np.sort(filtered)
+    ci_low, ci_high = _nonparametric_ci(sorted_vals, confidence=ci_confidence)
+    
+    if n_removed > 0 and (min(ci_low, ci_high) / max(ci_low, ci_high)) < 0.9:
+        print(f'INFO Tukey filter removed {n_removed}/{len(values)} outlier(s)')
+        if values[0] < 1.0:
+            if len(sorted_vals) > 15:
+                print(f'Before %: {(values*100.0).astype(int).tolist()[:5]} ... {(values*100.0).astype(int).tolist()[-5:]}')
+                print(f'After %: {(sorted_vals*100.0).astype(int).tolist()[:5]} ... {(sorted_vals*100.0).astype(int).tolist()[-5:]}')
+            else:
+                print(f'Before %: {(values*100.0).astype(int).tolist()}')
+                print(f'After %: {(sorted_vals*100.0).astype(int).tolist()}')
+            print(f'ci_low - ci_high: {ci_low} - {ci_high}')
+        else:
+            if len(sorted_vals) > 15:
+                print(f'Before: {values.astype(int).tolist()[:5]} ... {values.astype(int).tolist()[-5:]}')
+                print(f'After: {sorted_vals.astype(int).tolist()[:5]} ... {sorted_vals.astype(int).tolist()[-5:]}')
+            else:
+                print(f'Before: {values.astype(int).tolist()}')
+                print(f'After: {sorted_vals.astype(int).tolist()}')
+            print(f'ci_low - ci_high: {ci_low} - {ci_high}')
+        print()
+
     return MeasurementStats(
-        min=float(np.min(values)),
-        max=float(np.max(values)),
-        median=float(np.median(values)),
-        mean=float(np.mean(values)),
-        geomean=float(geometric_mean(values)),
-        std=float(np.std(values)),
-        per_rank_std_min=min(per_rank_stds) if per_rank_stds else None,
-        per_rank_std_max=max(per_rank_stds) if per_rank_stds else None,
+        min=float(np.min(filtered)),
+        max=float(np.max(filtered)),
+        median=float(np.median(filtered)),
+        mean=float(np.mean(filtered)),
+        geomean=float(geometric_mean(filtered)),
+        std=float(np.std(filtered)),
+        ci_low=ci_low,
+        ci_high=ci_high,
+        n_outliers_removed=n_removed,
+        raw_values=filtered,
     )
 
 @dataclass
@@ -303,7 +448,7 @@ class RunMeasurements:
     _df: pd.DataFrame  # main DataFrame, kept as-is
 
     @classmethod
-    def from_df_dict(cls, df_dict: Dict[str, pd.DataFrame], n_ranks: int) -> 'RunMeasurements':
+    def from_df_dict(cls, df_dict: Dict[str, pd.DataFrame], n_ranks: int) -> Self:
         return cls(n_ranks=n_ranks, _df=df_dict['main'])
 
     def _get_niter(self) -> int:
@@ -311,66 +456,109 @@ class RunMeasurements:
         if remainder != 0:
             print(f'WARNING len(df) is not divisible by n_ranks: {len(self._df)=} {self.n_ranks=}')
         return niter
+
+    def get_throughput(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
+        """
+        Aggregates throughput respecting the synchronization structure of the job:
+
+        0. Drop the first skip_first_n run_ids (warmup).
+        
+        1. Per run_id: geomean across ranks.
+           All ranks are synchronized at the end of each run and report the same
+           throughput (total samples / elapsed time). The geomean is appropriate
+           for rates (Hoefler & Belli 2015, Rule 3) and is robust to tiny
+           floating-point differences across ranks.
+
+
+        2. Tukey outlier filtering to exclude runs with dramatic slowdowns
+           (Hoefler & Belli 2015, Section 3.1.3). n_outliers_removed is reported.
+
+        3. Median across remaining runs with nonparametric 95% CI
+           (Hoefler & Belli 2015, Section 3.1.3).
+
+        The returned MeasurementStats.raw_values contains the filtered per-run
+        geomeans, enabling correct merging across multiple RunMeasurements via
+        MeasurementStats.merge().
+        """
+        all_run_ids = sorted(self._df['run_id'].unique())
+        usable_run_ids = all_run_ids[skip_first_n:]
+
+        if not usable_run_ids:
+            print('WARNING no usable run_ids after skipping warmup')
+            return None
+
+        per_run_geomeans = []
+        for run_id in usable_run_ids:
+            run_df = self._df[self._df['run_id'] == run_id]
+            rank_throughputs = run_df['throughput'].values
+            if len(rank_throughputs) > 0:
+                per_run_geomeans.append(float(geometric_mean(rank_throughputs)))
+
+        if not per_run_geomeans:
+            print('WARNING no usable throughputs in job')
+            return None
+
+        return _compute_measurements_stats(per_run_geomeans)
     
 
-    def get_throughput_median(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
+    def get_comm_relevance(self, skip_first_n: int = 1) -> Union[CommRelevanceStats, None]:
         """
-        Aggregates per-rank iterations using median per rank, then min across ranks.
-        Returns (min, max, median, mean, geomean, std) of these per-rank medians.
-        """
-        per_rank_medians = []
-        for _, rank_df in self._df.groupby('rank'):
-            usable = rank_df['throughput'].iloc[skip_first_n:]
-            if not usable.empty:
-                per_rank_medians.append(float(np.median(usable)))
-            else:
-                print('WARNING no usable throughputs in job')
-        return _compute_measurements_stats(per_rank_medians)
+        Computes communication relevance of the bottleneck rank as a CommRelevanceStats,
+        following Hoefler & Belli 2015 Rule 4.
 
+        For each run_id (after skipping the first skip_first_n warmup runs):
+        1. Per rank: compute median runtime and median sync_time across iterations
+        2. Identify the bottleneck rank as the one with max median runtime
+            within this run (bottleneck rank may vary across runs in congested scenarios)
+        3. Record that rank's (median_runtime, median_sync_time) as one observation
 
-    def get_throughput_trimmed_mean(
-        self, skip_first_n: int = 1, trim_fraction: float = 0.1
-    ) -> Union[MeasurementStats, None]:
-        """
-        Aggregates per-rank iterations using trimmed mean per rank, then min across ranks.
-        trim_fraction: fraction to cut from each tail (e.g. 0.1 = 10% each side).
-        - std: spread across per-rank trimmed means (meaningful with many ranks)
-        - within_std: mean of per-rank stds computed on the trimmed window (reflects
-                    within-rank variance, more meaningful with few ranks)
-        """
-        per_rank_tmeans = []
-        per_rank_stds = []
-        for _, rank_df in self._df.groupby('rank'):
-            usable = rank_df['throughput'].iloc[skip_first_n:].to_numpy()
-            if len(usable) == 0:
-                print('WARNING no usable throughputs in job')
-                continue
-            sorted_vals = np.sort(usable)
-            n = len(sorted_vals)
-            n_trim = int(np.floor(trim_fraction * n))
-            trimmed = sorted_vals[n_trim: n - n_trim] if n_trim > 0 else sorted_vals
-            per_rank_tmeans.append(float(trim_mean(usable, proportiontocut=trim_fraction)))
-            per_rank_stds.append(float(np.std(trimmed)))
-
-        return _compute_measurements_stats(per_rank_tmeans, per_rank_stds=per_rank_stds)
-
-    def get_comm_relevance(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
-        """
-        Aggregates per-rank iterations using max
-        Returns (min, max, median, mean, geomean, std) of these maxes
+        Then across runs:
+        4. Tukey-filter runtimes and sync_times independently
+        5. Return as CommRelevanceStats for correct downstream merging
         """
         if 'sync_time' not in self._df.columns:
             return None
 
-        maxes = []
-        for _, rank_df in self._df.groupby('rank'):
-            usable = rank_df.iloc[skip_first_n:]
-            if not usable.empty:
-                maxes.append((usable['sync_time'] / usable['runtime']).max())
-            else:
-                print('WARNING no usable sync_time in job')
+        all_run_ids = sorted(self._df['run_id'].unique())
+        usable_run_ids = all_run_ids[skip_first_n:]
 
-        return _compute_measurements_stats(maxes)
+        if not usable_run_ids:
+            print('WARNING no usable run_ids after skipping warmup')
+            return None
+
+        per_run_runtimes = []
+        per_run_syncs = []
+
+        for run_id in usable_run_ids:
+            run_df = self._df[self._df['run_id'] == run_id]
+
+            per_rank_stats = []
+            for rank, rank_df in run_df.groupby('rank'):
+                if rank_df.empty:
+                    continue
+                med_runtime = float(np.median(rank_df['runtime']))
+                med_sync = float(np.median(rank_df['sync_time']))
+                per_rank_stats.append((med_runtime, med_sync))
+
+            if not per_rank_stats:
+                print(f'WARNING no usable sync_time in run_id {run_id}')
+                continue
+
+            med_runtime, med_sync = max(per_rank_stats, key=lambda x: x[0])
+            per_run_runtimes.append(med_runtime)
+            per_run_syncs.append(med_sync)
+
+        if not per_run_runtimes:
+            print('WARNING no usable comm_relevance in job')
+            return None
+
+        runtime_stats = _compute_measurements_stats(per_run_runtimes)
+        sync_stats    = _compute_measurements_stats(per_run_syncs)
+
+        if runtime_stats is None or sync_stats is None:
+            return None
+
+        return CommRelevanceStats(runtime=runtime_stats, sync=sync_stats)
     
     
 class RunKey(NamedTuple):
@@ -391,7 +579,7 @@ class RunKey(NamedTuple):
 
 class RunMetrics(NamedTuple):
     throughput:     Union[MeasurementStats, None]
-    comm_relevance: Union[MeasurementStats, None]
+    comm_relevance: Union[CommRelevanceStats, None]
 
 @dataclass
 class Baseline:
@@ -430,7 +618,7 @@ class Baseline:
         Aggregates per-rank iterations using min
         Returns (min, max, median, mean, geomean, std) of these mins
         """
-        return self.data.get_throughput_trimmed_mean() if self.data else None
+        return self.data.get_throughput() if self.data else None
     
     def get_comm_relevance(self):
         """
@@ -439,8 +627,39 @@ class Baseline:
         """
         return self.data.get_comm_relevance() if self.data else None
     
-    # TODO add more class methods
     
+@dataclass
+class SlowdownStats:
+    """
+    Holds the components needed to compute a slowdown ratio correctly,
+    following Hoefler & Belli 2015 Rule 4: never aggregate ratios directly.
+    The ratio is computed once from the aggregated components.
+    """
+    baseline: MeasurementStats       # merged across all baseline measurements
+    concurrent: MeasurementStats     # merged across all concurrent measurements
+    n_measurements: int              # how many concurrent runs were merged
+
+    @property
+    def ratio(self) -> float:
+        """
+        Slowdown computed once from aggregated components (Rule 4).
+        Uses geomean of baseline and concurrent median as the representative values.
+        """
+        return self.baseline.geomean / self.concurrent.median
+    
+    def all_ratios(self):
+        return self.baseline.geomean / self.concurrent.raw_values
+
+    @property
+    def ci_low(self) -> float:
+        """Conservative bound: weakest baseline / strongest concurrent."""
+        return self.baseline.ci_low / self.concurrent.ci_high
+
+    @property
+    def ci_high(self) -> float:
+        """Optimistic bound: strongest baseline / weakest concurrent."""
+        return self.baseline.ci_high / self.concurrent.ci_low
+
     
 @dataclass
 class ConcurrentRun:
@@ -452,7 +671,7 @@ class ConcurrentRun:
     tot_runtime: Union[float, None]
     
     multi_runs: Dict[RunKey, List[RunMeasurements]] = field(init=False)
-    slowdowns: Dict[RunKey, List[float]] = field(init=False)
+    slowdowns: Dict[RunKey, SlowdownStats] = field(init=False)
     
     pattern: List[int]
     strategies: List[Strategy]
@@ -503,3 +722,4 @@ class ConcurrentRun:
         if include_runs:
             parts.extend([f'  {k.display():<50} -> {len(v)} repetitions' for k, v in self.multi_runs.items()])
         return '\n'.join(parts)
+    

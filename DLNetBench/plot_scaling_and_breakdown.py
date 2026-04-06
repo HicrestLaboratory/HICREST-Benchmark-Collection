@@ -1010,10 +1010,6 @@ def plot_global_faceted(
             for (strategy, system, model, placement), grp in plot_summary.groupby(
                 ["strategy", "system", "model", "placement"]
             ):
-                # strategy = grp["strategy"].iloc[0]
-                # placement  = grp["placement"].iloc[0]
-                # model = grp["model"].iloc[0]
-
                 color    = base_color[strategy]
                 ls       = model_ls[model]
                 marker   = place_markers.get(placement, "o")
@@ -1027,7 +1023,7 @@ def plot_global_faceted(
                         grp["gpus"], grp[f"throughput_{metric}"],
                         yerr=grp["throughput_std"],
                         label=label, color=color, marker=marker, linestyle=ls,
-                        linewidth=2, markersize=4, capsize=1,
+                        linewidth=2, markersize=4, capsize=3,
                     )
                     if not no_ideal:
                         base_row   = grp.iloc[0]
@@ -1050,10 +1046,12 @@ def plot_global_faceted(
                 ax.set_xscale("log", base=2)
                 ax.set_yscale("log", base=2)
                 if idx == 0:
-                    ax.set_ylabel("Throughput (samples/s)", fontsize=18)
+                    ax.set_ylabel("Throughput (samples/s)", fontsize=22)
                 if not no_ideal:
                     ax.plot([], [], color="gray", linestyle=":", linewidth=2,
                             alpha=0.9, label="Ideal")
+                ax.yaxis.set_major_formatter(FuncFormatter(format_throughput))
+                ax.yaxis.set_tick_params(labelsize=20)
             else:
                 ax.axhline(1.0, linestyle=":", linewidth=1, alpha=0.6,
                            color="gray", label="Ideal")
@@ -1062,11 +1060,9 @@ def plot_global_faceted(
 
             
             # Optional custom formatter
-            ax.yaxis.set_major_formatter(FuncFormatter(format_throughput))
-            ax.yaxis.set_tick_params(labelsize=16)
             ax.set_xticks(gpus_local)
             ax.xaxis.set_major_formatter(FuncFormatter(format_gpus))
-            ax.xaxis.set_tick_params(labelsize=16)
+            ax.xaxis.set_tick_params(labelsize=20)
             # ax.set_xticklabels([str(g) if g != 224 else '' for g in gpus_local], fontsize=16)
 
         elif plot_type == "breakdown":
@@ -1128,8 +1124,8 @@ def plot_global_faceted(
                 ax.set_ylim(0, 110)
                 ax.set_ylabel("Time (%)", fontsize=9)
 
-        ax.set_title(SYSTEM_NAMES_MAP.get(system_name, system_name), fontsize=16, fontweight="bold")
-        ax.set_xlabel("GPUs", fontsize=16)
+        ax.set_title(SYSTEM_NAMES_MAP.get(system_name, system_name), fontsize=24, fontweight="bold")
+        ax.set_xlabel("GPUs", fontsize=20)
         ax.grid(True, alpha=0.45)
 
         # Collect legend entries
@@ -1151,7 +1147,7 @@ def plot_global_faceted(
             loc="lower center",
             # nrows=2,
             ncol=min(11, max(1, len(global_labels))),
-            fontsize=14,
+            fontsize=16,
             frameon=False,
         )
 

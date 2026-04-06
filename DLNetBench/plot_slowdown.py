@@ -352,11 +352,12 @@ def plot_slowdown_boxplot(slowdowns: Dict[RunKey, np.ndarray], system, output_pa
     ax.set_ylim(0.95, y_clip)
     _annotate_clipped(ax, categories, slowdowns, y_clip=y_clip)
     _setup_grouped_xaxis(ax, categories, groups, system)
-    ax.set_ylabel("Slowdown %", fontsize=14)
-    _make_legend(ax, strats)
+    ax.set_ylabel("Slowdown %", fontsize=20)
+    # _make_legend(ax, strats)
+    ax.grid(True, alpha=0.5)
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"Saved -> {output_path}")
 
 
