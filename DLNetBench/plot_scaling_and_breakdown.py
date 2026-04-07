@@ -985,6 +985,9 @@ def plot_global_faceted(
         if gpus > 512:
             return f'{int(gpus / 1e3)}K'
         return str(gpus)
+    
+    def format_efficiency(e: float, *_):
+        return f'{int(e*100.0)}'
 
     for idx, system_name in enumerate(systems):
         ax = axes_flat[idx]
@@ -1023,7 +1026,7 @@ def plot_global_faceted(
                         grp["gpus"], grp[f"throughput_{metric}"],
                         yerr=grp["throughput_std"],
                         label=label, color=color, marker=marker, linestyle=ls,
-                        linewidth=2, markersize=4, capsize=3,
+                        linewidth=2, markersize=10, capsize=4,
                     )
                     if not no_ideal:
                         base_row   = grp.iloc[0]
@@ -1040,7 +1043,7 @@ def plot_global_faceted(
                     min_eff = min(min_eff, float(eff.min()))
                     ax.plot(grp["gpus"], eff, label=label,
                             color=color, marker=marker, linestyle=ls,
-                            linewidth=1, markersize=4)
+                            linewidth=2, markersize=10)
 
             if plot_type == "scaling":
                 ax.set_xscale("log", base=2)
@@ -1053,10 +1056,13 @@ def plot_global_faceted(
                 ax.yaxis.set_major_formatter(FuncFormatter(format_throughput))
                 ax.yaxis.set_tick_params(labelsize=20)
             else:
-                ax.axhline(1.0, linestyle=":", linewidth=1, alpha=0.6,
+                ax.axhline(1.0, linestyle=":", linewidth=2, alpha=0.9,
                            color="gray", label="Ideal")
                 ax.set_xscale("log", base=2)
-                ax.set_ylabel("Parallel Efficiency", fontsize=9)
+                if idx == 0:
+                    ax.set_ylabel("Parallel Efficiency (%)", fontsize=22)
+                ax.yaxis.set_major_formatter(FuncFormatter(format_efficiency))
+                ax.yaxis.set_tick_params(labelsize=20)
 
             
             # Optional custom formatter
@@ -1124,8 +1130,10 @@ def plot_global_faceted(
                 ax.set_ylim(0, 110)
                 ax.set_ylabel("Time (%)", fontsize=9)
 
-        ax.set_title(SYSTEM_NAMES_MAP.get(system_name, system_name), fontsize=24, fontweight="bold")
-        ax.set_xlabel("GPUs", fontsize=20)
+        if plot_type != "efficiency":
+            ax.set_title(SYSTEM_NAMES_MAP.get(system_name, system_name), fontsize=24, fontweight="bold")
+        if plot_type != "scaling":
+            ax.set_xlabel("GPUs", fontsize=20)
         ax.grid(True, alpha=0.45)
 
         # Collect legend entries
@@ -1138,7 +1146,8 @@ def plot_global_faceted(
     
 
     # One global legend at the bottom
-    if global_labels:
+    if global_labels and plot_type == 'efficiency':
+        legend_properties = {'weight':'bold', 'size': 14}
         sorted_pairs = sorted(zip(global_handles, global_labels), key=lambda x: x[1].split('-'))
         global_handles, global_labels = zip(*sorted_pairs)
         fig.legend(
@@ -1147,8 +1156,9 @@ def plot_global_faceted(
             loc="lower center",
             # nrows=2,
             ncol=min(11, max(1, len(global_labels))),
-            fontsize=16,
+            fontsize=20,
             frameon=False,
+            prop=legend_properties
         )
 
     fig.tight_layout(rect=[0, 0.18, 1, 1.0])

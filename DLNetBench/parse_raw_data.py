@@ -29,11 +29,13 @@ from pathlib import Path
 from pprint import pprint
 import re
 from collections import defaultdict
+from statistics import mean
 import sys
 from typing import Dict, List, Optional, Union
 from warnings import warn
 import sbatchman as sbm
 import pandas as pd
+import numpy as np
 
 from data_types import GPUS_PER_NODE_MAP, SYSTEM_ORDER, Baseline, ConcurrentRun, MeasurementStats, Model, Placement, RunKey, RunMeasurements, RunMetrics, SlowdownStats, Strategy, parse_placement
 from parsers import parse_scheduler_output, stdout_file_to_csv_multi, stdout_to_csv_multi
@@ -206,36 +208,40 @@ def build_baselines_dict(baselines: Dict[str, List[Baseline]]) -> Dict[RunKey, R
     """
     res: Dict[RunKey, RunMetrics] = {}
 
-    for b in baselines.values():
+    for system, b in baselines.items():
         for baseline in b:
             key = baseline.get_id_tuple()
             throughput = baseline.get_throughput()
+            comm_relevance = baseline.get_comm_relevance()
 
             if throughput is None:
                 print(f'WARNING: no throughput for baseline {key}, skipping')
                 continue
+            
+            if comm_relevance is None:
+                print(f'WARNING: no comm_relevance for baseline {key}')
 
             if key not in res:
                 res[key] = RunMetrics(
                     throughput=throughput,
-                    comm_relevance=baseline.get_comm_relevance(),
+                    comm_relevance=comm_relevance,
                 )
             else:
-                existing_cr = res[key].comm_relevance
-                new_cr      = baseline.get_comm_relevance()
-                if existing_cr is None:
-                    merged_cr = new_cr
-                elif new_cr is None:
-                    merged_cr = existing_cr
-                else:
-                    merged_cr = existing_cr.merge(new_cr)
+                existing_cr = res[key].comm_relevance or []
+                new_cr      = comm_relevance or []
 
-                print(f'Merging {key.system} {key.display()}')
+                print(f'Merging {key.system} {key.display()}  {len(existing_cr or [])}--{len(new_cr or [])}')
                 res[key] = RunMetrics(
                     throughput=res[key].throughput.merge(throughput),
-                    comm_relevance=merged_cr,
+                    comm_relevance=existing_cr + new_cr,
                 )
                 print()
+                
+            # if system in ['intel', 'nvl72'] and key.strategy == Strategy.DP and key.gpus in [8,16]:
+            #     print(f'{system}  {key}')
+            #     print(comm_relevance)
+            #     print(res[key].comm_relevance)
+            #     print()
 
     return res
 
@@ -248,24 +254,30 @@ def get_baselines_dataframe(baseline_dict: Dict[RunKey, RunMetrics]):
     data = []
     for k, v in sorted(baseline_dict.items()):
         t_stats = v.throughput
-        
-        data.append({
+        comm_relevance = np.array(v.comm_relevance) if v.comm_relevance else None
+        obj = {
             "system": k.system,
             "strategy": k.strategy,
             "model": k.model,
             "gpus": k.gpus,
             "placement": k.placement_class,
-            "throughput_min": t_stats.min if t_stats else None,
-            "throughput_max": t_stats.max if t_stats else None,
-            "throughput_median": t_stats.median if t_stats else None,
-            "throughput_mean": t_stats.mean if t_stats else None,
-            "throughput_geomean": t_stats.geomean if t_stats else None,
-            "throughput_std": t_stats.std if t_stats else None,
-            "comm_relevance": v.comm_relevance.ratio * 100.0 if v.comm_relevance else None,
-            "comm_relevance_ci_low":  v.comm_relevance.ci_low  * 100.0 if v.comm_relevance else None,
-            "comm_relevance_ci_high": v.comm_relevance.ci_high * 100.0 if v.comm_relevance else None,
-            "comm_relevance_max": (v.comm_relevance.sync.max/v.comm_relevance.runtime.max) * 100.0 if v.comm_relevance else None,
-        })
+        }
+        # if k.system in ['intel', 'nvl72'] and k.strategy == Strategy.DP:
+        #     print(f'{k}')
+        #     print(comm_relevance)
+        #     print()
+        if t_stats is not None:
+            obj["throughput_min"] = t_stats.min
+            obj["throughput_max"] = t_stats.max
+            obj["throughput_median"] = t_stats.median
+            obj["throughput_mean"] = t_stats.mean
+            obj["throughput_geomean"] = t_stats.geomean
+            obj["throughput_std"] = t_stats.std
+        if comm_relevance is not None:    
+            obj["comm_relevance"] = np.mean(comm_relevance) * 100.0
+            obj["comm_relevance_min"] = np.min(comm_relevance) * 100.0
+            obj["comm_relevance_max"] = np.max(comm_relevance) * 100.0
+        data.append(obj)
 
     df = pd.DataFrame(data)
     df["system"] = pd.Categorical(df["system"], categories=SYSTEM_ORDER, ordered=True)

@@ -189,7 +189,7 @@ class Placement(StrEnum):
 
     def marker(self):
         return {
-            Placement.INTRA_L1_RANDOM: "o",
+            Placement.INTRA_L1_RANDOM: "*",
             Placement.INTRA_GROUP_RANDOM: "s",
             Placement.INTER_GROUP_RANDOM: "D",
             Placement.INTRA_GROUP_SAME_L1_2: "^",
@@ -338,45 +338,6 @@ class MeasurementStats:
         merged.n_outliers_removed += self.n_outliers_removed + other.n_outliers_removed
         return merged
 
-@dataclass
-class CommRelevanceStats:
-    """
-    Holds the components needed to compute a communication-relevance ratio correctly,
-    following Hoefler & Belli 2015 Rule 4: never aggregate ratios directly.
-    The ratio is computed once from the aggregated components.
-
-    Both runtime and sync are MeasurementStats over per-run values of the
-    bottleneck rank (the rank with the largest median runtime), with independent
-    Tukey filtering applied to each series.
-    """
-    runtime: MeasurementStats   # per-run median runtime of the bottleneck rank
-    sync:    MeasurementStats   # per-run median sync_time of the bottleneck rank
-
-    @property
-    def ratio(self) -> float:
-        """Ratio computed once from aggregated medians (Rule 4)."""
-        return self.sync.median / self.runtime.median
-
-    @property
-    def ci_low(self) -> float:
-        """Conservative bound: weakest sync / strongest runtime."""
-        return self.sync.ci_low / self.runtime.ci_high
-
-    @property
-    def ci_high(self) -> float:
-        """Optimistic bound: strongest sync / weakest runtime."""
-        return self.sync.ci_high / self.runtime.ci_low
-
-    def merge(self, other: Self) -> Self:
-        """
-        Merges two CommRelevanceStats by pooling raw values for each component
-        independently and recomputing, re-applying Tukey on the pooled data.
-        Outlier counts are accumulated via MeasurementStats.merge().
-        """
-        return CommRelevanceStats(
-            runtime=self.runtime.merge(other.runtime),
-            sync=self.sync.merge(other.sync),
-        )
 
 def _compute_measurements_stats(
     values,
@@ -398,10 +359,12 @@ def _compute_measurements_stats(
 
     values = np.array(values, dtype=float)
 
-    if _already_filtered:
-        filtered, n_removed = values, 0
-    else:
-        filtered, n_removed = _tukey_filter(values, k=tukey_k)
+    n_removed = 0
+    filtered = values
+    # if _already_filtered:
+    #     filtered, n_removed = values, 0
+    # else:
+    #     filtered, n_removed = _tukey_filter(values, k=tukey_k)
 
     if len(filtered) == 0:
         return None
@@ -458,28 +421,6 @@ class RunMeasurements:
         return niter
 
     def get_throughput(self, skip_first_n: int = 1) -> Union[MeasurementStats, None]:
-        """
-        Aggregates throughput respecting the synchronization structure of the job:
-
-        0. Drop the first skip_first_n run_ids (warmup).
-        
-        1. Per run_id: geomean across ranks.
-           All ranks are synchronized at the end of each run and report the same
-           throughput (total samples / elapsed time). The geomean is appropriate
-           for rates (Hoefler & Belli 2015, Rule 3) and is robust to tiny
-           floating-point differences across ranks.
-
-
-        2. Tukey outlier filtering to exclude runs with dramatic slowdowns
-           (Hoefler & Belli 2015, Section 3.1.3). n_outliers_removed is reported.
-
-        3. Median across remaining runs with nonparametric 95% CI
-           (Hoefler & Belli 2015, Section 3.1.3).
-
-        The returned MeasurementStats.raw_values contains the filtered per-run
-        geomeans, enabling correct merging across multiple RunMeasurements via
-        MeasurementStats.merge().
-        """
         all_run_ids = sorted(self._df['run_id'].unique())
         usable_run_ids = all_run_ids[skip_first_n:]
 
@@ -487,35 +428,21 @@ class RunMeasurements:
             print('WARNING no usable run_ids after skipping warmup')
             return None
 
-        per_run_geomeans = []
+        per_run = []
         for run_id in usable_run_ids:
             run_df = self._df[self._df['run_id'] == run_id]
             rank_throughputs = run_df['throughput'].values
             if len(rank_throughputs) > 0:
-                per_run_geomeans.append(float(geometric_mean(rank_throughputs)))
+                per_run.append(float(min(rank_throughputs)))
 
-        if not per_run_geomeans:
+        if not per_run:
             print('WARNING no usable throughputs in job')
             return None
 
-        return _compute_measurements_stats(per_run_geomeans)
+        return _compute_measurements_stats(per_run)
     
 
-    def get_comm_relevance(self, skip_first_n: int = 1) -> Union[CommRelevanceStats, None]:
-        """
-        Computes communication relevance of the bottleneck rank as a CommRelevanceStats,
-        following Hoefler & Belli 2015 Rule 4.
-
-        For each run_id (after skipping the first skip_first_n warmup runs):
-        1. Per rank: compute median runtime and median sync_time across iterations
-        2. Identify the bottleneck rank as the one with max median runtime
-            within this run (bottleneck rank may vary across runs in congested scenarios)
-        3. Record that rank's (median_runtime, median_sync_time) as one observation
-
-        Then across runs:
-        4. Tukey-filter runtimes and sync_times independently
-        5. Return as CommRelevanceStats for correct downstream merging
-        """
+    def get_comm_relevance(self, skip_first_n: int = 1) -> Union[List[float], None]:
         if 'sync_time' not in self._df.columns:
             return None
 
@@ -526,39 +453,16 @@ class RunMeasurements:
             print('WARNING no usable run_ids after skipping warmup')
             return None
 
-        per_run_runtimes = []
-        per_run_syncs = []
+        max_rank_ratios = []
+        # 1) compute ratios
+        # 2) max across ranks
+        # 3) mean across runs
 
         for run_id in usable_run_ids:
             run_df = self._df[self._df['run_id'] == run_id]
+            max_rank_ratios.append((run_df['sync_time'] / run_df['runtime']).max())
 
-            per_rank_stats = []
-            for rank, rank_df in run_df.groupby('rank'):
-                if rank_df.empty:
-                    continue
-                med_runtime = float(np.median(rank_df['runtime']))
-                med_sync = float(np.median(rank_df['sync_time']))
-                per_rank_stats.append((med_runtime, med_sync))
-
-            if not per_rank_stats:
-                print(f'WARNING no usable sync_time in run_id {run_id}')
-                continue
-
-            med_runtime, med_sync = max(per_rank_stats, key=lambda x: x[0])
-            per_run_runtimes.append(med_runtime)
-            per_run_syncs.append(med_sync)
-
-        if not per_run_runtimes:
-            print('WARNING no usable comm_relevance in job')
-            return None
-
-        runtime_stats = _compute_measurements_stats(per_run_runtimes)
-        sync_stats    = _compute_measurements_stats(per_run_syncs)
-
-        if runtime_stats is None or sync_stats is None:
-            return None
-
-        return CommRelevanceStats(runtime=runtime_stats, sync=sync_stats)
+        return max_rank_ratios
     
     
 class RunKey(NamedTuple):
@@ -579,7 +483,7 @@ class RunKey(NamedTuple):
 
 class RunMetrics(NamedTuple):
     throughput:     Union[MeasurementStats, None]
-    comm_relevance: Union[CommRelevanceStats, None]
+    comm_relevance: Union[List[float], None]
 
 @dataclass
 class Baseline:

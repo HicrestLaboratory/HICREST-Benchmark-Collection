@@ -20,6 +20,7 @@ Usage
 
 import argparse
 from collections import defaultdict
+from math import ceil
 import os
 import pprint
 from typing import Dict, List
@@ -34,6 +35,7 @@ matplotlib.use("Agg")                   # non-interactive backend (headless)
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib.patches import Patch    # for legend colour swatches
+from matplotlib.ticker import FuncFormatter 
 
 from parse_raw_data import (
     SYSTEMS,
@@ -188,7 +190,7 @@ def _annotate_clipped(ax, categories, slowdowns, y_clip=Y_CLIP):
         above = vals[vals > y_clip]
         if len(above) > 0:
             pct = 100.0 * len(above) / len(vals)
-            max_val = float(above.max())
+            max_val = float(above.max()) / 100.0
             pct_str = f"{pct:.2f}%" if pct < 1 else f"{pct:.0f}%"
             ax.text(
                 i, y_clip * 1.005, f"{pct_str}\n({max_val:.1f}x)",
@@ -355,6 +357,232 @@ def plot_slowdown_boxplot(slowdowns: Dict[RunKey, np.ndarray], system, output_pa
     ax.set_ylabel("Slowdown %", fontsize=20)
     # _make_legend(ax, strats)
     ax.grid(True, alpha=0.5)
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"Saved -> {output_path}")
+    
+# ============================================================================
+#  IMPROVED Violin
+# ============================================================================
+
+def _find_clusters_kde(
+    arr: np.ndarray,
+    cluster_width: float = 0.01,
+    min_cluster_frac: float = 0.05,   # NEW: merge clusters smaller than this fraction
+    n_grid: int = 512,
+) -> list[tuple[float, float, np.ndarray]]:
+    """
+    KDE-based cluster detection with post-merge of small/overlapping clusters.
+
+    1. Estimate KDE, find local maxima, merge peaks closer than `cluster_width`.
+    2. Assign each raw point to its nearest surviving peak.
+    3. Post-merge pass: repeatedly merge adjacent clusters if their y-brackets
+       overlap OR if either cluster contains fewer than `min_cluster_frac` of
+       the total points. Repeats until stable.
+    """
+    from scipy.signal import find_peaks
+    from scipy.stats import gaussian_kde
+
+    if len(arr) < 2:
+        return [(arr.min(), arr.max(), arr)]
+
+    kde   = gaussian_kde(arr)
+    grid  = np.linspace(arr.min(), arr.max(), n_grid)
+    density = kde(grid)
+
+    peak_idx, _ = find_peaks(density)
+    if len(peak_idx) == 0:
+        peak_idx = np.array([np.argmax(density)])
+
+    # Merge KDE peaks closer than cluster_width
+    merged: list[float] = []
+    for p in sorted(grid[peak_idx]):
+        if merged and (p - merged[-1]) < cluster_width:
+            merged[-1] = (merged[-1] + p) / 2
+        else:
+            merged.append(p)
+    merged_peaks = np.array(merged)
+
+    # Assign raw points to nearest peak
+    assignments = np.argmin(
+        np.abs(arr[:, None] - merged_peaks[None, :]), axis=1
+    )
+    clusters: list[tuple[float, float, np.ndarray]] = []
+    for ci in range(len(merged_peaks)):
+        members = arr[assignments == ci]
+        if len(members):
+            clusters.append((members.min(), members.max(), members))
+
+    # ── Post-merge: collapse overlapping or too-small adjacent clusters ───────
+    min_count = max(1, int(min_cluster_frac * len(arr)))
+    changed = True
+    while changed and len(clusters) > 1:
+        changed = False
+        merged_clusters: list[tuple[float, float, np.ndarray]] = []
+        i = 0
+        while i < len(clusters):
+            if i + 1 < len(clusters):
+                lo_a, hi_a, mem_a = clusters[i]
+                lo_b, hi_b, mem_b = clusters[i + 1]
+                overlaps  = hi_a >= lo_b          # brackets touch or overlap
+                too_small = len(mem_a) < min_count or len(mem_b) < min_count
+                if overlaps or too_small:
+                    combined = np.concatenate([mem_a, mem_b])
+                    merged_clusters.append((combined.min(), combined.max(), combined))
+                    i += 2
+                    changed = True
+                    continue
+            merged_clusters.append(clusters[i])
+            i += 1
+        clusters = merged_clusters
+
+    return clusters
+
+
+def plot_slowdown_violinplot(
+    slowdowns: Dict[RunKey, np.ndarray],
+    system,
+    output_path,
+    y_clip: float = 1.2,
+    threshold: float = 1.025,
+    cluster_width: float = 0.01,
+    min_cluster_frac: float = 0.05,
+):
+    """
+    Violin plot per category.
+
+    - Categories where NO value exceeds `threshold` are excluded.
+    - Shows IQR box, median (black line), mean (white diamond), and whiskers
+      at 1.5 × IQR, consistent with the original boxplot logic.
+    - KDE-based cluster detection: peaks in the density estimate are found,
+      then any two peaks closer than `cluster_width` are merged into one.
+      Each surviving cluster gets a right-side bracket spanning the min–max
+      of its assigned raw points, labelled "26.7% (8/30)".
+    """
+    categories = sorted(
+        [k for k, v in slowdowns.items() if len(v) > 0 and np.any(v > threshold)],
+        key=_sort_run,
+    )
+    if not categories:
+        print("No data to plot (violinplot): all categories below threshold.")
+        return
+
+    groups  = _placement_groups(categories)
+    data    = [slowdowns[cat] for cat in categories]
+    strats  = [cat.strategy for cat in categories]
+    colors  = [ensure_strategy(s).color() for s in strats]
+
+    x       = np.arange(len(categories))
+    fig_w   = max(11, len(categories) * 1.0)
+    fig, ax = plt.subplots(figsize=(fig_w, 5))
+
+    # ── Violins ───────────────────────────────────────────────────────────────
+    vp = ax.violinplot(
+        data, positions=x, widths=0.45,
+        showmedians=False, showextrema=False, showmeans=False,
+    )
+    for i, body in enumerate(vp["bodies"]):
+        body.set_facecolor(colors[i])
+        body.set_edgecolor("black")
+        body.set_linewidth(0.6)
+        body.set_alpha(0.75)
+
+    # ── Per-category overlays ─────────────────────────────────────────────────
+    BOX_W       = 0.06    # half-width of the IQR box
+    BRACKET_X   = 0.28    # x offset of cluster bracket from violin centre
+    BRACKET_CAP = 0.04    # half-width of bracket end-caps
+    LABEL_PAD   = 0.015   # gap between bracket right edge and label
+
+    for i, arr in enumerate(data):
+        n_total          = len(arr)
+        q1, med, q3      = np.percentile(arr, [25, 50, 75])
+        iqr              = q3 - q1
+        lo_whisk         = max(arr.min(), q1 - 1.5 * iqr)
+        hi_whisk         = min(arr.max(), q3 + 1.5 * iqr)
+
+        # IQR box
+        ax.add_patch(plt.Rectangle(
+            (x[i] - BOX_W, q1), 2 * BOX_W, iqr,
+            linewidth=0.8, edgecolor="black",
+            facecolor="white", alpha=0.6, zorder=3,
+        ))
+
+        # Whisker stems + caps
+        for y0, y1 in [(lo_whisk, q1), (q3, hi_whisk)]:
+            ax.plot([x[i], x[i]], [y0, y1], color="black", lw=0.8, zorder=3)
+        for y_cap in (lo_whisk, hi_whisk):
+            ax.plot([x[i] - BOX_W, x[i] + BOX_W], [y_cap, y_cap],
+                    color="black", lw=0.8, zorder=3)
+
+        # Median line
+        ax.plot([x[i] - BOX_W, x[i] + BOX_W], [med, med],
+                color="black", lw=1.2, zorder=4)
+
+        # Mean diamond
+        ax.plot(x[i], arr.mean(), marker="D", color="white",
+                markeredgecolor="black", markersize=4, zorder=5)
+
+        # ── KDE cluster brackets ──────────────────────────────────────────────
+        clusters = _find_clusters_kde(arr, cluster_width=cluster_width, min_cluster_frac=min_cluster_frac)
+        bx       = x[i] + BRACKET_X
+        
+        def fmt_nmembers(n: int) -> str:
+            if n > 1e3:
+                return f'{round(n/1e3)}k'
+            return str(n)
+
+        for lo, hi, members in clusters:
+            # Clamp to visible range
+            vis_lo = max(lo, 0.95)
+            vis_hi = min(hi, y_clip)
+            if vis_hi <= vis_lo:
+                continue
+
+            pct   = 100.0 * len(members) / n_total
+            # label = f"{pct:.1f}%\n{fmt_nmembers(len(members))}/{fmt_nmembers(n_total)}"
+            if len(members) == n_total:
+                label = f"{fmt_nmembers(n_total)}"
+            else:
+                label = f"{fmt_nmembers(len(members))}/{fmt_nmembers(n_total)}"
+
+            # Vertical bracket line — gray dashed
+            ax.plot([bx, bx], [vis_lo, vis_hi],
+                    color="gray", lw=0.8, ls="--", zorder=4,
+                    solid_capstyle="butt")
+
+            # End caps — gray solid (dashed caps look noisy at small scale)
+            for y_end in (vis_lo, vis_hi):
+                ax.plot([bx - BRACKET_CAP, bx + BRACKET_CAP], [y_end, y_end],
+                        color="gray", lw=1.0, zorder=4)
+            # End caps
+            for y_end in (vis_lo, vis_hi):
+                ax.plot([bx - BRACKET_CAP, bx + BRACKET_CAP], [y_end, y_end],
+                        color="black", lw=1.0, zorder=4)
+
+            # Label centred on the bracket
+            ax.text(
+                bx + BRACKET_CAP + LABEL_PAD, (vis_lo + vis_hi) / 2, label,
+                fontsize=10, va="center", ha="left", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.7),
+            )
+
+    # ── Decorations ───────────────────────────────────────────────────────────
+    ax.axhline(1.0, color="black", ls="--", lw=1, alpha=0.8)
+    ax.set_ylim(0.95, y_clip)
+    _annotate_clipped(ax, categories, slowdowns, y_clip=y_clip)
+    _setup_grouped_xaxis(ax, categories, groups, system)
+    ax.set_ylabel("Slowdown $\\sigma$", fontsize=20)
+    ax.grid(True, alpha=0.5)
+    def format_slowdown(s: float, *_):
+        def fmt(x, suffix):
+            return f"{int(x)}{suffix}" if x.is_integer() else f"{x:.1f}{suffix}"
+        if s >= 100.0:
+            return fmt(s / 100.0, "x")
+        else:
+            return fmt(s, "%")
+    ax.yaxis.set_major_formatter(FuncFormatter(format_slowdown))
+    ax.yaxis.set_tick_params(labelsize=18)
 
     fig.tight_layout()
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
