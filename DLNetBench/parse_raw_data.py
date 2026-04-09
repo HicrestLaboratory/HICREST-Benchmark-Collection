@@ -25,6 +25,7 @@ Public API
   min_throughput_across_ranks(ranks, skip_first, adaptive_skip) -> float | None
 """
 
+from os import system
 from pathlib import Path
 from pprint import pprint
 import re
@@ -42,9 +43,11 @@ from parsers import parse_scheduler_output, stdout_file_to_csv_multi, stdout_to_
 from command_map import get_model_from_command
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
+from utils.slurm import expand_slurm_nodelist
 from JobPlacer.cli_wrapper import JobPlacer
+import shutil
 
-SYSTEMS = ["jupiter", "leonardo", "nvl72", "alps", "dgxA100", "lumi", "intel"]
+SYSTEMS = ["jupiter", "leonardo", "nvl72", "alps", "dgxA100", "lumi"] # , "intel"]
 SBM_SYSTEM_NAME_MAP = {"dgxA100": "baldo", "intel": "enea"}
 
 SBM_SYSTEM_ARCHIVES = {
@@ -114,6 +117,12 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
     
     print(f'Loading baselines for systems: {systems}')
     for system in systems:
+        svg_out_base = Path('plots/placements/baselines') / system
+        if svg_out_base.exists():
+            shutil.rmtree(svg_out_base)
+            print(f'removing: {svg_out_base}')
+        svg_out_base.mkdir(parents=True, exist_ok=True)
+            
         print(f'  Loading system: {system}')
         jobs = get_system_jobs(system)
         
@@ -145,13 +154,15 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
                 placement_class = parse_placement(v.get("placement_class") or v.get("placement", "na"))
                 model_name = v.get("model") or v.get("model_name")
             
+            # if system == 'alps' and strategy == Strategy.DP_PP:
+            #     continue
             
             stdout = job.get_stdout()
             if not stdout:
                 print('WARNING: could not find baseline stdout:')
                 print(job)
                 continue
-    
+            
             if not model_name:
                 # print(job.command)
                 model_name = get_model_from_command(job.command)
@@ -163,12 +174,38 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
                 model_name = parse_model_name_from_stdout(stdout)
             model = Model(model_name)
                 
-            
             if not all([strategy, nodes, gpus, placement_class, model_name, comm_lib, gpu_model]):
                 print('WARNING: incomplete baseline meta:')
                 print(job)
                 print(f'{[strategy, nodes, gpus, placement_class, model_name, comm_lib, gpu_model]=}')
                 continue
+            
+            placer = get_job_placer(system)
+            allocation_stats = None
+            if placer and stdout:
+                allocations = {}
+                for l in stdout.splitlines():
+                    if 'Allocated nodes: ' in l:
+                        _, nodes = l.split(': ')
+                        nodes = expand_slurm_nodelist(nodes)
+                        allocations['baseline'] = nodes
+                # print(allocations)
+                if not allocations:
+                    print('\n'.join(stdout.splitlines()[:40]))
+                if allocations:
+                    svg_out = svg_out_base / f'{strategy}_{model}_g{gpus}_{placement_class}'
+                    out_idx = 0
+                    svg_out = svg_out.with_stem(svg_out.stem + f'_{out_idx}').with_suffix('.svg')
+                    while svg_out.exists():
+                        out_idx += 1
+                        svg_out = svg_out.with_stem(svg_out.stem + f'_{out_idx}').with_suffix('.svg')
+                    try:
+                        allocation_stats = placer.get_allocation_stats(allocations, out_svg=svg_out)
+                    except Exception as e:
+                        print(e)
+                        raise e
+                    # print(f'{allocation_stats=}')
+                    # print()
 
             baseline = Baseline(
                 system=system,
@@ -179,7 +216,7 @@ def parse_baselines(systems=SYSTEMS) -> Dict[str, List[Baseline]]:
                 gpus=gpus,
                 nodes=nodes,
                 placement_class=placement_class,
-                in_reservation=bool(placement_class) and placement_class != Placement.NA and system in ['leonardo', 'jupiter'], # TODO fix properly
+                allocation_stats=allocation_stats,
             )
 
             try:
@@ -211,6 +248,9 @@ def build_baselines_dict(baselines: Dict[str, List[Baseline]]) -> Dict[RunKey, R
     for system, b in baselines.items():
         for baseline in b:
             key = baseline.get_id_tuple()
+            if system == 'alps' and key.strategy == Strategy.DP_PP:
+                continue
+            
             throughput = baseline.get_throughput()
             comm_relevance = baseline.get_comm_relevance()
 
@@ -231,10 +271,19 @@ def build_baselines_dict(baselines: Dict[str, List[Baseline]]) -> Dict[RunKey, R
                 new_cr      = comm_relevance or []
 
                 print(f'Merging {key.system} {key.display()}  {len(existing_cr or [])}--{len(new_cr or [])}')
-                res[key] = RunMetrics(
-                    throughput=res[key].throughput.merge(throughput),
-                    comm_relevance=existing_cr + new_cr,
-                )
+                
+                if system == 'alps' and key.strategy == Strategy.DP_PP:
+                    # better_old = mean(res[key].comm_relevance) < mean(comm_relevance)
+                    better_old = res[key].throughput.max > throughput.max
+                    res[key] = RunMetrics(
+                        throughput=res[key].throughput if better_old else throughput,
+                        comm_relevance=existing_cr if better_old else new_cr,
+                    )
+                else:
+                    res[key] = RunMetrics(
+                        throughput=res[key].throughput.merge(throughput),
+                        comm_relevance=existing_cr + new_cr,
+                    )
                 print()
                 
             # if system in ['intel', 'nvl72'] and key.strategy == Strategy.DP and key.gpus in [8,16]:

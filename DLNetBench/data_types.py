@@ -224,11 +224,11 @@ def ensure_placement(x: Union[str, Placement]) -> Placement:
 SYSTEM_ORDER = [
     "dgxA100",
     "nvl72",
-    "intel",
+    # "intel",
     "leonardo",
     "alps",
     "jupiter",
-    "lumi"
+    "lumi",
 ]
 
 STRATEGY_ORDER = [
@@ -495,10 +495,14 @@ class Baseline:
     gpus: int
     nodes: int
     placement_class: Union[Placement, None]
-    
-    in_reservation: bool
-    
+    allocation_stats: Union[PlacementStats, None]
     data: Union[RunMeasurements, None] = field(init=False)
+    
+    def in_reservation(self):
+        if self.allocation_stats and len(self.allocation_stats.distinct_groups) > 3:
+            return False
+        return bool(self.placement_class) and self.placement_class != Placement.NA and self.system in ['leonardo', 'jupiter']
+    
     
     def display(self) -> str:
         """Human-readable representation of the baseline configuration."""

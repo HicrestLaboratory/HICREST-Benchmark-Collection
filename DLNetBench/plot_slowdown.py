@@ -22,6 +22,7 @@ import argparse
 from collections import defaultdict
 from math import ceil
 import os
+from pathlib import Path
 import pprint
 from typing import Dict, List
 
@@ -569,7 +570,7 @@ def plot_slowdown_violinplot(
 
     # ── Decorations ───────────────────────────────────────────────────────────
     ax.axhline(1.0, color="black", ls="--", lw=1, alpha=0.8)
-    ax.set_ylim(0.95, y_clip)
+    ax.set_ylim(-5.0, y_clip)
     _annotate_clipped(ax, categories, slowdowns, y_clip=y_clip)
     _setup_grouped_xaxis(ax, categories, groups, system)
     ax.set_ylabel("Slowdown $\\sigma$", fontsize=20)
@@ -585,7 +586,7 @@ def plot_slowdown_violinplot(
     ax.yaxis.set_tick_params(labelsize=18)
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    fig.savefig(Path(output_path).with_suffix('.pdf'), dpi=300, bbox_inches="tight")
     print(f"Saved -> {output_path}")
 
 
