@@ -43,10 +43,14 @@ from typing import List, Union
 import pandas as pd
 import matplotlib.pyplot as plt
 
+OUT_DIR = Path('results')
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
 sys.path.append(str(Path(__file__).parent.parent / "common"))
-from py_utils.cli import load_csv_files
-from py_utils.constants import *
-from py_utils.utils.plots import add_zoom_inset
+from utils.cli import load_csv_files
+from utils.plots import add_zoom_inset
+from constants.plots import *
+from constants.systems import BOARD_NAMES_MAP
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Regex patterns and constants
@@ -134,10 +138,15 @@ def _build_dataframe_from_jobs(status: List[str]) -> pd.DataFrame:
   jobs = sbm.jobs_list(from_active=True, from_archived=True, status=status)
   rows: list[dict] = []
   for job in jobs:
-    m = _JOB_RE.match(job.config_name)
-    if not m:
-      continue  # skip unrelated jobs
-    hw, cores_str = m.groups()
+    vars = job.variables or {}
+    if 'system' in vars and 'ncpus' in vars:
+      hw = vars['system']
+      cores_str = vars['ncpus']
+    else:
+      m = _JOB_RE.match(job.config_name)
+      if not m:
+        continue  # skip unrelated jobs
+      hw, cores_str = m.groups()
     cores = int(cores_str)
     stdout = job.get_stdout()
     try:

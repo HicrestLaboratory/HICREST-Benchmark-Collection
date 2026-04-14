@@ -1,5 +1,6 @@
 variables:
   amd_ncpus: [1, 2, 4, 8, 16, 32, 64]
+  grace_ncpus: [1, 2, 4, 8, 16, 32, 72]
   baldo_ncpus: [1, 2, 4, 8] # Others are specified manually
 
   pioneer_ncpus: [1, 2, 4, 8, 16, 32, 64]
@@ -87,3 +88,22 @@ baldo:
       cpus_per_task: "64"
       env:
         - "OMP_NUM_THREADS=64"
+
+
+thea:
+  scheduler: slurm
+
+  default_conf:
+    time: "00:20:00"
+    partition: "gg"
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+
+  configs:
+    - name: "thea-gg_{grace_ncpus}cpus"
+      cpus_per_task: "{grace_ncpus}"
+      env: 
+        - "OMP_NUM_THREADS={grace_ncpus}"
+        - "OMP_PROC_BIND=close"
+        - "OMP_PLACES=cores"

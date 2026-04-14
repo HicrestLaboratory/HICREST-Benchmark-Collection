@@ -1,6 +1,6 @@
 variables:
-  system: ["leonardo-dcgp"] # pioneer
-  ncpus: [112]
+  system: ["thea-gg"] # leonardo-dcgp
+  ncpus: [144] # 112
 
 # preprocess: "export LD_LIBRARY_PATH=/apps/riscv/llvm/EPI/development/lib"
 command: "./runallMCSH"

@@ -61,6 +61,8 @@ thea:
     ntasks: 1
     exclusive: true
     cpus_per_task: 144
+    modules:
+      - "gcc/14.3.0"
 
   configs:
 
