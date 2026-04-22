@@ -26,7 +26,6 @@ int main(int argc, char **argv) {
   InputParser<DATA_TYPE> *input = NULL;
   bool check_converged;
   string init_method_str, kernel_str;
-  int level;
 
   parse_input_args(argc, argv, 
                    &d, &n, &k, 
@@ -34,8 +33,7 @@ int main(int argc, char **argv) {
                    &tol, &runs, &seed, &input,
                    &check_converged,
                    init_method_str,
-                   kernel_str,
-                   &level);
+                   kernel_str);
 
   #if DEBUG_INPUT_DATA
     cout << "Points" << endl << *input << endl;
@@ -75,10 +73,7 @@ int main(int argc, char **argv) {
 
   for (uint32_t i = 0; i < runs; i++) {
     CCUTILS_CPU_TIMER_START(init)
-    Kmeans kmeans(n, d, k, tol, seed, input->get_dataset(),
-                  init_method,
-                  kernel,
-                  level);
+    Kmeans kmeans(n, d, k, tol, seed, input->get_dataset(), init_method, kernel);
     CCUTILS_CPU_TIMER_STOP(init)
 
     CCUTILS_CPU_TIMER_START(kernel_kmeans)

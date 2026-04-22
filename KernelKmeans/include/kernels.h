@@ -108,8 +108,7 @@ void init_kernel_mtx_cpu(const unsigned long long n,
                         const uint32_t k,
                         const uint32_t d,
                         const DATA_TYPE* points,
-                        DATA_TYPE* B,
-                        int level) {
+                        DATA_TYPE* B) {
   // Use GEMM for kernel matrix computation
   init_kernel_mtx_gemm_cpu(n, d, points, B);
   

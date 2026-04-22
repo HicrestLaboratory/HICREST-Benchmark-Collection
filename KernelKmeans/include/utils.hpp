@@ -25,9 +25,8 @@
 #define ARG_CHECK       "check"
 #define ARG_INIT        "init"
 #define ARG_FUNCTION    "kernel"
-#define ARG_LEVEL       "level"
 
-const char* ARG_STR[]   = {"dimensions", "n-samples", "clusters", "maxiter", "out-file", "in-file", "tolerance", "check", "init", "kernel", "level"};
+const char* ARG_STR[]   = {"dimensions", "n-samples", "clusters", "maxiter", "out-file", "in-file", "tolerance", "check", "init", "kernel"};
 const float DEF_EPSILON = numeric_limits<float>::epsilon();
 const int   DEF_RUNS    = 1;
 
@@ -95,27 +94,25 @@ void parse_input_args(const int argc, const char *const *argv,
                       uint32_t *runs, int **seed, InputParser<DATA_TYPE> **input, 
                       bool * check_converged, 
                       string& init_method,
-                      string& kernel,
-                      int * level) {
+                      string& kernel) {
   cxxopts::Options options("gpukmeans", "gpukmeans is an implementation of the K-means algorithm that uses a GPU");
 
   int _false = 0;
 
   options.add_options()
     ("h,help", "Print usage")
-    ("d," ARG_DIM,      "Number of dimensions of a point",  cxxopts::value<int>())
-    ("n," ARG_SAMPLES,  "Number of points",                 cxxopts::value<int>())
-    ("k," ARG_CLUSTERS, "Number of clusters",               cxxopts::value<int>())
-    ("m," ARG_MAXITER,  "Maximum number of iterations",     cxxopts::value<int>())
-    ("o," ARG_OUTFILE,  "Output filename",                  cxxopts::value<string>())
-    ("i," ARG_INFILE,   "Input filename",                   cxxopts::value<string>())
-    ("r," ARG_RUNS,     "Number of k-means runs",           cxxopts::value<int>()->default_value(to_string(DEF_RUNS)))
-    ("s," ARG_SEED,     "Seed for centroids generator",     cxxopts::value<int>())
-    ("t," ARG_TOL,      "Tolerance to declare convergence", cxxopts::value<float>()->default_value(to_string(DEF_EPSILON)))
-    ("c," ARG_CHECK, "Whether or not to check convergence", cxxopts::value<int>()->default_value(to_string(_false)))
+    ("d," ARG_DIM,      "Number of dimensions of a point",   cxxopts::value<int>())
+    ("n," ARG_SAMPLES,  "Number of points",                  cxxopts::value<int>())
+    ("k," ARG_CLUSTERS, "Number of clusters",                cxxopts::value<int>())
+    ("m," ARG_MAXITER,  "Maximum number of iterations",      cxxopts::value<int>())
+    ("o," ARG_OUTFILE,  "Output filename",                   cxxopts::value<string>())
+    ("i," ARG_INFILE,   "Input filename",                    cxxopts::value<string>())
+    ("r," ARG_RUNS,     "Number of k-means runs",            cxxopts::value<int>()->default_value(to_string(DEF_RUNS)))
+    ("s," ARG_SEED,     "Seed for centroids generator",      cxxopts::value<int>())
+    ("t," ARG_TOL,      "Tolerance to declare convergence",  cxxopts::value<float>()->default_value(to_string(DEF_EPSILON)))
+    ("c," ARG_CHECK, "Whether or not to check convergence",  cxxopts::value<int>()->default_value(to_string(_false)))
     ("b," ARG_INIT, "Method to use to initialize centroids", cxxopts::value<string>())
-    ("f," ARG_FUNCTION, "kernel function", cxxopts::value<string>())
-    ("l," ARG_LEVEL,  "Optimization level",     cxxopts::value<int>());
+    ("f," ARG_FUNCTION, "kernel function",                   cxxopts::value<string>());
 
   cxxopts::ParseResult args = options.parse(argc, argv);
 
@@ -136,7 +133,6 @@ void parse_input_args(const int argc, const char *const *argv,
   *check_converged = getArg_u(args, ARG_CHECK, &(_false));
   init_method = getArg_s(args, ARG_INIT, NULL);
   kernel = getArg_s(args, ARG_FUNCTION, NULL);
-  *level = getArg_u(args, ARG_LEVEL, NULL);
 
   *seed = NULL;
   if (args[ARG_SEED].count() > 0) {
