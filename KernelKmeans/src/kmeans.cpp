@@ -5,6 +5,13 @@
 #include <omp.h>
 #include <ccutils/timers.hpp>
 
+// Import global timers
+CCUTILS_CPU_TIMER_IMPORT(distances_compute)
+CCUTILS_CPU_TIMER_IMPORT(argmin_assign)
+CCUTILS_CPU_TIMER_IMPORT(v_matrix_update)
+CCUTILS_CPU_TIMER_IMPORT(score_compute)
+CCUTILS_CPU_TIMER_IMPORT(total_iteration)
+
 Kmeans::Kmeans(const size_t _n, const uint32_t _d, const uint32_t _k,
                const float _tol, const int* seed,
                Point<DATA_TYPE>** _points,
@@ -245,13 +252,6 @@ uint64_t Kmeans::run(uint64_t maxiter, bool check_converged) {
     uint64_t converged = maxiter;
     uint64_t iter = 0;
 
-    // Define timers for each step
-    CCUTILS_CPU_TIMER_DEF(distances_compute)
-    CCUTILS_CPU_TIMER_DEF(argmin_assign)
-    CCUTILS_CPU_TIMER_DEF(v_matrix_update)
-    CCUTILS_CPU_TIMER_DEF(score_compute)
-    CCUTILS_CPU_TIMER_DEF(total_iteration)
-
 #if LOG
     std::ofstream centroids_out;
     centroids_out.open("centroids-cpu.out");
@@ -322,17 +322,17 @@ uint64_t Kmeans::run(uint64_t maxiter, bool check_converged) {
     }
 
     // Print iteration timing statistics
-    std::cout << "\n=== Iteration Timing Statistics ===" << std::endl;
-    std::cout << "  Distances:     ";
-    CCUTILS_TIMER_PRINT(distances_compute)
-    std::cout << "  Argmin/Assign: ";
-    CCUTILS_TIMER_PRINT(argmin_assign)
-    std::cout << "  V Matrix:      ";
-    CCUTILS_TIMER_PRINT(v_matrix_update)
-    std::cout << "  Score Compute: ";
-    CCUTILS_TIMER_PRINT(score_compute)
-    std::cout << "  Total/Iter:    ";
-    CCUTILS_TIMER_PRINT(total_iteration)
+    // std::cout << "=== Iteration Timing Statistics ===" << std::endl;
+    // std::cout << "  Distances:     ";
+    // CCUTILS_TIMER_PRINT(distances_compute)
+    // std::cout << "  Argmin/Assign: ";
+    // CCUTILS_TIMER_PRINT(argmin_assign)
+    // std::cout << "  V Matrix:      ";
+    // CCUTILS_TIMER_PRINT(v_matrix_update)
+    // std::cout << "  Score Compute: ";
+    // CCUTILS_TIMER_PRINT(score_compute)
+    // std::cout << "  Total/Iter:    ";
+    // CCUTILS_TIMER_PRINT(total_iteration)
 
     // Copy final cluster assignments to output
     for (size_t i = 0; i < n; i++) {
@@ -351,16 +351,6 @@ uint64_t Kmeans::run(uint64_t maxiter, bool check_converged) {
         labels << h_points_clusters[i] << std::endl;
     }
     labels.close();
-#endif
-
-#if PROFILE_MEMORY
-    // Memory profiling on CPU
-    size_t total_mem = 0;
-    total_mem += n * d * sizeof(DATA_TYPE);  // points
-    total_mem += n * n * sizeof(DATA_TYPE);  // kernel matrix
-    total_mem += k * n * sizeof(DATA_TYPE);  // distances
-    total_mem += n * sizeof(DATA_TYPE);      // V_vals
-    std::cout << "\nMEMORY FOOTPRINT: " << (total_mem / 1e6) << " MB" << std::endl;
 #endif
 
     return converged;

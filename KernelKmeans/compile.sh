@@ -4,26 +4,36 @@ set -e
 
 source ../common/compile/utils.sh
 
-SUPPORTED_SYSTEMS=("bsc-hca")
+SUPPORTED_SYSTEMS=("bsc-hca" "thea")
+SUPPORTED_BOARDS=("default" "pioneer" "arriesgado" "bananaf3")
 
 if [[ $# -eq 0 ]]; then
-    echo "Usage: $0 <system>"
+    echo "Usage: $0 <system> [<board>]"
     exit 1
 fi
 
 system="$1"
+board="${2:-default}"
 validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
+validate_argument "$board" "board" "${SUPPORTED_BOARDS[@]}"
+
+check_ccutils_installation
 
 # Define compilers per system
 declare -A COMPILERS
-# Format: "name:CXX:CC:extra_cmake_flags"
+# name:CXX:CC:extra_libs:extra_link_opts
+# (extra_libs and extra_link_opts must be semicolon-separated)
+COMPILERS["gcc"]="gcc:g++:gcc::"
 
 if [[ "$system" == "bsc-hca" ]]; then
-    COMPILERS["clang"]="clang:clang++:clang:-DEXTRA_LIBS=flang_rt.runtime"
-    COMPILERS["gcc"]="gcc:g++:gcc:"
-else
-    # Default
-    COMPILERS["gcc"]="gcc:g++:gcc:"
+    if [[ "$board" == "bananaf3" ]]; then
+        COMPILERS["clang"]="clang:clang++:clang:flang_rt.runtime;provector-vecclonevp:-L/apps/riscv/llvm/EPI/development/lib/riscv64-unknown-linux-gnu;-L/apps/riscv/llvm/EPI/development/lib"
+    else
+        COMPILERS["clang"]="clang:clang++:clang:flang_rt.runtime:-L/apps/riscv/llvm/EPI/development/lib/riscv64-unknown-linux-gnu:"
+    fi
+# elif [[ "$system" == "thea" ]]; then
+#     board="default"
+#     COMPILERS["gcc"]="gcc:g++:gcc::"
 fi
 
 # ---- FUNCTIONS ----
@@ -34,12 +44,21 @@ load_modules() {
 
     if [[ "$system" == "bsc-hca" ]]; then
         module purge
+        ml cmake/3.28.1
 
         if [[ "$compiler" == "clang" ]]; then
-            ml llvm/EPI-development cmake/3.28.1 openBLAS/ubuntu/0.3.29_llvmEPI1.0
+            ml llvm/EPI-development
+            if [[ "$board" == "default" || "$board" == "pioneer" || "$board" == "arriesgado" ]]; then
+                ml openBLAS/ubuntu/0.3.29_llvmEPI1.0
+            else
+                # For BananaF3
+                ml openBLAS/ubuntu/0.3.30_vlen256_llvmEPI1.0
+            fi
         elif [[ "$compiler" == "gcc" ]]; then
-            ml cmake/3.28.1 openBLAS/ubuntu/0.3.20_gcc10.3.0
+            ml openBLAS/ubuntu/0.3.20_gcc10.3.0
         fi
+    elif [[ "$system" == "thea" ]]; then
+        ml gcc/14.3.0
     fi
 }
 
@@ -67,11 +86,11 @@ build_target() {
     local name="$1"
     local cxx="$2"
     local cc="$3"
-    local extra_flags="$4"
+    local extra_libs="$4"
+    local extra_link_opts="$5"
 
-    build_dir="build_${system}_${name}"
+    build_dir="build_${system}_${name}_${board}"
 
-    echo
     echo
     echo "==== Building with $name ===="
     echo "Build directory: $build_dir"
@@ -80,11 +99,21 @@ build_target() {
 
     OPENBLAS_DIR=$(get_openblas_dir)
 
+    echo "Compiling with command:"
+    echo cmake \
+        -DCMAKE_CXX_COMPILER="$cxx" \
+        -DCMAKE_C_COMPILER="$cc" \
+        -DOpenBLAS_DIR="$OPENBLAS_DIR" \
+        -DEXTRA_LIBS="$extra_libs" \
+        -DEXTRA_LINK_OPTIONS="$extra_link_opts" \
+        -B "$build_dir"
+
     cmake \
         -DCMAKE_CXX_COMPILER="$cxx" \
         -DCMAKE_C_COMPILER="$cc" \
         -DOpenBLAS_DIR="$OPENBLAS_DIR" \
-        $extra_flags \
+        -DEXTRA_LIBS="$extra_libs" \
+        -DEXTRA_LINK_OPTIONS="$extra_link_opts" \
         -B "$build_dir"
 
     cmake --build "$build_dir" --target popcornkmeans_openblas -j
@@ -94,10 +123,10 @@ build_target() {
 # ---- MAIN LOOP ----
 
 for key in "${!COMPILERS[@]}"; do
-    IFS=":" read -r name cxx cc extra <<< "${COMPILERS[$key]}"
+    IFS=":" read -r name cxx cc extra_libs extra_link_opts <<< "${COMPILERS[$key]}"
 
     load_modules "$name"
-    build_target "$name" "$cxx" "$cc" "$extra"
+    build_target "$name" "$cxx" "$cc" "$extra_libs" "$extra_link_opts"
 done
 
 echo "All builds completed."

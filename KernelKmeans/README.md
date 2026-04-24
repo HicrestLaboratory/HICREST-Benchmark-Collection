@@ -1,17 +1,10 @@
 # Popcorn (Kernel K-Means)
 
-TODOs:
-* Kernels runtime breakdown
-* Write better output
-* Restructure kernels
-* Experiments with SbatchMan
-* Parsing and plots
-
 ## Example Manual Run
 
 ```bash
 export OMP_NUM_THREADS=4
-./build_bsc-hca_clang/popcornkmeans_openmp -n 1000 -d 3 -k 15 -m 10 --init random -f linear -l 2 --runs 5
+./build_bsc-hca_clang/popcornkmeans_openmp -n 1000 -d 3 -k 15 -m 10 --init random -f linear --runs 5
 ```
 
 <!-- ## OpenBLAS manual compilation on BSC HCA Cluster

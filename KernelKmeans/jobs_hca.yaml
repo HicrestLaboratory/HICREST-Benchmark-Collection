@@ -1,0 +1,35 @@
+variables:
+  system: ['bsc-hca']
+  board: ["pioneer", "arriesgado", "bananaf3"]
+  compiler: ['clang', 'gcc']
+  implementation: ['openblas', 'openmp']
+
+  # ~0.5GB of memory
+  n: [10000]
+  d: [3]
+  k: [100]
+  maxiter: [6]
+  kernel: ['linear', 'polynomial', 'sigmoid']
+  runs: [3]
+
+  pioneer_ncpus:    [1] #, 2, 4, 8, 16, 32, 64]
+  bananaf3_ncpus:   [1] #, 2, 4, 8]
+  arriesgado_ncpus: [1] #, 2, 4]
+
+preprocess: "hostname"
+
+jobs:
+  - config: "pioneer_{compiler}_{pioneer_ncpus}cpus"
+    config_jobs:
+      - tag: "{compiler}__{implementation}__n_{n}_d__{d}_k__{k}__m_{maxiter}__f_{kernel}__runs_{runs}__cpus_{pioneer_ncpus}"
+        command: "./build_{system}_{compiler}_pioneer/popcornkmeans_{implementation} -n {n} -d {d} -k {k} -m {maxiter} -f {kernel} --runs {runs} --init random"
+
+  - config: "arriesgado_{compiler}_{arriesgado_ncpus}cpus"
+    config_jobs:
+      - tag: "{compiler}__{implementation}__n_{n}_d__{d}_k__{k}__m_{maxiter}__f_{kernel}__runs_{runs}__cpus_{arriesgado_ncpus}"
+        command: "./build_{system}_{compiler}_arriesgado/popcornkmeans_{implementation} -n {n} -d {d} -k {k} -m {maxiter} -f {kernel} --runs {runs} --init random"
+
+  - config: "bananaf3_{compiler}_{bananaf3_ncpus}cpus"
+    config_jobs:
+      - tag: "{compiler}__{implementation}__n_{n}_d__{d}_k__{k}__m_{maxiter}__f_{kernel}__runs_{runs}__cpus_{bananaf3_ncpus}"
+        command: "./build_{system}_{compiler}_bananaf3/popcornkmeans_{implementation} -n {n} -d {d} -k {k} -m {maxiter} -f {kernel} --runs {runs} --init random"

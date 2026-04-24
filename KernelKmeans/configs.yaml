@@ -1,0 +1,92 @@
+variables:
+  grace_ncpus: [1, 2, 4, 8, 16, 32, 72]
+
+  pioneer_ncpus: [1, 2, 4, 8, 16, 32, 64]
+  bananaf3_ncpus: [1, 2, 4, 8]
+  arriesgado_ncpus: [1, 2, 4]
+
+hca:
+  scheduler: slurm
+
+  default_conf:
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    time: "00:10:00"
+    env:
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+
+  configs:
+    - name: "pioneer_gcc_{pioneer_ncpus}cpus"
+      partition: "pioneer"
+      cpus_per_task: "{pioneer_ncpus}"
+      # THESE DO NOT LOAD IN SBATCH SCRIPTS....
+      # modules:
+      #   - "openBLAS/ubuntu/0.3.20_gcc10.3.0"
+      env:
+        - "OMP_NUM_THREADS={pioneer_ncpus}"
+        - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
+
+    - name: "pioneer_clang_{pioneer_ncpus}cpus"
+      partition: "pioneer"
+      cpus_per_task: "{pioneer_ncpus}"
+      # THESE DO NOT LOAD IN SBATCH SCRIPTS....
+      # modules:
+      #   - "openBLAS/ubuntu/0.3.29_llvmEPI1.0"
+        # - "llvm/EPI-development" 
+      env:
+        - "OMP_NUM_THREADS={pioneer_ncpus}"
+        - "LD_LIBRARY_PATH=/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
+
+
+
+    - name: "arriesgado_gcc_{arriesgado_ncpus}cpus"
+      partition: "arriesgado-jammy"
+      cpus_per_task: "{arriesgado_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={arriesgado_ncpus}"
+        - "KMP_AFFINITY=disabled"
+        - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
+
+    - name: "arriesgado_clang_{arriesgado_ncpus}cpus"
+      partition: "arriesgado-jammy"
+      cpus_per_task: "{arriesgado_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={arriesgado_ncpus}"
+        - "KMP_AFFINITY=disabled"
+        - "LD_LIBRARY_PATH=/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
+
+
+
+    - name: "bananaf3_gcc_{bananaf3_ncpus}cpus"
+      partition: "bananaf3"
+      cpus_per_task: "{bananaf3_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={bananaf3_ncpus}"
+        - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
+
+    - name: "bananaf3_clang_{bananaf3_ncpus}cpus"
+      partition: "bananaf3"
+      cpus_per_task: "{bananaf3_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={bananaf3_ncpus}"
+        - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.30_vlen256_llvmEPI1.0/lib:/apps/riscv/llvm/EPI/development/lib" # WORKAROUND
+
+thea:
+  scheduler: slurm
+
+  default_conf:
+    time: "00:20:00"
+    partition: "gg"
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+
+  configs:
+    - name: "thea-gg_{grace_ncpus}cpus"
+      cpus_per_task: "{grace_ncpus}"
+      env: 
+        - "OMP_NUM_THREADS={grace_ncpus}"
+        - "OMP_PROC_BIND=close"
+        - "OMP_PLACES=cores"

@@ -2,8 +2,10 @@ cmake_minimum_required(VERSION 3.24.3)
 
 project(Popcorn_Kernel_Kmeans VERSION 1.0.0 LANGUAGES CXX)
 
-# Set "flang_rt.runtime" for the HCA cluster 
-set(EXTRA_LIBS "" CACHE STRING "Extra libraries to link")
+set(EXTRA_LIBS "" CACHE STRING "Extra libraries (semicolon-separated)")
+separate_arguments(EXTRA_LIBS)
+set(EXTRA_LINK_OPTIONS "" CACHE STRING "Extra linker flags (semicolon-separated)")
+separate_arguments(EXTRA_LINK_OPTIONS)
 
 set(NOFORTRAN ON)
 find_package(OpenBLAS REQUIRED)
@@ -23,7 +25,7 @@ message(STATUS "Including CCUTILS from: ${ccutils_DIR}")
 find_package(ccutils REQUIRED)
 
 message(STATUS "OpenBLAS_LIBRARIES: ${OpenBLAS_LIBRARIES}")
-
+message(STATUS "Set EXTRA_LIBS=${EXTRA_LIBS}")
 
 # OpenBLAS + OpenMP target
 add_executable(popcornkmeans_openblas
@@ -33,6 +35,7 @@ add_executable(popcornkmeans_openblas
 )
 target_link_libraries(popcornkmeans_openblas PRIVATE ${OpenBLAS_LIBRARIES} ccutils::ccutils ${EXTRA_LIBS})
 target_include_directories(popcornkmeans_openblas PRIVATE ${OpenBLAS_INCLUDE_DIRS} ./include)
+target_link_options(popcornkmeans_openblas PRIVATE ${EXTRA_LINK_OPTIONS})
 
 
 # OpenMP target: kernels are implemented "manually"
@@ -43,6 +46,7 @@ add_executable(popcornkmeans_openmp
 )
 target_link_libraries(popcornkmeans_openmp PRIVATE ccutils::ccutils ${EXTRA_LIBS})
 target_include_directories(popcornkmeans_openmp PRIVATE ./include)
+target_link_options(popcornkmeans_openmp PRIVATE ${EXTRA_LINK_OPTIONS})
 
 
 
