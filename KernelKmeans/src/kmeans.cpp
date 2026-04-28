@@ -12,22 +12,26 @@ CCUTILS_CPU_TIMER_IMPORT(v_matrix_update)
 CCUTILS_CPU_TIMER_IMPORT(score_compute)
 CCUTILS_CPU_TIMER_IMPORT(total_iteration)
 
+/**
+ * ============================================================================
+ * CONSTRUCTOR
+ * ============================================================================
+ */
 Kmeans::Kmeans(const size_t _n, const uint32_t _d, const uint32_t _k,
                const float _tol, const int* seed,
-               Point<DATA_TYPE>** _points,
+               Point<float>** _points,
                const InitMethod _initMethod,
                const Kernel _kernel)
     : n(_n), d(_d), k(_k), tol(_tol),
-      POINTS_BYTES(_n * _d * sizeof(DATA_TYPE)),
-      CENTROIDS_BYTES(_k * _d * sizeof(DATA_TYPE)),
-      h_points_clusters(_n),
-      points(_points),
       initMethod(_initMethod),
       kernel(_kernel),
       score(0.0),
       last_score(0.0) {
 
+    // ────────────────────────────────────────────────────────────────
     // Initialize random generator
+    // ────────────────────────────────────────────────────────────────
+    
     if (seed != nullptr) {
         generator = new std::mt19937(*seed);
     } else {
@@ -35,11 +39,29 @@ Kmeans::Kmeans(const size_t _n, const uint32_t _d, const uint32_t _k,
         generator = new std::mt19937(rd());
     }
 
-    // Allocate and copy points
-    h_points = new DATA_TYPE[n * d];
+    // ────────────────────────────────────────────────────────────────
+    // Allocate matrices
+    // ────────────────────────────────────────────────────────────────
+    
+    K.resize(n * n);
+    p_norms.resize(n);
+    distances.resize(n * k);
+    clusters.resize(n);
+    clusters_len.resize(k);
+    
+    // Allocate CSR sparse matrix V (k×n with exactly n non-zeros)
+    V_vals.resize(n);
+    V_colinds.resize(n);
+    V_rowptrs.resize(k + 1);
+
+    // ────────────────────────────────────────────────────────────────
+    // Copy points from input Point objects to flat array
+    // ────────────────────────────────────────────────────────────────
+    
+    points.resize(n * d);
     for (size_t i = 0; i < n; ++i) {
-        for (size_t j = 0; j < d; ++j) {
-            h_points[i * d + j] = _points[i]->get(j);
+        for (uint32_t j = 0; j < d; ++j) {
+            points[i * d + j] = _points[i]->get(j);
         }
     }
 
@@ -47,310 +69,311 @@ Kmeans::Kmeans(const size_t _n, const uint32_t _d, const uint32_t _k,
     std::ofstream points_out;
     points_out.open("points-cpu.out");
     for (size_t i = 0; i < n; i++) {
-        for (size_t j = 0; j < d; j++) {
-            points_out << h_points[i * d + j] << ",";
+        for (uint32_t j = 0; j < d; j++) {
+            points_out << points[i * d + j] << ",";
         }
         points_out << std::endl;
     }
     points_out.close();
 #endif
 
-    // Allocate kernel matrix
-    B = new DATA_TYPE[n * n];
-    std::fill(B, B + n * n, 0.0);
-
-    // Allocate cluster tracking
-    clusters = new int32_t[n];
-    clusters_len = new uint32_t[k];
-    std::fill(clusters_len, clusters_len + k, 0);
-
-    // Initialize kernel matrix based on kernel type
-    std::cout << "Initializing kernel matrix..." << std::endl;
+    // ────────────────────────────────────────────────────────────────
+    // Initialize kernel matrix (done once before main loop)
+    // ────────────────────────────────────────────────────────────────
+    
+    std::cout << "Initializing kernel matrix (" << n << "×" << n 
+              << ") with kernel type: ";
     switch (kernel) {
         case Kernel::linear:
-            init_kernel_matrix<LinearKernel>();
+            std::cout << "linear" << std::endl;
             break;
         case Kernel::polynomial:
-            init_kernel_matrix<PolynomialKernel>();
+            std::cout << "polynomial" << std::endl;
             break;
         case Kernel::sigmoid:
-            init_kernel_matrix<SigmoidKernel>();
+            std::cout << "sigmoid" << std::endl;
             break;
     }
+    
+    initialize_kernel_matrix();
 
 #ifdef LOG_KERNEL
     std::ofstream kernel_out;
     kernel_out.open("kernel-cpu.out");
-    for (size_t i = 0; i < std::min(n, (size_t)10); i++) {
+    for (size_t i = 0; i < std::min(n, size_t(10)); i++) {
         for (size_t j = 0; j < n; j++) {
-            kernel_out << B[i * n + j] << ",";
+            kernel_out << K[i * n + j] << ",";
         }
         kernel_out << std::endl;
     }
     kernel_out.close();
 #endif
 
-    // Allocate sparse matrix V (CSR format)
-    V_vals = new DATA_TYPE[n];
-    V_colinds = new int32_t[n];
-    V_rowptrs = new int32_t[k + 1];
-
-    // Allocate distance matrix and norms
-    distances = new DATA_TYPE[k * n];  // Column major: k rows, n columns
-    points_row_norms = new DATA_TYPE[n];
-    centroids_row_norms = new DATA_TYPE[k];
-    z_vals = new DATA_TYPE[n];
-
-    // Compute point norms from diagonal of B
-    compute_points_norms();
-
-    // Initialize centroids
-    std::cout << "Initializing centroids..." << std::endl;
-    switch (initMethod) {
-        case InitMethod::random:
-            init_centroids_rand();
-            break;
-        case InitMethod::plus_plus:
-            init_centroids_plus_plus();
-            break;
-    }
+    // ────────────────────────────────────────────────────────────────
+    // Initialize clusters
+    // ────────────────────────────────────────────────────────────────
+    
+    std::cout << "Initializing clusters..." << std::endl;
+    initialize_clusters();
 }
 
+/**
+ * ============================================================================
+ * DESTRUCTOR
+ * ============================================================================
+ */
 Kmeans::~Kmeans() {
     delete generator;
-    delete[] h_points;
-    delete[] B;
-    delete[] clusters;
-    delete[] clusters_len;
-    delete[] V_vals;
-    delete[] V_colinds;
-    delete[] V_rowptrs;
-    delete[] distances;
-    delete[] points_row_norms;
-    delete[] centroids_row_norms;
-    delete[] z_vals;
 }
 
-template <typename KernelType>
-void Kmeans::init_kernel_matrix() {
-    // Use optimized GEMM-based initialization with kernel transformation
-    // The template parameter selects the kernel function (linear, polynomial, sigmoid)
-    init_kernel_mtx_cpu<KernelType>(n, k, d, h_points, B);
-}
+/**
+ * ============================================================================
+ * PRIVATE METHODS
+ * ============================================================================
+ */
 
-void Kmeans::compute_points_norms() {
-    // Extract diagonal from B and scale: p_tilde = B[i,i] / (-2.0)
-    // This corresponds to the row norm of each point in the feature space
-    #pragma omp parallel for
-    for (size_t i = 0; i < n; i++) {
-        points_row_norms[i] = B[i * n + i] / -2.0;
-    }
-}
+void Kmeans::initialize_kernel_matrix() {
+    // Step 1: Compute kernel matrix K = P̂·P̂^T
+    // Uses optimized GEMM (BLAS on OpenBLAS, manual collapse(2) on OpenMP)
+    init_kernel_mtx_gemm_cpu(n, d, points.data(), K.data());
 
-void Kmeans::compute_centroids_norms() {
-    // Compute c_tilde using sparse matrix-vector product: c_tilde = -0.5 * V * z
-    // V is the cluster membership matrix (k x n, sparse CSR format)
-    // z is the vector of diagonal elements: z[i] = D[cluster[i], i]
-    // Result: centroids_row_norms[j] = -0.5 * sum(V[j,i] * z[i] for i in cluster j)
-    
-    std::fill(centroids_row_norms, centroids_row_norms + k, 0.0);
-    
-    #pragma omp parallel for
-    for (uint32_t i = 0; i < k; i++) {
-        DATA_TYPE sum = 0.0;
-        // Iterate over non-zero elements in row i of V (sparse CSR)
-        for (int32_t idx = V_rowptrs[i]; idx < V_rowptrs[i + 1]; idx++) {
-            int32_t col = V_colinds[idx];
-            sum += V_vals[idx] * z_vals[col];
-        }
-        centroids_row_norms[i] = -0.5 * sum;
-        
-        // Filter out zero norms (empty clusters)
-        if (centroids_row_norms[i] == 0) {
-            centroids_row_norms[i] = std::numeric_limits<DATA_TYPE>::infinity();
-        }
-    }
-}
-
-void Kmeans::compute_v_matrix() {
-    // Build sparse matrix V in CSR format from cluster assignments
-    // V[i,j] = 1/|C_i| if point j is in cluster i, 0 otherwise
-    // This represents the cluster membership matrix
-    compute_v_sparse_csr_cpu(V_vals, V_colinds, V_rowptrs,
-                            (uint32_t*)clusters, clusters_len,
-                            n, k);
-}
-
-void Kmeans::init_centroids_rand() {
-    // Assign each point to a cluster in round-robin fashion
-    for (size_t i = 0; i < n; i++) {
-        clusters[i] = i % k;
+    // Step 2: Apply kernel transformation based on kernel type
+    switch (kernel) {
+        case Kernel::linear:
+            apply_linear_kernel_cpu(n, K.data());
+            break;
+        case Kernel::polynomial:
+            apply_polynomial_kernel_cpu(n, K.data());
+            break;
+        case Kernel::sigmoid:
+            apply_sigmoid_kernel_cpu(n, K.data());
+            break;
     }
 
-    // Count cluster sizes
-    std::fill(clusters_len, clusters_len + k, 0);
-    for (size_t i = 0; i < n; i++) {
-        clusters_len[clusters[i]]++;
-    }
+    // Step 3: Extract point norms from diagonal for P̃
+    // P̃[i,j] = K[i,i] for all j (same value for all clusters)
+    copy_diag_cpu(K.data(), p_norms.data(), n);
+}
 
+void Kmeans::initialize_clusters() {
+    // Assign each point to a cluster
+    switch (initMethod) {
+        case InitMethod::random: {
+            // Round-robin assignment: point i -> cluster (i % k)
+            for (size_t i = 0; i < n; i++) {
+                clusters[i] = i % k;
+            }
+            
+            // Count cluster sizes
+            std::fill(clusters_len.begin(), clusters_len.end(), 0);
+            for (size_t i = 0; i < n; i++) {
+                clusters_len[clusters[i]]++;
+            }
+            
 #if LOG
-    std::cout << "CLUSTER LENS" << std::endl;
-    for (uint32_t i = 0; i < k; i++) {
-        std::cout << (1.0 / clusters_len[i]) << ",";
-    }
-    std::cout << std::endl;
+            std::cout << "Initial cluster sizes: ";
+            for (uint32_t i = 0; i < k; i++) {
+                std::cout << clusters_len[i] << " ";
+            }
+            std::cout << std::endl;
 #endif
+            break;
+        }
 
-    // Build V matrix for optimized distance computation
+        case InitMethod::plus_plus: {
+            std::cout << "K-means++ initialization not fully implemented on CPU" << std::endl;
+            std::cout << "Falling back to random initialization" << std::endl;
+            
+            // Fall back to random initialization
+            for (size_t i = 0; i < n; i++) {
+                clusters[i] = i % k;
+            }
+            std::fill(clusters_len.begin(), clusters_len.end(), 0);
+            for (size_t i = 0; i < n; i++) {
+                clusters_len[clusters[i]]++;
+            }
+            break;
+        }
+    }
+
+    // Build initial V matrix (cluster membership)
     compute_v_matrix();
 }
 
-void Kmeans::init_centroids_plus_plus() {
-    std::cout << "K-means++ initialization not fully implemented for CPU version" << std::endl;
-    std::cout << "Falling back to random initialization" << std::endl;
-    init_centroids_rand();
-}
-
 void Kmeans::compute_distances() {
-    // Optimized kernel K-means distance computation using linear algebra:
-    // D[i,j] = ||phi(x_i) - mu_j||^2
-    //        = phi(x_i)^T phi(x_i) - 2 * phi(x_i)^T mu_j + mu_j^T mu_j
-    //        = p_tilde[i] + d_tilde[i,j] + c_tilde[j]
+    // ────────────────────────────────────────────────────────────────
+    // STEP 1: Compute distances using Popcorn formula
+    // ────────────────────────────────────────────────────────────────
+    // 
+    // Formula: D = -2·K·V^T + P̃ + C̃
     //
-    // where:
-    //   p_tilde[i] = phi(x_i)^T phi(x_i) (point norm)
-    //   d_tilde[i,j] = -phi(x_i)^T mu_j (negative inner product with centroid)
-    //   c_tilde[j] = mu_j^T mu_j (centroid norm)
+    // Where:
+    //   K = kernel matrix (n×n, constant across iterations)
+    //   V = sparse cluster membership (k×n, CSR)
+    //   P̃ = point norms ||φ(p_i)||² (n elements, constant)
+    //   C̃ = centroid norms ||c_j||² (k elements, computed here)
+    //   D = output distances (n×k, row-major)
     //
-    // Computation:
-    // Step 1: D_temp = V * B (sparse-dense multiplication)
-    //         D_temp[j,i] = sum of kernel values from points in cluster j
-    compute_distances_spmm_cpu(n, k, B, V_vals, V_colinds, V_rowptrs, distances);
+    // The function handles all four components internally:
+    // 1. SpMM: E = -2·K·V^T
+    // 2. Extract: z[i] = E[cluster[i], i]
+    // 3. SpMV: c_norms = -0.5·V·z
+    // 4. Assemble: D[i,j] = E[j,i] + P̃[i] + C̃[j]
 
-    // Step 2: Extract diagonal elements: z[i] = D_temp[cluster[i], i]
-    //         These are used to compute centroid norms
-    #pragma omp parallel for
-    for (size_t i = 0; i < n; i++) {
-        uint32_t cluster = clusters[i];
-        z_vals[i] = distances[cluster + i * k];
-    }
-
-    // Step 3: Compute centroid norms: c_tilde = -0.5 * V * z
-    compute_centroids_norms();
-
-    // Step 4: Add centroid norms to distance matrix
-    //         D[i,j] = D_temp[j,i] + c_tilde[j]
-    #pragma omp parallel for collapse(2)
-    for (size_t j = 0; j < n; j++) {
-        for (uint32_t i = 0; i < k; i++) {
-            distances[i + j * k] += centroids_row_norms[i];
-        }
-    }
+    compute_distances_complete_cpu(
+        n, k,                           // dimensions
+        K.data(),                       // kernel matrix (constant)
+        p_norms.data(),                 // point norms (constant)
+        V_vals.data(),                  // CSR values
+        V_colinds.data(),              // CSR column indices
+        V_rowptrs.data(),              // CSR row pointers
+        clusters.data(),               // cluster assignments
+        distances.data());              // output distances
 }
 
+void Kmeans::compute_v_matrix() {
+    // Build sparse matrix V in CSR format
+    // V[j,i] = 1/|L_j| if point i is in cluster j, 0 otherwise
+    //
+    // This encodes which cluster each point belongs to and is used
+    // to compute cluster-wise statistics in the distance formula.
+    
+    compute_v_sparse_csr_cpu(
+        clusters.data(),                // input: cluster assignments
+        clusters_len.data(),            // input: cluster sizes
+        V_vals.data(),                  // output: CSR values
+        V_colinds.data(),              // output: CSR column indices
+        V_rowptrs.data(),              // output: CSR row pointers
+        n, k);                         // dimensions
+}
+
+/**
+ * ============================================================================
+ * MAIN CLUSTERING LOOP
+ * ============================================================================
+ */
 uint64_t Kmeans::run(uint64_t maxiter, bool check_converged) {
     uint64_t converged = maxiter;
     uint64_t iter = 0;
 
 #if LOG
-    std::ofstream centroids_out;
-    centroids_out.open("centroids-cpu.out");
+    std::ofstream distances_out;
+    distances_out.open("distances-cpu.out");
+    std::ofstream score_out;
+    score_out.open("score-cpu.out");
 #endif
 
-    // Main iteration loop
+    // ────────────────────────────────────────────────────────────────
+    // MAIN ITERATION LOOP
+    // ────────────────────────────────────────────────────────────────
+    
     while (iter++ < maxiter) {
         CCUTILS_CPU_TIMER_START(total_iteration)
         
-        // STEP 1: Compute distances using optimized linear algebra formulation
+        // ────────────────────────────────────────────────────────────
+        // STEP 1: Compute pairwise distances
+        // ────────────────────────────────────────────────────────────
+        // Most expensive step: O(n²) for SpMM kernel
+        
         CCUTILS_CPU_TIMER_START(distances_compute)
         compute_distances();
         CCUTILS_CPU_TIMER_STOP(distances_compute)
 
 #if LOG
-        centroids_out << "BEGIN DISTANCES ITER " << (iter - 1) << std::endl;
+        distances_out << "ITERATION " << (iter - 1) << std::endl;
         for (size_t i = 0; i < n; i++) {
             for (uint32_t j = 0; j < k; j++) {
-                centroids_out << distances[j + i * k] << ",";
+                distances_out << distances[i * k + j] << ",";
             }
-            centroids_out << std::endl;
+            distances_out << std::endl;
         }
-        centroids_out << "END DISTANCES ITER " << (iter - 1) << std::endl;
 #endif
 
+        // ────────────────────────────────────────────────────────────
         // STEP 2: Assign points to nearest clusters
-        // Finds for each point the cluster with minimum distance
-        // Updates cluster assignments and cluster sizes
+        // ────────────────────────────────────────────────────────────
+        // For each point i, find cluster j = argmin_j D[i,j]
+        // Update cluster assignments and sizes atomically
+        
         CCUTILS_CPU_TIMER_START(argmin_assign)
-        clusters_argmin_cpu(n, k, distances, (uint32_t*)clusters, clusters_len, false);
+        clusters_argmin_cpu(n, k, distances.data(),
+                           clusters.data(), clusters_len.data());
         CCUTILS_CPU_TIMER_STOP(argmin_assign)
 
-        // STEP 3: Update cluster membership matrix V
-        // Recomputes V based on new cluster assignments
+        // ────────────────────────────────────────────────────────────
+        // STEP 3: Update cluster membership matrix
+        // ────────────────────────────────────────────────────────────
+        // Recompute V based on new cluster assignments
+        // This is needed for the next iteration's distance computation
+        
         CCUTILS_CPU_TIMER_START(v_matrix_update)
         compute_v_matrix();
         CCUTILS_CPU_TIMER_STOP(v_matrix_update)
 
+        // ────────────────────────────────────────────────────────────
         // STEP 4: Compute objective score
-        // Sum of minimum distances (distance to assigned cluster)
+        // ────────────────────────────────────────────────────────────
+        // Sum of distances from each point to its assigned cluster
+        // Used for convergence checking
+        
         CCUTILS_CPU_TIMER_START(score_compute)
         score = 0.0;
-        #pragma omp parallel for reduction(+:score)
+        #pragma omp parallel for reduction(+:score) default(none) \
+                shared(distances, clusters, n, k)
         for (size_t i = 0; i < n; i++) {
             uint32_t cluster = clusters[i];
-            score += distances[cluster + i * k];
+            score += distances[i * k + cluster];
         }
         CCUTILS_CPU_TIMER_STOP(score_compute)
 
+#if LOG
+        score_out << "ITERATION " << (iter - 1) << ": " << score << std::endl;
+#endif
+
         CCUTILS_CPU_TIMER_STOP(total_iteration)
 
+        // ────────────────────────────────────────────────────────────
         // STEP 5: Check convergence
+        // ────────────────────────────────────────────────────────────
+        
         if (iter == maxiter) {
+            // Reached maximum iterations
             break;
         }
 
-        if (check_converged && (iter > 1) && (std::abs(score - last_score) < tol)) {
-            converged = iter;
-            break;
+        if (check_converged && (iter > 1)) {
+            // Check if objective change is below tolerance
+            double score_change = std::abs(score - last_score);
+            if (score_change < tol) {
+                converged = iter;
+                std::cout << "Converged at iteration " << iter 
+                          << " (score change: " << score_change << ")" << std::endl;
+                break;
+            }
         }
 
         last_score = score;
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Print timing statistics (optional)
+    // ────────────────────────────────────────────────────────────────
+    
+    std::cout << "\n=== Iteration Timing Statistics ===" << std::endl;
+    std::cout << "  Distances:     ";
+    CCUTILS_TIMER_PRINT(distances_compute)
+    std::cout << "  Argmin/Assign: ";
+    CCUTILS_TIMER_PRINT(argmin_assign)
+    std::cout << "  V Matrix:      ";
+    CCUTILS_TIMER_PRINT(v_matrix_update)
+    std::cout << "  Score Compute: ";
+    CCUTILS_TIMER_PRINT(score_compute)
+    std::cout << "  Total/Iter:    ";
+    CCUTILS_TIMER_PRINT(total_iteration)
 
 #if LOG
-        centroids_out << "Score: " << score << std::endl;
-        centroids_out << "END ITERATION " << (iter - 1) << std::endl;
-#endif
-    }
-
-    // Print iteration timing statistics
-    // std::cout << "=== Iteration Timing Statistics ===" << std::endl;
-    // std::cout << "  Distances:     ";
-    // CCUTILS_TIMER_PRINT(distances_compute)
-    // std::cout << "  Argmin/Assign: ";
-    // CCUTILS_TIMER_PRINT(argmin_assign)
-    // std::cout << "  V Matrix:      ";
-    // CCUTILS_TIMER_PRINT(v_matrix_update)
-    // std::cout << "  Score Compute: ";
-    // CCUTILS_TIMER_PRINT(score_compute)
-    // std::cout << "  Total/Iter:    ";
-    // CCUTILS_TIMER_PRINT(total_iteration)
-
-    // Copy final cluster assignments to output
-    for (size_t i = 0; i < n; i++) {
-        h_points_clusters[i] = clusters[i];
-        points[i]->setCluster(clusters[i]);
-    }
-
-#if LOG
-    centroids_out.close();
-#endif
-
-#ifdef LOG_LABELS
-    std::ofstream labels;
-    labels.open("labels-cpu.out");
-    for (size_t i = 0; i < n; i++) {
-        labels << h_points_clusters[i] << std::endl;
-    }
-    labels.close();
+    distances_out.close();
+    score_out.close();
 #endif
 
     return converged;

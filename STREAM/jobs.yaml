@@ -1,11 +1,25 @@
 variables:
-  system: ["thea-gg"]
-  ncpus: [1, 2] # , 4, 8, 16, 32, 64, 72]
+  system: ["leonardo"]
+  partition: ["dcgp"]
+  compiler: ["gcc", "clang"]
+  ncpus: [1, 2, 4, 8, 16, 32, 52, 64, 112]
+
+  data_type:
+    - "double"
+    - "uint32"
+    # - "float"
+    # - "int32"
+
+  # Footprint of a single array
+  array_mem:
+    - 512
+    # - 8
+
   
-command: "./STREAM/stream_c_custom"
+command: "./bin/{compiler}/stream_{compiler}_{data_type}_M{array_mem}_R15_O0"
 
 jobs:
-  - config: "{system}_{ncpus}cpus"
+  - config: "{system}__{partition}__{compiler}__{ncpus}"
     config_jobs:
-      - tag: "stream_{ncpus}cpus"
+      - tag: "stream_{compiler}_{data_type}_M{array_mem}_C{ncpus}"
       

@@ -43,7 +43,7 @@ from typing import List, Union
 import pandas as pd
 import matplotlib.pyplot as plt
 
-OUT_DIR = Path('results')
+OUT_DIR = Path('plots')
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
@@ -181,13 +181,13 @@ def _plot(df: pd.DataFrame, cores: Union[List[int], None]) -> None:
 
     func_df['bandwidth_GBps'] = func_df['bandwidth_MBps'] / 1e3
 
-    for j, (hw, group) in enumerate(func_df.groupby("hardware", sort=False)):
+    for j, ((hw, partition, compiler), group) in enumerate(func_df.groupby(["hardware", 'partition', 'compiler'], sort=False)):
       group_sorted = group.sort_values("cores")
       ax.plot(
         group_sorted["cores"],
         group_sorted["bandwidth_GBps"],
         color=hws_color_map.get(hw, hw),
-        label=BOARD_NAMES_MAP.get(hw, hw),
+        label='|'.join([BOARD_NAMES_MAP.get(hw, hw), partition, compiler]),
         marker=MARKERS_LIST[j % len(MARKERS_LIST)],
         linewidth=1.8,
       )
@@ -244,13 +244,13 @@ def _plot(df: pd.DataFrame, cores: Union[List[int], None]) -> None:
   legend_ax.axis('off')
   func_df = df[df["function"] == 'Copy']
   func_df['bandwidth_GBps'] = func_df['bandwidth_MBps'] / 1e3
-  for j, (hw, group) in enumerate(func_df.groupby("hardware", sort=False)):
+  for j, ((hw, partition, compiler), group) in enumerate(func_df.groupby(["hardware", 'partition', 'compiler'], sort=False)):
     group_sorted = group.sort_values("cores")
     legend_ax.plot(
       group_sorted["cores"],
       group_sorted["bandwidth_GBps"],
       color=hws_color_map.get(hw, hw),
-      label=BOARD_NAMES_MAP.get(hw, hw),
+      label='|'.join([BOARD_NAMES_MAP.get(hw, hw), partition, compiler]),
       marker=MARKERS_LIST[j % len(MARKERS_LIST)],
       linewidth=1.8,
     )
@@ -308,8 +308,26 @@ def main(argv: Union[List[str], None] = None) -> None:
     labels = _infer_hardware_labels(args.inputs, args.hardware)
     df = _build_dataframe_from_files(args.inputs, labels)
   elif args.mode == "df":
-    df = load_csv_files(args.inputs)
+    wide_df = load_csv_files(args.inputs)
+    rows = []
+    for _, row in wide_df.iterrows():
+        hw = row["system"]
+        partition = row["partition"]
+        compiler = row["compiler"]
+        cores_val = row["ncpus"]
 
+        for func in FUNCTIONS:
+            rows.append({
+                "hardware": hw,
+                "partition": partition,
+                "compiler": compiler,
+                "cores": int(cores_val),
+                "function": func,
+                "bandwidth_MBps": row[f"{func.lower()}_rate_mb_s"],
+            })
+    df = pd.DataFrame(rows).sort_values(["function", "hardware", "cores"])
+    
+  print(df)
   _plot(df, cores)
 
 

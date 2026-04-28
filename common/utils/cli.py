@@ -7,6 +7,7 @@ def load_csv_files(filepaths: List[Union[Path, str]]) -> pd.DataFrame:
   for file in filepaths:
     cluster = Path(file).stem.split("_")[0]
     df = pd.read_csv(file)
-    df["cluster"] = cluster
+    if 'cluster' not in df.columns:
+      df["cluster"] = cluster
     dfs.append(df)
   return pd.concat(dfs, ignore_index=True)

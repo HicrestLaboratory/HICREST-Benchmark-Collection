@@ -22,7 +22,7 @@ make clean
 
 # ---- Parameter space ----
 MEM_SIZES_MB=(8 512)  # desired memory footprint per array
-NTIMES=(10)
+NTIMES=(15)
 TYPES=(float double uint32 int32)
 OFFSETS=(0)
 
@@ -70,7 +70,7 @@ for key in "${!COMPILERS[@]}"; do
 
                     VARS="-DSTREAM_ARRAY_SIZE=${ARRAY_SIZE} -DNTIMES=${R} -DSTREAM_TYPE_${TYPE^^} -DOFFSET=${OFFSET}"
 
-                    BIN_NAME="${out_dir}/stream_${name}_${TYPE}_N${ARRAY_SIZE}_R${R}_O${OFFSET}"
+                    BIN_NAME="${out_dir}/stream_${name}_${TYPE}_M${MEM_MB}_R${R}_O${OFFSET}"
 
                     make clean >/dev/null
                     make CUSTOM_PREPROCESSOR_VARS="$VARS" stream_c_custom

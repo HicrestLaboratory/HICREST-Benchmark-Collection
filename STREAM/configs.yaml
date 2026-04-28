@@ -1,4 +1,5 @@
 variables:
+  leonardo_ncpus: [1, 2, 4, 8, 16, 32, 52, 64, 112]
   amd_ncpus: [1, 2, 4, 8, 16, 32, 64]
   grace_ncpus: [1, 2, 4, 8, 16, 32, 72]
   baldo_ncpus: [1, 2, 4, 8] # Others are specified manually
@@ -107,3 +108,33 @@ thea:
         - "OMP_NUM_THREADS={grace_ncpus}"
         - "OMP_PROC_BIND=close"
         - "OMP_PLACES=cores"
+
+
+leonardo:
+  scheduler: slurm
+
+  default_conf:
+    account: "IscrC_OMG-25_0"
+    time: "00:30:00"
+    partition: "dcgp_usr_prod"
+    qos: "normal"
+    exclusive: true
+    nodes: 1
+    ntasks: 1
+    custom_headers:
+      - "#SBATCH --gres=gres/tmpfs:10g"
+
+  configs:
+    - name: "leonardo__dcgp__gcc__{leonardo_ncpus}"
+      cpus_per_task: "{leonardo_ncpus}"
+      modules: 
+        - "gcc/12.2.0"
+      env:
+        - "OMP_NUM_THREADS={leonardo_ncpus}"
+
+    - name: "leonardo__dcgp__clang__{leonardo_ncpus}"
+      cpus_per_task: "{leonardo_ncpus}"
+      modules: 
+        - "llvm/14.0.6--gcc--12.2.0-cuda-12.2"
+      env:
+        - "OMP_NUM_THREADS={leonardo_ncpus}"

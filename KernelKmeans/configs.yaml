@@ -16,6 +16,7 @@ hca:
     env:
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
+      - "OMP_NESTED=true"
 
   configs:
     - name: "pioneer_gcc_{pioneer_ncpus}cpus"
@@ -25,6 +26,8 @@ hca:
       # modules:
       #   - "openBLAS/ubuntu/0.3.20_gcc10.3.0"
       env:
+        - "OPENBLAS_NUM_THREADS={pioneer_ncpus}"
+        - "GOTO_NUM_THREADS={pioneer_ncpus}"
         - "OMP_NUM_THREADS={pioneer_ncpus}"
         - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
 
@@ -36,40 +39,50 @@ hca:
       #   - "openBLAS/ubuntu/0.3.29_llvmEPI1.0"
         # - "llvm/EPI-development" 
       env:
+        - "OPENBLAS_NUM_THREADS={pioneer_ncpus}"
+        - "GOTO_NUM_THREADS={pioneer_ncpus}"
         - "OMP_NUM_THREADS={pioneer_ncpus}"
         - "LD_LIBRARY_PATH=/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
-
 
 
     - name: "arriesgado_gcc_{arriesgado_ncpus}cpus"
       partition: "arriesgado-jammy"
       cpus_per_task: "{arriesgado_ncpus}"
       env:
+        - "OPENBLAS_NUM_THREADS={arriesgado_ncpus}"
+        - "GOTO_NUM_THREADS={arriesgado_ncpus}"
         - "OMP_NUM_THREADS={arriesgado_ncpus}"
         - "KMP_AFFINITY=disabled"
         - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
+
 
     - name: "arriesgado_clang_{arriesgado_ncpus}cpus"
       partition: "arriesgado-jammy"
       cpus_per_task: "{arriesgado_ncpus}"
       env:
+        - "OPENBLAS_NUM_THREADS={arriesgado_ncpus}"
+        - "GOTO_NUM_THREADS={arriesgado_ncpus}"
         - "OMP_NUM_THREADS={arriesgado_ncpus}"
         - "KMP_AFFINITY=disabled"
         - "LD_LIBRARY_PATH=/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
-
 
 
     - name: "bananaf3_gcc_{bananaf3_ncpus}cpus"
       partition: "bananaf3"
       cpus_per_task: "{bananaf3_ncpus}"
       env:
+        - "OPENBLAS_NUM_THREADS={bananaf3_ncpus}"
+        - "GOTO_NUM_THREADS={bananaf3_ncpus}"
         - "OMP_NUM_THREADS={bananaf3_ncpus}"
         - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
+
 
     - name: "bananaf3_clang_{bananaf3_ncpus}cpus"
       partition: "bananaf3"
       cpus_per_task: "{bananaf3_ncpus}"
       env:
+        - "OPENBLAS_NUM_THREADS={bananaf3_ncpus}"
+        - "GOTO_NUM_THREADS={bananaf3_ncpus}"
         - "OMP_NUM_THREADS={bananaf3_ncpus}"
         - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.30_vlen256_llvmEPI1.0/lib:/apps/riscv/llvm/EPI/development/lib" # WORKAROUND
 
@@ -87,6 +100,9 @@ thea:
     - name: "thea-gg_{grace_ncpus}cpus"
       cpus_per_task: "{grace_ncpus}"
       env: 
+        - "OPENBLAS_NUM_THREADS={grace_ncpus}"
+        - "GOTO_NUM_THREADS={grace_ncpus}"
         - "OMP_NUM_THREADS={grace_ncpus}"
         - "OMP_PROC_BIND=close"
         - "OMP_PLACES=cores"
+        - "OMP_NESTED=true"
