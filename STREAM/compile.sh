@@ -1,13 +1,83 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
+source ../common/compile/compilers.sh
+source ../common/compile/utils.sh
 
-cp Makefile STREAM/
+SUPPORTED_SYSTEMS=("leonardo")
+SUPPORTED_BOARDS=("default")
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: $0 <system> [<board>]"
+    exit 1
+fi
+
+system="$1"
+board="${2:-default}"
+validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
+validate_argument "$board" "board" "${SUPPORTED_BOARDS[@]}"
+
 cd STREAM
-
-sed -E -i 's/(define STREAM_ARRAY_SIZE)[[:space:]]+[0-9]+/\1 20000000/' stream.c
-
-sleep 2
-
 make clean
-make stream_c_custom
+
+# ---- Parameter space ----
+MEM_SIZES_MB=(8 512)  # desired memory footprint per array
+NTIMES=(10)
+TYPES=(float double uint32 int32)
+OFFSETS=(0)
+
+# ---- Output directory ----
+OUT_DIR="../bin"
+mkdir -p "$OUT_DIR"
+
+compilers_var=$(get_compilers_for_system "$system")
+declare -n COMPILERS="$compilers_var"
+
+# ---- Helper: type size in bytes ----
+sizeof_type() {
+  case "$1" in
+    float)    echo 4 ;;
+    double)   echo 8 ;;
+    uint32)   echo 4 ;;
+    int32)    echo 4 ;;
+    *)
+      echo "Unknown type: $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+for key in "${!COMPILERS[@]}"; do
+    IFS=":" read -r name cxx cc modules <<< "${COMPILERS[$key]}"
+
+    echo "==== Compiler: $name ===="
+
+    out_dir="$OUT_DIR/$name"
+    mkdir -p "$out_dir"
+
+    load_modules_for_compiler "$modules"
+    set_compiler_env "$cxx" "$cc"
+
+    # your existing parameter sweep stays unchanged
+    for MEM_MB in "${MEM_SIZES_MB[@]}"; do
+        for R in "${NTIMES[@]}"; do
+            for TYPE in "${TYPES[@]}"; do
+                for OFFSET in "${OFFSETS[@]}"; do
+
+                    TYPE_SIZE=$(sizeof_type "$TYPE")
+                    BYTES=$((MEM_MB * 1024 * 1024))
+                    ARRAY_SIZE=$((BYTES / TYPE_SIZE))
+
+                    VARS="-DSTREAM_ARRAY_SIZE=${ARRAY_SIZE} -DNTIMES=${R} -DSTREAM_TYPE_${TYPE^^} -DOFFSET=${OFFSET}"
+
+                    BIN_NAME="${out_dir}/stream_${name}_${TYPE}_N${ARRAY_SIZE}_R${R}_O${OFFSET}"
+
+                    make clean >/dev/null
+                    make CUSTOM_PREPROCESSOR_VARS="$VARS" stream_c_custom
+                    mv stream_c_custom "$BIN_NAME"
+
+                done
+            done
+        done
+    done
+done

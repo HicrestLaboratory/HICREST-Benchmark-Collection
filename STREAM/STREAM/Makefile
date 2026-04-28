@@ -4,23 +4,23 @@ CFLAGS = -O3 -fopenmp
 FC ?= gfortran
 FFLAGS = -O3 -fopenmp
 
-CUSTOM_PREPR_VARS =? -DSTREAM_ARRAY_SIZE=100000000 -DNTIMES=10
+CUSTOM_PREPROCESSOR_VARS =? -DSTREAM_ARRAY_SIZE=100000000 -DNTIMES=10
 
-all: stream_f.exe stream_c.exe
+all: stream_f stream_c
 
-stream_f.exe: stream.f mysecond.o
+stream_f: stream.f mysecond.o
 	$(CC) $(CFLAGS) -c mysecond.c
 	$(FC) $(FFLAGS) -c stream.f
-	$(FC) $(FFLAGS) stream.o mysecond.o -o stream_f.exe
+	$(FC) $(FFLAGS) stream.o mysecond.o -o stream_f
 
-stream_c.exe: stream.c
-	$(CC) $(CFLAGS) stream.c -o stream_c.exe
+stream_c: stream.c
+	$(CC) $(CFLAGS) stream.c -o stream_c
 
 stream_c_custom: stream.c
-	$(CC) $(CFLAGS) $(CUSTOM_PREPR_VARS) stream.c -o $@
+	$(CC) $(CFLAGS) $(CUSTOM_PREPROCESSOR_VARS) stream.c -o $@
 
 clean:
-	rm -f stream_f.exe stream_c.exe *.o
+	rm -f stream_f stream_c *.o
 
 # an example of a more complex build line for the Intel icc compiler
 stream.icc: stream.c
