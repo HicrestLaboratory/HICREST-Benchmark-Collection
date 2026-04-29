@@ -1,8 +1,8 @@
 CC ?= gcc
-CFLAGS = -O3 -fopenmp
+CFLAGS ?= -O3 -fopenmp
 
 FC ?= gfortran
-FFLAGS = -O3 -fopenmp
+FFLAGS ?= -O3 -fopenmp
 
 CUSTOM_PREPROCESSOR_VARS =? -DSTREAM_ARRAY_SIZE=100000000 -DNTIMES=10
 

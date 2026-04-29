@@ -78,6 +78,7 @@ def main():
         # Add sbatch/job variables
         row.update(job.variables)
         del row['array_mem']
+        del row['libs']
 
         # Add parsed benchmark metrics
         row.update(parsed)

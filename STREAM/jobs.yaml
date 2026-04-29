@@ -1,25 +1,25 @@
 variables:
-  system: ["leonardo"]
   partition: ["dcgp"]
-  compiler: ["gcc", "clang"]
-  ncpus: [1, 2, 4, 8, 16, 32, 52, 64, 112]
+  compiler: ["gcc", "clang", "icx"]
+  libs: ['']
+  
+  ncpus: [1, 2, 4, 8, 16, 32, 56, 64, 112]
 
   data_type:
     - "double"
     - "uint32"
-    # - "float"
-    # - "int32"
+    - "float"
+    - "int32"
 
   # Footprint of a single array
   array_mem:
     - 512
     # - 8
 
-  
 command: "./bin/{compiler}/stream_{compiler}_{data_type}_M{array_mem}_R15_O0"
 
 jobs:
-  - config: "{system}__{partition}__{compiler}__{ncpus}"
+  - config: "{partition}__{compiler}__{libs}__{ncpus}"
     config_jobs:
-      - tag: "stream_{compiler}_{data_type}_M{array_mem}_C{ncpus}"
+      - tag: "stream_{compiler}_{libs}_{data_type}_M{array_mem}_C{ncpus}"
       

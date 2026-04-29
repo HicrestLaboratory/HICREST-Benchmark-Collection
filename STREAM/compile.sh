@@ -5,17 +5,14 @@ source ../common/compile/compilers.sh
 source ../common/compile/utils.sh
 
 SUPPORTED_SYSTEMS=("leonardo")
-SUPPORTED_BOARDS=("default")
 
 if [[ $# -eq 0 ]]; then
-    echo "Usage: $0 <system> [<board>]"
+    echo "Usage: $0 <system>"
     exit 1
 fi
 
 system="$1"
-board="${2:-default}"
 validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
-validate_argument "$board" "board" "${SUPPORTED_BOARDS[@]}"
 
 cd STREAM
 make clean
@@ -48,7 +45,7 @@ sizeof_type() {
 }
 
 for key in "${!COMPILERS[@]}"; do
-    IFS=":" read -r name cxx cc modules <<< "${COMPILERS[$key]}"
+    IFS=":" read -r name cxx cc modules libs link_opts <<< "${COMPILERS[$key]}"
 
     echo "==== Compiler: $name ===="
 
@@ -57,6 +54,11 @@ for key in "${!COMPILERS[@]}"; do
 
     load_modules_for_compiler "$modules"
     set_compiler_env "$cxx" "$cc"
+
+    CFLAGS="-O3 -fopenmp"
+    if [[ $name == "icx" ]]; then
+        CFLAGS="-O3 -qopenmp"
+    fi
 
     # your existing parameter sweep stays unchanged
     for MEM_MB in "${MEM_SIZES_MB[@]}"; do
@@ -73,7 +75,7 @@ for key in "${!COMPILERS[@]}"; do
                     BIN_NAME="${out_dir}/stream_${name}_${TYPE}_M${MEM_MB}_R${R}_O${OFFSET}"
 
                     make clean >/dev/null
-                    make CUSTOM_PREPROCESSOR_VARS="$VARS" stream_c_custom
+                    make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="$VARS" stream_c_custom
                     mv stream_c_custom "$BIN_NAME"
 
                 done
