@@ -1,4 +1,5 @@
-#pragma once
+#ifndef KERNELS_OPENMP_H
+#define KERNELS_OPENMP_H
 
 #include <bits/stdc++.h>
 #include <omp.h>
@@ -25,21 +26,6 @@
  * 
  * ============================================================================
  */
-
-/**
- * @brief Pair structure for (value, index) tuples
- */
-struct Pair {
-  float v;
-  uint32_t i;
-};
-
-/**
- * @brief CPU argmin: returns pair with smaller value
- */
-Pair cpu_argmin(Pair a, Pair b) {
-  return a.v <= b.v ? a : b;
-}
 
 /**
  * @brief Finds the closest centroid for each point (OpenMP version)

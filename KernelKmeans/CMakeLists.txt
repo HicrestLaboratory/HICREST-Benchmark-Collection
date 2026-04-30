@@ -1,14 +1,24 @@
 cmake_minimum_required(VERSION 3.24.3)
 
 project(Popcorn_Kernel_Kmeans VERSION 1.0.0 LANGUAGES CXX)
+set(NOFORTRAN ON)
 
 set(EXTRA_LIBS "" CACHE STRING "Extra libraries (semicolon-separated)")
 separate_arguments(EXTRA_LIBS)
 set(EXTRA_LINK_OPTIONS "" CACHE STRING "Extra linker flags (semicolon-separated)")
 separate_arguments(EXTRA_LINK_OPTIONS)
 
-set(NOFORTRAN ON)
-find_package(OpenBLAS REQUIRED)
+set(BLA_VENDOR "" CACHE STRING "BLAS Vendor")
+set(MANUAL_BLAS_LIBRARIES "" CACHE STRING "Semicolon-separated BLAS libraries")
+set(MANUAL_BLAS_INCLUDE_DIRS "" CACHE STRING "Semicolon-separated BLAS include directories")
+if(MANUAL_BLAS_LIBRARIES)
+    set(BLAS_LINK_TARGET ${MANUAL_BLAS_LIBRARIES})
+    set(BLAS_INCLUDE_DIRS ${MANUAL_BLAS_INCLUDE_DIRS})
+else()
+    find_package(BLAS REQUIRED)
+    set(BLAS_LINK_TARGET BLAS::BLAS)
+    set(BLAS_INCLUDE_DIRS "")
+endif()
 
 find_package(OpenMP)
 if (OPENMP_FOUND)
@@ -24,29 +34,27 @@ message(STATUS "Including CCUTILS from: ${ccutils_DIR}")
 # message(STATUS "CCUTILS include dir: $ENV{CCUTILS_INCLUDE}")
 find_package(ccutils REQUIRED)
 
-message(STATUS "OpenBLAS_LIBRARIES: ${OpenBLAS_LIBRARIES}")
+message(STATUS "BLAS_LIBRARIES: ${BLAS_LINK_TARGET}")
 message(STATUS "Set EXTRA_LIBS=${EXTRA_LIBS}")
 
-# OpenBLAS + OpenMP target
-add_executable(popcornkmeans_openblas
-  ./src/kernels_openblas.cpp
-  ./src/kmeans.cpp
-  ./src/main.cpp
-)
-target_link_libraries(popcornkmeans_openblas PRIVATE ${OpenBLAS_LIBRARIES} ccutils::ccutils ${EXTRA_LIBS})
-target_include_directories(popcornkmeans_openblas PRIVATE ${OpenBLAS_INCLUDE_DIRS} ./include)
-target_link_options(popcornkmeans_openblas PRIVATE ${EXTRA_LINK_OPTIONS})
-
+# BLAS + OpenMP target
+if(BLA_VENDOR STREQUAL "OpenBLAS")
+  set(BLA_VENDOR_INT 0)
+elseif(BLA_VENDOR STREQUAL "NVPL")
+  set(BLA_VENDOR_INT 1)
+elseif(BLA_VENDOR STREQUAL "MKL")
+  set(BLA_VENDOR_INT 2)
+else()
+  message(FATAL_ERROR "Unknown BLA_VENDOR: ${BLA_VENDOR}")
+endif()
+add_executable(popcornkmeans_blas ./src/kmeans.cpp ./src/main.cpp)
+target_link_libraries(popcornkmeans_blas PRIVATE ${BLAS_LINK_TARGET} ccutils::ccutils ${EXTRA_LIBS})
+target_include_directories(popcornkmeans_blas PRIVATE ${BLAS_INCLUDE_DIRS} ./include)
+target_link_options(popcornkmeans_blas PRIVATE ${EXTRA_LINK_OPTIONS})
+target_compile_definitions(popcornkmeans_blas PRIVATE BLA_VENDOR=${BLA_VENDOR_INT})
 
 # OpenMP target: kernels are implemented "manually"
-add_executable(popcornkmeans_openmp
-  ./src/kernels_openmp.cpp
-  ./src/kmeans.cpp
-  ./src/main.cpp
-)
+add_executable(popcornkmeans_openmp ./src/kmeans.cpp ./src/main.cpp)
 target_link_libraries(popcornkmeans_openmp PRIVATE ccutils::ccutils ${EXTRA_LIBS})
 target_include_directories(popcornkmeans_openmp PRIVATE ./include)
 target_link_options(popcornkmeans_openmp PRIVATE ${EXTRA_LINK_OPTIONS})
-
-
-

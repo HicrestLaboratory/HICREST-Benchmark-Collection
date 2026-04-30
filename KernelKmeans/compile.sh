@@ -1,132 +1,314 @@
 #!/bin/bash
 
-set -e
+# Popcorn K-means Multi-System Build Script
+# Pure Makefile-based compilation system
+# Supports: bsc-hca, thea, leonardo
+# Variants: default, pioneer, arriesgado, bananaf3
 
+set -euo pipefail
+
+source ../common/compile/compilers.sh
 source ../common/compile/utils.sh
 
-SUPPORTED_SYSTEMS=("bsc-hca" "thea")
-SUPPORTED_BOARDS=("default" "pioneer" "arriesgado" "bananaf3")
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-if [[ $# -eq 0 ]]; then
-    echo "Usage: $0 <system> [<board>]"
-    exit 1
-fi
+SUPPORTED_SYSTEMS=("bsc-hca" "thea" "leonardo")
+SUPPORTED_VARIANTS=("default" "pioneer" "arriesgado" "bananaf3")
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-system="$1"
-board="${2:-default}"
-validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
-validate_argument "$board" "board" "${SUPPORTED_BOARDS[@]}"
+# ============================================================================
+# BLAS DETECTION
+# ============================================================================
 
-check_ccutils_installation
-
-# Define compilers per system
-declare -A COMPILERS
-# name:CXX:CC:extra_libs:extra_link_opts
-# (extra_libs and extra_link_opts must be semicolon-separated)
-COMPILERS["gcc"]="gcc:g++:gcc::"
-
-if [[ "$system" == "bsc-hca" ]]; then
-    if [[ "$board" == "bananaf3" ]]; then
-        COMPILERS["clang"]="clang:clang++:clang:flang_rt.runtime;provector-vecclonevp:-L/apps/riscv/llvm/EPI/development/lib/riscv64-unknown-linux-gnu;-L/apps/riscv/llvm/EPI/development/lib"
+detect_blas_vendor() {
+    if [[ -n "${NVPL_HOME:-}" ]]; then
+        echo "NVPL"
+    elif [[ -n "${MKLROOT:-}" ]]; then
+        echo "Intel10_64lp"
+    elif [[ -n "${OPENBLAS_HOME:-}" ]]; then
+        echo "OpenBLAS"
     else
-        COMPILERS["clang"]="clang:clang++:clang:flang_rt.runtime:-L/apps/riscv/llvm/EPI/development/lib/riscv64-unknown-linux-gnu:"
+        echo ""
     fi
-# elif [[ "$system" == "thea" ]]; then
-#     board="default"
-#     COMPILERS["gcc"]="gcc:g++:gcc::"
-fi
+}
 
-# ---- FUNCTIONS ----
+get_blas_dir() {
+    local candidates=(
+        "NVPL_HOME"
+        "MKLROOT"
+        "BLAS_HOME"
+        "OBLAS_LIBS"
+        "OPENBLAS_LIB"
+        "OPENBLAS_HOME"
+    )
 
-load_modules() {
-    local compiler="$1"
-    echo
+    local raw path prefix
 
-    if [[ "$system" == "bsc-hca" ]]; then
-        module purge
-        ml cmake/3.28.1
+    for var in "${candidates[@]}"; do
+        raw="${!var:-}"
+        [[ -z "$raw" ]] && continue
 
-        if [[ "$compiler" == "clang" ]]; then
-            ml llvm/EPI-development
-            if [[ "$board" == "default" || "$board" == "pioneer" || "$board" == "arriesgado" ]]; then
-                ml openBLAS/ubuntu/0.3.29_llvmEPI1.0
-            else
-                # For BananaF3
-                ml openBLAS/ubuntu/0.3.30_vlen256_llvmEPI1.0
-            fi
-        elif [[ "$compiler" == "gcc" ]]; then
-            ml openBLAS/ubuntu/0.3.20_gcc10.3.0
+        # Extract path from linker flags if needed
+        if [[ "$raw" =~ -L([^[:space:]]+) ]]; then
+            path="${BASH_REMATCH[1]}"
+        else
+            path="$raw"
         fi
-    elif [[ "$system" == "thea" ]]; then
-        ml gcc/14.3.0
+
+        path="$(realpath "$path" 2>/dev/null || echo "$path")"
+
+        # Normalize prefix/lib relationship
+        case "$(basename "$path")" in
+            lib | lib64)
+                prefix="$(dirname "$path")"
+                ;;
+            *)
+                prefix="$path"
+                ;;
+        esac
+
+        if [[ -d "$prefix" ]]; then
+            echo "$prefix"
+            return 0
+        fi
+    done
+
+    print_error "Could not determine BLAS installation path."
+    exit 1
+}
+
+get_blas_libs() {
+    local raw="${OBLAS_LIBS:-${OPENBLAS_LIB:-}}"
+
+    if [[ -n "$raw" ]]; then
+        echo "$raw"
+        return 0
+    fi
+
+    if [[ -n "${NVPL_HOME:-}" ]]; then
+        echo "${NVPL_HOME}/lib/libnvpl_blas_ilp64_gomp.so"
+        return 0
+    fi
+
+    if [[ -n "${MKLROOT:-}" ]]; then
+        echo "${MKLROOT}/lib/intel64/libmkl_rt.so"
+        return 0
+    fi
+
+    if [[ -n "${OPENBLAS_HOME:-}" ]]; then
+        echo "${OPENBLAS_HOME}/lib/libopenblas.so"
+        return 0
+    fi
+
+    print_error "Could not determine BLAS libraries"
+    exit 1
+}
+
+get_blas_include_dirs() {
+    if [[ -n "${NVPL_HOME:-}" ]]; then
+        echo "${NVPL_HOME}/include"
+    elif [[ -n "${MKLROOT:-}" ]]; then
+        echo "${MKLROOT}/include"
+    elif [[ -n "${OPENBLAS_HOME:-}" ]]; then
+        echo "${OPENBLAS_HOME}/include"
     fi
 }
 
-get_openblas_dir() {
-    if [[ -z "${OBLAS_LIBS:-}" ]]; then
-        echo "ERROR: OBLAS_LIBS is not set. Did you load the module?"
-        exit 1
+# ============================================================================
+# BUILD LOGIC
+# ============================================================================
+
+build_with_compiler() {
+    local system="$1"
+    local variant="$2"
+    local compiler_name="$3"
+
+    # Get compiler configuration
+    local config=$(get_compiler_config "$system" "$compiler_name")
+    if [[ -z "$config" ]]; then
+        print_warning "Compiler '$compiler_name' not configured for system '$system'. Skipping."
+        return 0
     fi
 
-    # Extract path after -L
-    local lib_path="${OBLAS_LIBS#-L}"
+    # Parse config: "cxx cc modules libs link_opts"
+    local parts=($config)
+    local cxx_compiler="${parts[0]}"
+    local cc_compiler="${parts[1]}"
+    local modules="${parts[2]:-}"
+    local extra_libs="${parts[3]:-}"
+    local link_opts="${parts[4]:-}"
 
-    # Construct cmake dir
-    local cmake_path="${lib_path}/cmake/openblas"
+    # Build directory
+    local build_dir="build_${system}_${compiler_name}_${variant}"
 
-    if [[ ! -d "$cmake_path" ]]; then
-        echo "ERROR: OpenBLAS CMake directory not found at $cmake_path"
-        exit 1
-    fi
+    print_header "Building: $system / $compiler_name / $variant"
+    print_info "Build directory: $build_dir"
+    print_info "CXX compiler: $cxx_compiler"
+    print_info "CC compiler: $cc_compiler"
 
-    echo "$cmake_path"
-}
-
-build_target() {
-    local name="$1"
-    local cxx="$2"
-    local cc="$3"
-    local extra_libs="$4"
-    local extra_link_opts="$5"
-
-    build_dir="build_${system}_${name}_${board}"
-
-    echo
-    echo "==== Building with $name ===="
-    echo "Build directory: $build_dir"
-
+    # Clean previous build
     rm -rf "$build_dir"
+    mkdir -p "$build_dir"
 
-    OPENBLAS_DIR=$(get_openblas_dir)
+    # Load modules if available
+    if [[ -n "$modules" ]]; then
+        print_info "Modules: $modules"
+        load_modules_for_compiler "$modules"
+    fi
 
-    echo "Compiling with command:"
-    echo cmake \
-        -DCMAKE_CXX_COMPILER="$cxx" \
-        -DCMAKE_C_COMPILER="$cc" \
-        -DOpenBLAS_DIR="$OPENBLAS_DIR" \
-        -DEXTRA_LIBS="$extra_libs" \
-        -DEXTRA_LINK_OPTIONS="$extra_link_opts" \
-        -B "$build_dir"
+    # Detect BLAS
+    local blas_vendor=$(detect_blas_vendor)
+    local blas_libs=$(get_blas_libs)
+    local blas_include=$(get_blas_include_dirs)
+    local blas_dir=$(get_blas_dir)
 
-    cmake \
-        -DCMAKE_CXX_COMPILER="$cxx" \
-        -DCMAKE_C_COMPILER="$cc" \
-        -DOpenBLAS_DIR="$OPENBLAS_DIR" \
-        -DEXTRA_LIBS="$extra_libs" \
-        -DEXTRA_LINK_OPTIONS="$extra_link_opts" \
-        -B "$build_dir"
+    [[ -n "$blas_vendor" ]] && print_info "BLAS Vendor: $blas_vendor"
+    print_info "BLAS Dir: $blas_dir"
+    print_info "BLAS Libs: $blas_libs"
+    [[ -n "$blas_include" ]] && print_info "BLAS Include: $blas_include"
 
-    cmake --build "$build_dir" --target popcornkmeans_openblas -j
-    cmake --build "$build_dir" --target popcornkmeans_openmp -j
+    # Run make
+    print_info "Starting build..."
+    if ! make \
+        -C "$build_dir" \
+        BUILD_DIR="$build_dir" \
+        SYSTEM="$system" \
+        VARIANT="$variant" \
+        COMPILER_NAME="$compiler_name" \
+        CXX="$cxx_compiler" \
+        CC="$cc_compiler" \
+        BLAS_VENDOR="${blas_vendor:-}" \
+        BLAS_LIBS="$blas_libs" \
+        BLAS_INCLUDE_DIRS="${blas_include:-}" \
+        BLAS_DIR="$blas_dir" \
+        EXTRA_LIBS="$extra_libs" \
+        EXTRA_LINK_OPTIONS="$link_opts" \
+        SOURCE_DIR="$SCRIPT_DIR"; then
+        print_error "Build failed for $system / $compiler_name / $variant"
+        return 1
+    fi
+
+    print_success "Build completed: $build_dir/bin"
+    echo ""
 }
 
-# ---- MAIN LOOP ----
+# ============================================================================
+# VARIANT-SPECIFIC COMPILER FILTERING
+# ============================================================================
 
-for key in "${!COMPILERS[@]}"; do
-    IFS=":" read -r name cxx cc extra_libs extra_link_opts <<< "${COMPILERS[$key]}"
+should_build_compiler() {
+    local system="$1"
+    local variant="$2"
+    local compiler="$3"
 
-    load_modules "$name"
-    build_target "$name" "$cxx" "$cc" "$extra_libs" "$extra_link_opts"
-done
+    # bananaf3 uses clang-banana, not clang
+    if [[ "$variant" == "bananaf3" ]]; then
+        [[ "$compiler" == "clang" ]] && return 1
+        return 0
+    fi
 
-echo "All builds completed."
+    # Other variants skip clang-banana
+    [[ "$compiler" == "clang-banana" ]] && return 1
+
+    # leonardo doesn't use clang
+    if [[ "$system" == "leonardo" ]]; then
+        [[ "$compiler" == "clang" ]] && return 1
+    fi
+
+    return 0
+}
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+main() {
+    if [[ $# -eq 0 ]]; then
+        cat << EOF
+Popcorn K-means Build System
+
+Usage: $0 <system> [<variant>]
+
+Supported systems:  ${SUPPORTED_SYSTEMS[*]}
+Supported variants: ${SUPPORTED_VARIANTS[*]}
+
+Examples:
+  $0 bsc-hca                    # Build all compilers, default variant
+  $0 bsc-hca default            # Same as above
+  $0 bsc-hca bananaf3           # Build all compilers, bananaf3 variant
+  $0 leonardo default           # Build leonardo with default variant
+
+Environment Variables:
+  NVPL_HOME                     # NVIDIA Performance Libraries path
+  MKLROOT                       # Intel MKL path
+  OPENBLAS_HOME                 # OpenBLAS path
+  CCUTILS_DIR                   # ccutils installation path
+
+EOF
+        exit 1
+    fi
+
+    local system="$1"
+    local variant="${2:-default}"
+
+    # Validation
+    validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
+    validate_argument "$variant" "variant" "${SUPPORTED_VARIANTS[@]}"
+
+    # Check prerequisites
+    check_command "make"
+    check_command "bash"
+    check_file "$SCRIPT_DIR/Makefile"
+
+    print_header "Popcorn K-means Build System"
+    print_info "System: $system"
+    print_info "Variant: $variant"
+    print_info "Working directory: $(pwd)"
+
+    # Get compilers for system
+    local compilers_var=$(get_compilers_for_system "$system")
+    if [[ -z "$compilers_var" ]]; then
+        print_error "Unknown system: $system"
+        exit 1
+    fi
+
+    declare -n compilers="$compilers_var"
+
+    # Build with each compiler
+    local build_count=0
+    local success_count=0
+    local failed_builds=()
+
+    for compiler_name in "${!compilers[@]}"; do
+        # if ! should_build_compiler "$system" "$variant" "$compiler_name"; then
+        #     print_info "Skipping compiler '$compiler_name' for variant '$variant'"
+        #     continue
+        # fi
+
+        echo "$system" "$variant" "$compiler_name"
+
+        ((build_count++))
+        if build_with_compiler "$system" "$variant" "$compiler_name"; then
+            ((success_count++))
+        else
+            failed_builds+=("$compiler_name")
+        fi
+    done
+
+    # Summary
+    print_header "Build Summary"
+    print_info "Total builds: $build_count"
+    print_success "Successful: $success_count"
+
+    if [[ ${#failed_builds[@]} -gt 0 ]]; then
+        print_error "Failed: ${#failed_builds[@]}"
+        print_error "Failed compilers: ${failed_builds[*]}"
+        exit 1
+    fi
+
+    print_success "All builds completed successfully! 🎉"
+}
+
+main "$@"

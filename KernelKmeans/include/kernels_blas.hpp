@@ -1,9 +1,16 @@
-#pragma once
+#ifndef KERNELS_OPENBLAS_H
+#define KERNELS_OPENBLAS_H
 
 #include <bits/stdc++.h>
-#include <cblas.h>
 #include <omp.h>
 #include <ccutils/colors.h>
+
+#if BLA_VENDOR == 1
+  #include <nvpl_blas_cblas.h>
+// #if BLA_VENDOR == 2 MKL TODO
+#else
+  #include <cblas.h>
+#endif
 
 /**
  * ============================================================================
@@ -26,21 +33,6 @@
  *   D ∈ ℝ^(n×k)  - output distances (row-major)
  * ============================================================================
  */
-
-/**
- * @brief Pair structure for (value, index) tuples
- */
-struct Pair {
-  float v;
-  uint32_t i;
-};
-
-/**
- * @brief CPU argmin: returns pair with smaller value
- */
-Pair cpu_argmin(Pair a, Pair b) {
-  return a.v <= b.v ? a : b;
-}
 
 /**
  * @brief Finds the closest centroid for each point
@@ -391,7 +383,7 @@ void compute_distances_gerc_cpu(const uint32_t n,
   cblas_sger(CblasRowMajor,
              n, k,
              1.0f,
-             p_norms.data(), 1,       // x = p_norms
+             (float*)p_norms, 1,      // x = p_norms (const pointer)
              ones.data(), 1,          // y = ones
              distances, k);
 }
