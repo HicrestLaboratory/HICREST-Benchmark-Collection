@@ -1,5 +1,38 @@
 #!/bin/bash
 
+print_header() {
+    echo ""
+    echo "============================================================================"
+    echo "$1"
+    echo "============================================================================"
+}
+
+print_error() {
+    echo "❌ ERROR: $1" >&2
+}
+
+print_info() {
+    echo "ℹ️  $1"
+}
+
+print_success() {
+    echo "✓ $1"
+}
+
+check_command() {
+    if ! command -v "$1" &>/dev/null; then
+        print_error "Required command not found: $1"
+        exit 1
+    fi
+}
+
+check_file() {
+    if [[ ! -f "$1" ]]; then
+        print_error "Required file not found: $1"
+        exit 1
+    fi
+}
+
 validate_argument() {
     local value="$1"
     local name="$2"

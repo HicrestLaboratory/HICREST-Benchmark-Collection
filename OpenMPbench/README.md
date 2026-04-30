@@ -1,6 +1,4 @@
-
-                                                                      
- #            OpenMP MicroBenchmark Suite - Version 4.0                     
+# OpenMP MicroBenchmark Suite - Version 4.0                     
                                                                            
 produced by                                    
                                                                            

@@ -9,9 +9,7 @@
 # ---------- BSC-HCA ----------
 declare -A COMPILERS_bsc_hca
 COMPILERS_bsc_hca["gcc"]="gcc:g++:gcc:cmake/3.28.1;openBLAS/ubuntu/0.3.20_gcc10.3.0::"
-
 COMPILERS_bsc_hca["clang"]="clang:clang++:clang:cmake/3.28.1;llvm/EPI-development;openBLAS/ubuntu/0.3.29_llvmEPI1.0::-L/apps/riscv/llvm/EPI/development/lib/riscv64-unknown-linux-gnu:"
-
 # Specialization for bananaf3 board
 COMPILERS_bsc_hca["clang-banana"]="clang:clang++:clang:cmake/3.28.1;llvm/EPI-development;openBLAS/ubuntu/0.3.30_vlen256_llvmEPI1.0:flang_rt.runtime;provector-vecclonevp:-L/apps/riscv/llvm/EPI/development/lib/riscv64-unknown-linux-gnu;-L/apps/riscv/llvm/EPI/development/lib"
 
@@ -21,6 +19,7 @@ export COMPILERS_bsc_hca
 # ---------- THEA ----------
 declare -A COMPILERS_thea
 COMPILERS_thea["gcc"]="gcc:g++:gcc:gcc/14.3.0::"
+COMPILERS_thea["gcc-nvpl"]="gcc:g++:gcc:gcc/14.3.0;nvpl/25.5;cmake/3.31.8_gcc-13.3.0::"
 
 export COMPILERS_thea
 
