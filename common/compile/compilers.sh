@@ -33,6 +33,14 @@ COMPILERS_leonardo["icx"]="icx:icpx:icx:intel-oneapi-compilers/2024.1.0;cmake/3.
 export COMPILERS_leonardo
 
 
+# ---------- E4 ----------
+declare -A COMPILERS_e4
+COMPILERS_e4["clang"]="clang:clang++:clang:::"
+COMPILERS_e4["gcc"]="gcc:g++:gcc:::"
+
+export COMPILERS_e4
+
+
 # ==========================================
 # API
 # ==========================================

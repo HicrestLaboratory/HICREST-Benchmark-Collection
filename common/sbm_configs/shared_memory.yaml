@@ -5,6 +5,9 @@ variables:
   # Thea
   grace_ncpus:        [1, 2, 4, 8, 16, 32, 64, 72, 144]
 
+  # E4
+  e4_ncpus:           [1, 2, 4, 8, 16, 32, 56, 64, 96, 128]
+
   # BSC HCA
   pioneer_ncpus:      [1, 2, 4, 8, 16, 32, 64]
   bananaf3_ncpus:     [1, 2, 4, 8]
@@ -193,3 +196,30 @@ leonardo:
       env:
         - "OMP_NUM_THREADS={leonardo_ncpus}"
         - "MKL_NUM_THREADS={leonardo_ncpus}"
+
+
+e4:
+  scheduler: local
+
+  default_conf:
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+
+  configs:
+
+    - name: "rc01__gcc____{e4_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={e4_ncpus}"
+
+    # - name: "rc01__gcc__openblas__{e4_ncpus}"
+    #   modules: 
+    #     - "openblas/....."
+    #   env:
+    #     - "OMP_NUM_THREADS={leonardo_ncpus}"
+    #     - "OPENBLAS_NUM_THREADS={leonardo_ncpus}"
+    #     - "GOTO_NUM_THREADS={leonardo_ncpus}"
+
+    - name: "rc01__clang____{e4_ncpus}"
+      env:
+        - "OMP_NUM_THREADS={e4_ncpus}"

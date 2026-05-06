@@ -1,9 +1,13 @@
 variables:
-  partition: ["dcgp"]
-  compiler: ["gcc", "clang", "icx"]
+  # partition: ["dcgp"]
+  # compiler: ["gcc", "clang", "icx"]
+  # ncpus: [1, 2, 4, 8, 16, 32, 56, 64, 112]
+
+  partition: ["rc01"]
+  compiler: ["gcc", "clang"]
+  ncpus: [1, 2, 4, 8, 16, 32, 56, 64, 96, 128]
+
   libs: ['']
-  
-  ncpus: [1, 2, 4, 8, 16, 32, 56, 64, 112]
 
   data_type:
     - "double"

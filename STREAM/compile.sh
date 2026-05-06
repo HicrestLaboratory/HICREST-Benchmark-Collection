@@ -4,7 +4,7 @@ set -euo pipefail
 source ../common/compile/compilers.sh
 source ../common/compile/utils.sh
 
-SUPPORTED_SYSTEMS=("leonardo")
+SUPPORTED_SYSTEMS=("leonardo" "e4")
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <system>"
