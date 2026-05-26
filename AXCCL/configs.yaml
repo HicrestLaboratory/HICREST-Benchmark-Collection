@@ -1,5 +1,5 @@
 variables:
-  nodes: [2, 4, 6, 8]
+  nodes: [1, 2, 4, 6, 8]
   gpus_per_node: [0, 4]
   gpus_per_node_isarco: [0, 1, 2, 3, 4]
 
@@ -43,28 +43,26 @@ leonardo:
         - "NCCL_IB_SL={leonardo_service_level}"
         - "UCX_IB_SL={leonardo_service_level}"
 
-alps:
+alps-clariden:
   scheduler: slurm
 
   default_conf:
-    account: "lp100"
+    account: "g220"
+    exclusive: true
     cpus_per_task: 1
     time: "00:05:00"
     partition: "normal"
-    modules: # Make sure this is coherent with AXCCL config
-      - "gcc/13.2.0"
-      - "cuda/12.4.0"
-      - "nccl/2.20.3-1"
-      - "cray-mpich/8.1.30"
     custom_headers:
-      - "#SBATCH --uenv=prgenv-gnu/24.7:v3"
-      - "#SBATCH --view=modules"
-      - "#SBATCH --ntasks-per-node=4"
+      - "#SBATCH --uenv=prgenv-gnu/26.3:v1"
+      - "#SBATCH --view=default"
+      - "#SBATCH --gpus-per-task=1"
 
   configs:
-    - name: "alps__normal__{gpus_per_node}_gpus__{nodes}_nodes"
+    - name: "{gpus_per_node}_gpus__{nodes}_nodes"
       nodes: "{nodes}"
       gpus: "{gpus_per_node}"
+      custom_headers:
+        - "#SBATCH --ntasks-per-node={gpus_per_node}"
 
 jupiter:
   scheduler: slurm
