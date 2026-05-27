@@ -1001,6 +1001,14 @@ def _feasible_placement_classes_for_run(
     oracle: "TopologyOracle",
 ) -> list[str]:
     allowed: list[str] = STRATEGY_PLACEMENT_MAP.get(strategy.name, [])
+    def correct_placement(s):
+        global TOPO_Q1
+        if s in ["INTRA_GROUP_SAME_L1_4", "INTER_GROUP_SAME_L1_4"]:
+            return gpu_count > 4*TOPO_Q1
+        if s in ["INTRA_GROUP_SAME_L1_2", "INTER_GROUP_SAME_L1_2"]:
+            return gpu_count > 2*TOPO_Q1
+        return True
+    allowed = list(filter(correct_placement, allowed))
     feasible: list[str] = []
     for pc_name in allowed:
         if pc_name not in _PLACEMENT_REGISTRY:
@@ -1742,11 +1750,17 @@ def override_args_values(args: argparse.Namespace) -> None:
                 "sub_weights": {},
             },
         }
+        return
+    
+    args.g_min = max(args.g_min, 2*args.topo_q1)
 
 
 def main(cfg: argparse.Namespace) -> None:
     global _PLACEMENT_REGISTRY
     _PLACEMENT_REGISTRY = _build_placement_registry(PLACEMENT_CLASS_DEFS)
+    
+    global TOPO_Q1
+    TOPO_Q1 = cfg.topo_q1
 
     rng = random.Random(cfg.seed)
 

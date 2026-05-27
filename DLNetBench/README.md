@@ -191,7 +191,7 @@ python experiments_generator.py -G 8 \
 ```
 
 
-### Jupiter
+### 4. Jupiter
 
 ```bash
 scontrol show reservation
@@ -221,6 +221,16 @@ py run_baselines_placements.py --nodelist "jpbo-004-[34,36,38-40,45],jpbo-005-[0
 python expand_experiments.py experiments_jupiter_3_groups_powerlaw.json --placement-mode runtime --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_jupiter_3_groups_powerlaw_nccl
 
 python expand_experiments.py experiments_jupiter_3_groups_uniform.json --placement-mode runtime --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_jupiter_3_groups_uniform_nccl
+```
+
+### 5. LUMI
+
+```bash
+# Baselines
+python experiments_generator.py -G $((512*8))   --util-min 0.8   --util-max 1.0   --n-stochastic-patterns 5   --max-experiments 12   --n-samples-per-bin 1   --n-placement-samples-per-bin 1   --k-max 10   --placement-bin-med-hi 2.55 --baseline-extended --use-topology --output-json lumi_baseline.json --topo-q2 $((8*16)) --topo-q3 $((8*16*120)) --topo-q1 8
+# missing generator command for `lumi_single_node.json`
+
+python run_baselines_no_placement.py lumi_single_node.json --dgx DGX_A100 --comm-lib rccl --gpu-model MI250X --dry-run  --system lumi --gpus-per-node 8
 ```
 
 

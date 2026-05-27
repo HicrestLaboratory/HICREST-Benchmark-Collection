@@ -250,8 +250,11 @@ class PlacementOracle:
         if use_placer_files:
             topology_file=f'../common/JobPlacer/{system}_topo.txt'
             sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt'
-        if system.lower() == 'alps':
+        if system.lower() in ['alps', 'lumi']:
             topology_toml_file=f'../common/JobPlacer/systems/{system.upper()}.toml'
+        if system.lower()  == 'lumi':
+            sinfo_file = None
+            topology_file= None
             
         self.oracle = JobPlacer(
             system=system,
