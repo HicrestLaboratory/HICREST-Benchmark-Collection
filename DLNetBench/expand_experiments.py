@@ -767,7 +767,7 @@ def build_parser() -> argparse.ArgumentParser:
     
     p.add_argument(
         "--gpu-model", type=str, required=True, metavar="GPU_MODEL", 
-        help="The GPU model to emulate compute time (sleep)", choices=["B200", "GB300", "GB200", "H200", "A100", "GH200"]
+        help="The GPU model to emulate compute time (sleep)", choices=["B200", "GB300", "GB200", "H200", "A100", "MI250X", "GH200"]
     )
 
     # Required

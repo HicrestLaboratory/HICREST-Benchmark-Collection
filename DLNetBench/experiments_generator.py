@@ -130,6 +130,15 @@ STRATEGY_DEFS_EXTENDED: list[tuple[str, list[int]]] = [
     ("DP+PP+Expert", [512, 1024, 2048]),          # Nodes: 128, 256, 512
 ]
 
+STRATEGY_DEFS_EXTENDED_8GPUS_NODE: list[tuple[str, list[int]]] = [
+    ("DP",           [16, 32, 64, 128]),            # Nodes: 2, 4, 8, 16
+    ("FSDP",        [16, 32, 64, 128, 256, 512]),     # Nodes: 4, 8, 16, 32, 64
+    ("DP+PP",        [16, 32, 64, 128, 256, 512]),     # Nodes: 4, 8, 16, 32, 64
+    ("DP+PP+TP",     [224, 256, 512, 1024, 2048]),      # Nodes: 56, 64, 128, 256
+    ("DP+PP+Expert", [512, 1024, 2048, 4096]),          # Nodes: 128, 256, 512
+]
+
+
 STRATEGY_DEFS_DGX_A100: list[tuple[str, list[int]]] = [
     ("DP",           [2, 4, 8]),
     ("FSDP",         [4, 8]),
@@ -1732,6 +1741,8 @@ def override_args_values(args: argparse.Namespace) -> None:
     if args.baseline_extended:
         STRATEGY_DEFS = STRATEGY_DEFS_EXTENDED
         STRATEGY_PLACEMENT_MAP = STRATEGY_PLACEMENT_MAP_EXTENDED
+        if args.topo_q1 == 8:
+            STRATEGY_DEFS = STRATEGY_DEFS_EXTENDED_8GPUS_NODE
 
     if args.dgx == "DGX_A100":
         args.g = 8
@@ -1753,7 +1764,11 @@ def override_args_values(args: argparse.Namespace) -> None:
         return
     
     args.g_min = max(args.g_min, 2*args.topo_q1)
-
+    if not args.baseline_extended:
+        NEW_STRATEGY_DEFS = []
+        for pair in STRATEGY_DEFS: 
+            NEW_STRATEGY_DEFS.append((pair[0], [g/4 * args.topo_q1 for g in pair[1]]))
+        STRATEGY_DEFS = NEW_STRATEGY_DEFS
 
 def main(cfg: argparse.Namespace) -> None:
     global _PLACEMENT_REGISTRY
