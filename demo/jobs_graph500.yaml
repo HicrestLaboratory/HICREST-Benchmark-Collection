@@ -1,0 +1,24 @@
+# Uncomment if you want the jobs to be run one at the time
+# sequential: true
+
+variables:
+  nodes: [1, 2, 4, 8]
+
+  buffer_size:
+   - "32KiB"
+   - "8MiB"
+
+  scale:      [20]
+  edgefactor: [16]
+
+  srun_extra_args:
+    default: ['']
+    per_cluster:
+      alps-clariden: ['--mpi=cray_shasta']
+
+command: "srun {srun_extra_args} -N {nodes} ./bin/graph500_bfs_{buffer_size} {scale} {edgefactor}"
+
+jobs:
+  - config: "Graph500__{nodes}_nodes"
+    config_jobs:
+      - tag: "NetGraph500_{nodes}_{buffer_size}_{scale}_{edgefactor}"

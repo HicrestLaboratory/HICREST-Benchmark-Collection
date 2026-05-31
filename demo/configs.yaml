@@ -1,0 +1,34 @@
+variables:
+  nodes: [1, 2, 4, 8, 16, 32, 64]
+
+alps-clariden:
+  scheduler: slurm
+
+  default_conf:
+    account: "g220"
+    partition: "normal"
+    time: "00:05:00"
+    gpus: 4
+    cpus_per_task: 72
+    exclusive: true
+    custom_headers:
+      - "#SBATCH --uenv=prgenv-gnu/26.3:v1"
+      - "#SBATCH --view=default"
+
+  configs:
+
+    - name: "DLNetBench__{nodes}_nodes"
+      nodes: "{nodes}"
+      custom_headers:
+        - "#SBATCH --ntasks-per-node=4"
+
+
+    - name: "Graph500__{nodes}_nodes"
+      nodes: "{nodes}"
+      gpus: 0
+      custom_headers:
+        - "#SBATCH --ntasks-per-node=1"
+      env:
+        - "SKIP_VALIDATION=1"
+        - "OMP_PROC_BIND=true"
+        - "OMP_NUM_THREADS=72"
