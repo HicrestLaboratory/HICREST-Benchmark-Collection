@@ -7,25 +7,25 @@ apps:
   - name: Graph500
     dir: ./Graph500
     blocking: true 
-    configs:
-      - ../demo/configs.yaml
+    configs: ['../demo/configs.yaml']
     steps:
-      - name: compile
-        script: "./compile.sh"
-        on_fails: terminate
+      # THIS TAKES A WHILE
+      # - name: compile
+      #   script: "./compile.sh"
+      #   on_fails: terminate
       - name: experiments
         jobs: ../demo/jobs_graph500.yaml
         on_fails: continue
 
   - name: DLNetBench
     dir: ./DLNetBench/DLNetBench
-    blocking: true 
-    configs:
-      - ../../demo/configs.yaml
+    blocking: true
+    configs: ['../../demo/configs.yaml']
     steps:
-      - name: compile
-        script: "rm -rf bin; cd ..; ./compile.sh alps"
-        on_fails: terminate
+      # THIS TAKES A WHILE
+      # - name: compile
+      #   script: "rm -rf bin; cd ..; ./compile.sh alps"
+      #   on_fails: terminate
       - name: experiments
         jobs: ../../demo/jobs_dlnetbench.yaml
         on_fails: continue

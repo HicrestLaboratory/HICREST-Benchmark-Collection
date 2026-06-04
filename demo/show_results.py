@@ -9,6 +9,11 @@ sys.path.append(str(Path(__file__).parent.parent / "common" / "ccutils" / "parse
 from ccutils_parser import MPIOutputParser
 
 
+
+########################
+#      DLNetBench      #
+########################
+
 def extract_throughput(job: sbm.Job) -> dict:
     parser = MPIOutputParser()
     res = parser.parse_file(job.get_stdout_path())
@@ -29,21 +34,25 @@ def extract_throughput(job: sbm.Job) -> dict:
 
 df_dlnetbench = sbm.jobs_to_dataframe(
     status=[sbm.Status.COMPLETED],
-    # FIXME use this job_filter=lambda j: j.config_name.startswith('DLNetBench'),
-    job_filter=lambda j: not j.config_name.startswith('Graph500'),
+    job_filter=lambda j: j.config_name.startswith('DLNetBench'),
     extractors=[extract_throughput],
     include_job_variables=True,
     include_job_fields=True,
 )
 
+if not df_dlnetbench.empty:
+    print('='*20 + '  DLNetBench  ' + '='*20 + '\n')
+    print(f'Available columns: {df_dlnetbench.columns}')
+    print(df_dlnetbench
+        .sort_values(['strategy', 'model', 'nodes'])
+        [['strategy', 'model', 'nodes', 'throughput']])
 
 
 
-print('='*20 + '  DLNetBench  ' + '='*20 + '\n')
-print(f'Available columns: {df_dlnetbench.columns}')
-print(df_dlnetbench
-      .sort_values(['strategy', 'model', 'nodes'])
-      [['strategy', 'model', 'nodes', 'throughput']])
+
+########################
+#       Graph500       #
+########################
 
 def extract_teps(job: sbm.Job) -> dict:
     parser = MPIOutputParser()
@@ -65,8 +74,9 @@ df_graph500 = sbm.jobs_to_dataframe(
     include_job_fields=True,
 )
 
-print('\n\n' + '='*20 + '  Graph500  ' + '='*20 + '\n')
-print(f'Available columns: {df_graph500.columns}')
-print(df_graph500
-      .sort_values(['scale', 'edgefactor', 'buffer_size', 'nodes'])
-      [['scale', 'edgefactor', 'buffer_size', 'nodes', 'teps']])
+if not df_graph500.empty:
+    print('\n\n' + '='*20 + '  Graph500  ' + '='*20 + '\n')
+    print(f'Available columns: {df_graph500.columns}')
+    print(df_graph500
+        .sort_values(['scale', 'edgefactor', 'buffer_size', 'nodes'])
+        [['scale', 'edgefactor', 'buffer_size', 'nodes', 'teps']])
