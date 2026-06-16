@@ -1,5 +1,5 @@
 variables:
-  nodes: [2, 4, 6, 8, 10, 12, 14, 16, 18, 32, 56, 64, 128, 256, 655] # , 512, 1024]
+  nodes: [2, 4, 6, 8, 10, 12, 14, 16, 18, 32, 56, 64, 128, 256, 330, 333, 512, 655, 1024]
   gpus: [2, 4, 8]
 
 isarco:
@@ -90,16 +90,23 @@ leonardo:
         - "UCX_IB_SL=1"
 
 
-alps-clariden:
+alps_clariden:
   scheduler: slurm
 
   default_conf:
     account: "g220"
+    reservation: "PA-2851"
     cpus_per_task: 72
-    time: "00:05:00"
+    time: "00:04:00"
     partition: "normal"
+    exclude:
+      - "nid006120"
     gpus: 4
     exclusive: true
+    custom_headers:
+      - "#SBATCH --uenv=prgenv-gnu/26.3:v1"
+      - "#SBATCH --view=default"
+      - "#SBATCH --ntasks-per-node=4"
     # modules:
     #   - "gcc/14.3.0"
     #   - "cuda/12.9.1"
@@ -107,10 +114,6 @@ alps-clariden:
     #   - "openmpi/5.0.9"
     #   - "libfabric/2.3.1"
     #   - "aws-ofi-nccl/1.17.1"
-    custom_headers:
-      - "#SBATCH --uenv=prgenv-gnu/26.3:v1"
-      - "#SBATCH --view=default"
-      - "#SBATCH --ntasks-per-node=4"
     # env:
     #   - "NCCL_NCHANNELS_PER_NET_PEER=4"
     #   - "NCCL_NET=\"AWS Libfabric\""

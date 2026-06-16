@@ -419,7 +419,7 @@ class PlacementOracle:
     ) -> None:
         debug(f"PlacementOracle init for system='{system}', use_topo_files(ignored)={use_topo_files}")
         topology_toml_file=None
-        if system.lower() == 'alps':
+        if system.lower().startswith('alps'):
             topology_toml_file=f'../common/JobPlacer/systems/{system.upper()}.toml'
             
         self.oracle = JobPlacer(

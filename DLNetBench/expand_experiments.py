@@ -250,7 +250,7 @@ class PlacementOracle:
         if use_placer_files:
             topology_file=f'../common/JobPlacer/{system}_topo.txt'
             sinfo_file=f'../common/JobPlacer/{system}_sinfo.txt'
-        if system.lower() in ['alps', 'lumi']:
+        if system.lower().startswith('alps') or system.lower() in ['lumi']:
             topology_toml_file=f'../common/JobPlacer/systems/{system.upper()}.toml'
         if system.lower()  == 'lumi':
             sinfo_file = None
@@ -303,6 +303,7 @@ class PlacementOracle:
         print(f'[oracle] {"OK" if res.ok else "FAILED"}')
         if not res.ok:
             print(f'[oracle] Fail reason: {res.reason}')
+            print(f'[oracle] Raw: {res.raw}')
             
         if res.placements:
             used_nodes = set()
@@ -497,9 +498,9 @@ def build_experiment_json(
         svg_out = None
         # svg_out = '_'.join([f'{r["strategy"]}-{int(r["gpus"]/4)}' for r, _ in classified])
         # can be commented
-        svg_out = str(idx).zfill(2)
-        svg_out = Path(out_dir / f'_topos/topo_{svg_out}_{get_concurrent_run_descriptor(rec.get("pattern_id"), rec.get("entropy_bin"), rec.get("placement_score"))}.svg')
-        svg_out.parent.mkdir(exist_ok=True, parents=True)
+        # svg_out = str(idx).zfill(2)
+        # svg_out = Path(out_dir / f'_topos/topo_{svg_out}_{get_concurrent_run_descriptor(rec.get("pattern_id"), rec.get("entropy_bin"), rec.get("placement_score"))}.svg')
+        # svg_out.parent.mkdir(exist_ok=True, parents=True)
         oracle_result = oracle.find_placement(payload, seed=seed, svg_out=svg_out)
         # print(oracle_result)
         # print()

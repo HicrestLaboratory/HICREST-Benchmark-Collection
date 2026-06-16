@@ -9,7 +9,7 @@ from typing import List, Union
 from experiments_generator import STRATEGY_DEFS, STRATEGY_DEFS_DGX_A100, STRATEGY_DEFS_EXTENDED
 
 EXTRA_SRUN_FLAGS = {
-    'alps': ['--mpi=pmix', '--cpu-bind=cores', '--accel-bind=g']
+    'alps_clariden': ['--mpi=cray_shasta', '--accel-bind=g']
 }
 
 FEASIBLE_GPU_COUNTS: dict[str, frozenset[int]] = {

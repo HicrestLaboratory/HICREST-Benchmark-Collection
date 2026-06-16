@@ -8,9 +8,9 @@ The oracle program path is read from meta.topology_program in the JSON itself.
 
 Supported systems
 -----------------
-  leonardo  -- CINECA Leonardo (boost_usr_prod, A100)
-  alps      -- CSCS Alps        (dummy values, update as needed)
-  jupiter   -- Jupiter cluster  (dummy values, update as needed)
+  leonardo      -- CINECA Leonardo (boost_usr_prod, A100)
+  alps_clariden -- CSCS Alps - Clariden
+  jupiter       -- Jupiter cluster
 
 Adding a new system: add one entry to SYSTEM_CONFIGS.
 
@@ -90,17 +90,19 @@ SYSTEM_CONFIGS: dict[str, dict] = {
         "custom_headers": ["#SBATCH --ntasks-per-node=4"]
     },
     
-    # TODO: fill in real values
-    "alps": {
-        "cluster_name":  "alps",
+    "alps_clariden": {
+        "cluster_name":  "alps_clariden",
         "partition":     "normal",
-        "account":       "your_alps_account",
-        "cpus_per_task": 64,
-        "time":          "00:30:00",
-        "gpus":          0,
-        "qos":           "default",
-        "modules":       ["cray-mpich/8.1.28"],
-        "env":           ["OMP_NUM_THREADS=64"],
+        "account":       "g220",
+        "reservation":   "PA-2851",
+        "cpus_per_task": 72,
+        "time":          "00:05:00",
+        "gpus":          4,
+        "custom_headers": [
+            "#SBATCH --uenv=prgenv-gnu/26.3:v1",
+            "#SBATCH --view=default",
+            "#SBATCH --ntasks-per-node=4",
+        ]
     },
 }
 
@@ -202,8 +204,9 @@ def main(args: argparse.Namespace) -> None:
                     "node_count":      nodes,
                     "placement_class": placement_class}]  # oracle expects label with dashes
 
-        svg_out = Path("svgs") / f"topo_{job_name}.svg"
-        svg_out.parent.mkdir(exist_ok=True, parents=True)
+        svg_out = None
+        # svg_out = Path("svgs") / f"topo_{job_name}.svg"
+        # svg_out.parent.mkdir(exist_ok=True, parents=True)
         oracle_result = oracle.find_placement(
             payload, seed=seed, timeout=ORACLE_TIMEOUT_S, svg_out=svg_out
         )
@@ -259,6 +262,7 @@ def main(args: argparse.Namespace) -> None:
                         f"_class-{placement_class_name}_rep{replicate_index}"
                     ),
                     ignore_archived = True,
+                    ignore_commands_in_dup_check = True,
                     previous_job_id = previous_job_id,
                     dry_run         = args.dry_run,
                     variables       = {

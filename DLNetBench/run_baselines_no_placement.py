@@ -137,7 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dgx", required=False, help="Use DGX-A100 node.", choices=["DGX_A100"], default=None)
 
     p.add_argument(
-        "--system", required=True, metavar="SYSTEM", choices=['leonardo', 'jupiter', 'alps', 'nvl72', 'baldo'],
+        "--system", required=True, metavar="SYSTEM", choices=['leonardo', 'jupiter', 'alps_clariden', 'nvl72', 'baldo'],
         help="The name of the system",
     )
     p.add_argument(

@@ -19,7 +19,7 @@ GPUS_PER_NODE_MAP = {
     'jupiter':      4,
     'leonardo':     4,
     'nvl72':        4,
-    'alps':         4,
+    'alps_clariden':4,
     'lumi':         8,
     'intel':        8,
 }
@@ -29,7 +29,7 @@ SYSTEM_NAMES_MAP = {
     'jupiter':      'JUPITER',
     'leonardo':     'Leonardo',
     'nvl72':        'NVL 72',
-    'alps':         'Alps (Daint)',
+    'alps_clariden':'Alps (Clariden)',
     'lumi':         'LUMI',
     'intel':        'Cresco',
 }
@@ -226,7 +226,7 @@ SYSTEM_ORDER = [
     "nvl72",
     # "intel",
     "leonardo",
-    "alps",
+    "alps_clariden",
     "jupiter",
     "lumi",
 ]

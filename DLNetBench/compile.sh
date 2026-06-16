@@ -4,7 +4,7 @@ set -e
 
 source ../common/compile/utils.sh
 
-SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps" "isarco" "jupiter")
+SUPPORTED_SYSTEMS=("cpu" "leonardo" "lumi" "baldo" "alps_clariden" "isarco" "jupiter")
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <system>"
@@ -28,7 +28,7 @@ echo "==== Compiling DLNetBench for ${system^^} ===="
 
 cd DLNetBench
 
-if [[ $system == "alps" ]]; then
+if [[ $system == "alps_clariden" ]]; then
     check_alps_uenv
 fi
 
