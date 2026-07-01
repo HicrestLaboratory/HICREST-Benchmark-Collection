@@ -1,13 +1,4 @@
-variables:
-  ncpus:
-    per_cluster:
-      leonardo:           [1, 2, 4, 8, 16, 32, 56, 64, 72, 112]
-      thea:               [1, 2, 4, 8, 16, 32, 56, 64, 72, 112, 128, 144]
-      e4:                 [1, 2, 4, 8, 16, 32, 56, 64, 72, 112, 128]
-      bsc-hca-pioneer:    [1, 2, 4, 8, 16, 32, 56, 64]
-      bsc-hca-bananaf3:   [1, 2, 4, 8]
-      bsc-hca-arriesgado: [1, 2, 4]
-
+include_variables: "shared_memory_vars.yaml"
 
 bsc-hca-pioneer:
   scheduler: slurm
@@ -228,5 +219,39 @@ e4:
     #     - "GOTO_NUM_THREADS={ncpus}"
 
     - name: "rc01__clang____{ncpus}"
+      env:
+        - "OMP_NUM_THREADS={ncpus}"
+
+
+local:
+  scheduler: local
+
+  default_conf:
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+
+  # Format: compile__{compiler}__{compiler_flag_set}__{libs}
+  configs:
+    - name: "compile__gcc____"
+      env:
+        - "CC=gcc"
+        - "CXX=g++"
+        - "CFLAGS=-O3 -fopenmp"
+        - "CLINK="
+
+    - name: "compile__clang____"
+      env:
+        - "CC=clang"
+        - "CXX=clang++"
+        - "CFLAGS=-O3 -fopenmp"
+        - "CLINK="
+
+    # Format: {compiler}__{compiler_flag_set}__{libs}__{ncpus}
+    - name: "gcc______{ncpus}"
+      env:
+        - "OMP_NUM_THREADS={ncpus}"
+
+    - name: "clang______{ncpus}"
       env:
         - "OMP_NUM_THREADS={ncpus}"

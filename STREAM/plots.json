@@ -1,0 +1,113 @@
+{
+  "version": 2,
+  "tabs": [
+    {
+      "version": 2,
+      "label": "Copy GCC",
+      "database": "data",
+      "sql": "SELECT *\nFROM stream\nWHERE compiler = \"gcc\"\nORDER BY data_type, ncpus",
+      "plotType": "line",
+      "chartTitle": "Copy GCC",
+      "x": "ncpus",
+      "y": [
+        "copy_rate_mb_s"
+      ],
+      "group": "data_type",
+      "z": "",
+      "xLabel": "",
+      "yLabel": "",
+      "xScale": "linear",
+      "yScale": "linear",
+      "xTickFmt": "",
+      "yTickFmt": "",
+      "extra": {
+        "mode": "lines+markers"
+      },
+      "customScript": "",
+      "columns": [
+        "array_mem_mb",
+        "compiler",
+        "compiler_flag_set",
+        "data_type",
+        "libs",
+        "ncpus",
+        "offset",
+        "runs",
+        "copy_rate_mb_s",
+        "copy_avg_time_s",
+        "copy_min_time_s",
+        "copy_max_time_s",
+        "scale_rate_mb_s",
+        "scale_avg_time_s",
+        "scale_min_time_s",
+        "scale_max_time_s",
+        "add_rate_mb_s",
+        "add_avg_time_s",
+        "add_min_time_s",
+        "add_max_time_s",
+        "triad_rate_mb_s",
+        "triad_avg_time_s",
+        "triad_min_time_s",
+        "triad_max_time_s",
+        "bytes_per_element",
+        "array_size_elements",
+        "memory_per_array_mib",
+        "total_memory_required_mib"
+      ]
+    },
+    {
+      "version": 2,
+      "label": "Copy CLANG",
+      "database": "data",
+      "sql": "SELECT *\nFROM stream\nWHERE compiler = \"clang\"\nORDER BY data_type, ncpus",
+      "plotType": "line",
+      "chartTitle": "Copy CLANG",
+      "x": "ncpus",
+      "y": [
+        "copy_rate_mb_s"
+      ],
+      "group": "data_type",
+      "z": "",
+      "xLabel": "",
+      "yLabel": "",
+      "xScale": "linear",
+      "yScale": "linear",
+      "xTickFmt": "",
+      "yTickFmt": "",
+      "extra": {
+        "mode": "lines+markers"
+      },
+      "customScript": "",
+      "columns": [
+        "array_mem_mb",
+        "compiler",
+        "compiler_flag_set",
+        "data_type",
+        "libs",
+        "ncpus",
+        "offset",
+        "runs",
+        "copy_rate_mb_s",
+        "copy_avg_time_s",
+        "copy_min_time_s",
+        "copy_max_time_s",
+        "scale_rate_mb_s",
+        "scale_avg_time_s",
+        "scale_min_time_s",
+        "scale_max_time_s",
+        "add_rate_mb_s",
+        "add_avg_time_s",
+        "add_min_time_s",
+        "add_max_time_s",
+        "triad_rate_mb_s",
+        "triad_avg_time_s",
+        "triad_min_time_s",
+        "triad_max_time_s",
+        "bytes_per_element",
+        "array_size_elements",
+        "memory_per_array_mib",
+        "total_memory_required_mib"
+      ]
+    }
+  ]
+}

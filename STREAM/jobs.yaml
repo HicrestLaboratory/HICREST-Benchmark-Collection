@@ -1,29 +1,12 @@
-variables:
-  # partition: ["dcgp"]
-  # compiler: ["gcc", "clang", "icx"]
-  # ncpus: [1, 2, 4, 8, 16, 32, 56, 64, 112]
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "vars.yaml"
 
-  partition: ["rc01"]
-  compiler: ["gcc", "clang"]
-  ncpus: [1, 2, 4, 8, 16, 32, 56, 64, 96, 128]
-
-  libs: ['']
-
-  data_type:
-    - "double"
-    - "uint32"
-    - "float"
-    - "int32"
-
-  # Footprint of a single array
-  array_mem:
-    - 512
-    # - 8
-
-command: "./bin/{compiler}/stream_{compiler}_{data_type}_M{array_mem}_R15_O0"
+command: "./bin/stream_{compiler}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
 
 jobs:
-  - config: "{partition}__{compiler}__{libs}__{ncpus}"
+  - config: "{compiler}__{compiler_flag_set}__{libs}__{ncpus}"
     config_jobs:
-      - tag: "stream_{compiler}_{libs}_{data_type}_M{array_mem}_C{ncpus}"
+      - tag: "stream_{compiler}_{libs}_{data_type}_M{array_mem_mb}_C{ncpus}_R{runs}_O{offset}"
       

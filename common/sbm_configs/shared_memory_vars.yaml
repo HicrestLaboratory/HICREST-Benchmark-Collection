@@ -1,0 +1,19 @@
+ncpus:
+  per_cluster:
+    leonardo:           [1, 2, 4, 8, 16, 32, 56, 64, 72, 112]
+    thea:               [1, 2, 4, 8, 16, 32, 56, 64, 72, 112, 128, 144]
+    e4:                 [1, 2, 4, 8, 16, 32, 56, 64, 72, 112, 128]
+    bsc-hca-pioneer:    [1, 2, 4, 8, 16, 32, 56, 64]
+    bsc-hca-bananaf3:   [1, 2, 4, 8]
+    bsc-hca-arriesgado: [1, 2, 4]
+    local:              [1, 2, 4]
+
+compiler:
+  per_cluster:
+    local: ["gcc", "clang"]
+
+compiler_flag_set: ['']
+
+libs:
+  per_cluster:
+    local: ['']
