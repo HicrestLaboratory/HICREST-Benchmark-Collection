@@ -3,10 +3,10 @@ include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
   - "vars.yaml"
 
-command: "./bin/stream_{compiler}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
 
 jobs:
-  - config: "{compiler}__{compiler_flag_set}__{libs}__{ncpus}"
+  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}__"
     config_jobs:
       - tag: "stream_{compiler}_{libs}_{data_type}_M{array_mem_mb}_C{ncpus}_R{runs}_O{offset}"
+        command: "./bin/stream_{compiler}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
       

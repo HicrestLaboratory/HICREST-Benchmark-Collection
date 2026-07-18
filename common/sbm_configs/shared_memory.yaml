@@ -231,27 +231,11 @@ local:
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
-  # Format: compile__{compiler}__{compiler_flag_set}__{libs}
   configs:
-    - name: "compile__gcc____"
+    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}__"
       env:
-        - "CC=gcc"
-        - "CXX=g++"
-        - "CFLAGS=-O3 -fopenmp"
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt} {compiler_common} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
-
-    - name: "compile__clang____"
-      env:
-        - "CC=clang"
-        - "CXX=clang++"
-        - "CFLAGS=-O3 -fopenmp"
-        - "CLINK="
-
-    # Format: {compiler}__{compiler_flag_set}__{libs}__{ncpus}
-    - name: "gcc______{ncpus}"
-      env:
-        - "OMP_NUM_THREADS={ncpus}"
-
-    - name: "clang______{ncpus}"
-      env:
-        - "OMP_NUM_THREADS={ncpus}"
+        
