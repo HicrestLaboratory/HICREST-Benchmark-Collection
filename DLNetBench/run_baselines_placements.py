@@ -89,6 +89,33 @@ SYSTEM_CONFIGS: dict[str, dict] = {
         ],
         "custom_headers": ["#SBATCH --ntasks-per-node=4"]
     },
+
+    "lumi": {
+        "cluster_name":  "lumi",
+        "partition":     "standard-g",
+        "account":       "project_465002469",
+        "reservation":   "dragonfly",
+        "cpus_per_task": 7,
+        "time":          "00:05:00",
+        "gpus":          8,
+        "modules":       [
+            "LUMI/25.03 partition/G",
+            "craype-accel-amd-gfx90a",
+            "aws-ofi-rccl",
+            "rocm/6.3.4"
+        ],
+        "custom_headers": ["#SBATCH --ntasks-per-node=8", "#SBATCH --exclusive"],
+        "env": [
+            "NCCL_NET_GDR_LEVEL=3",
+            "FI_CXI_ATS=0",
+            "NCCL_BUFFSIZE=33554432",
+            "NCCL_IGNORE_CPU_AFFINITY=1",
+            "FI_CXI_DEFAULT_CQ_SIZE=13107",
+            "HSA_ENABLE_SDMA=0",
+            "NCCL_SOCKET_IFNAME=hsn0"
+        ]
+    },
+
     
     # TODO: fill in real values
     "alps": {
@@ -202,8 +229,8 @@ def main(args: argparse.Namespace) -> None:
                     "node_count":      nodes,
                     "placement_class": placement_class}]  # oracle expects label with dashes
 
-        svg_out = Path("svgs") / f"topo_{job_name}.svg"
-        svg_out.parent.mkdir(exist_ok=True, parents=True)
+        svg_out = None #Path("svgs") / f"topo_{job_name}.svg"
+        #svg_out.parent.mkdir(exist_ok=True, parents=True)
         oracle_result = oracle.find_placement(
             payload, seed=seed, timeout=ORACLE_TIMEOUT_S, svg_out=svg_out
         )
@@ -311,7 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--comm-lib", required=True, help="Communication library to use", choices=["nccl", "rccl", "oneccl", "mpi_gpu_cuda"]
     )
     p.add_argument(
-        "--gpu-model", required=True, choices=["GB300", "GB200", "B200", "H200", "A100", "GH200"],
+        "--gpu-model", required=True, choices=["GB300", "GB200", "B200", "H200", "A100", "GH200", "MI250X"],
         help="GPU model (selects compute-time emulation profile).",
     )
     p.add_argument(
