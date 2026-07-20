@@ -6,6 +6,7 @@ ncpus:
     bsc-hca-pioneer:    [1, 2, 4, 8, 16, 32, 56, 64]
     bsc-hca-bananaf3:   [1, 2, 4, 8]
     bsc-hca-arriesgado: [1, 2, 4]
+    dalek-mono-bpi-f3:  [1, 2, 4, 8]
     local:              [1, 2, 4]
 
 compiler:
@@ -31,14 +32,15 @@ compiler_common: ['-fopenmp -ffast-math']
 
 compiler_opt: 
   - '-O0'
-  - '-O3'
-  - '-Ofast'
-  - '-Osize'
+  # - '-O3'
+  # - '-Ofast'
+  # - '-Osize'
 
 compiler_march:
   default: ['-march=native -mtune=native']
   per_cluster:
     # TODO fix these
+    dalek-mono-bpi-f3:  ['-march=rv64gcv_zvl256b -mabi=lp64d']
     bsc-hca-pioneer:    ['-march=rv64imafdcv']
     bsc-hca-bananaf3:   ['-march=rv64imafdcv']
     bsc-hca-arriesgado: ['-march=rv64imafdcv']
@@ -62,5 +64,6 @@ compiler_disass:
     clang_epi: ['llvm-objdump -d --demangle --no-show-raw-insn']
 
 libs:
+  default: ['']
   per_cluster:
     local: ['']

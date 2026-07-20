@@ -20,7 +20,7 @@ stream_c_custom: stream.c
 	$(CC) $(CFLAGS) $(CUSTOM_PREPROCESSOR_VARS) stream.c -o $@
 
 clean:
-	rm -f stream_f stream_c *.o
+	rm -f stream_f stream_c stream_c_custom *.o
 
 # an example of a more complex build line for the Intel icc compiler
 stream.icc: stream.c

@@ -21,7 +21,7 @@ postprocess: 'mv stream_c_custom "$BIN_NAME" && {compiler_disass[compiler]} "$BI
 
 
 jobs:
-  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}__"
+  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}____1"
     config_jobs:
       - tag: "compile_stream_{compiler}_{compiler_opt}_{compiler_extra_flags_name}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
       

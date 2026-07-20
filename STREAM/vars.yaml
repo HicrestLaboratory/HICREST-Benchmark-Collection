@@ -1,8 +1,8 @@
 data_type:
   - "double"
-  - "uint32"
-  - "float"
-  - "int32"
+  # - "uint32"
+  # - "float"
+  # - "int32"
 
 data_type_size:
   map:
