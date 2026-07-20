@@ -18,8 +18,8 @@ export COMPILERS_bsc_hca
 
 # ---------- THEA ----------
 declare -A COMPILERS_thea
-COMPILERS_thea["gcc"]="gcc:g++:gcc:gcc/14.3.0::"
-COMPILERS_thea["gcc-nvpl"]="gcc:g++:gcc:gcc/14.3.0;nvpl/25.5;cmake/3.31.8_gcc-13.3.0::"
+COMPILERS_thea["gcc"]="gcc:g++:gcc:gcc/14.3.0;cmake/3.31.11_gcc-13.3.0::"
+# COMPILERS_thea["gcc-nvpl"]="gcc:g++:gcc:gcc/14.3.0;nvpl/25.5;cmake/3.31.11_gcc-13.3.0::"
 
 export COMPILERS_thea
 
@@ -39,6 +39,14 @@ COMPILERS_e4["clang"]="clang:clang++:clang:::"
 COMPILERS_e4["gcc"]="gcc:g++:gcc:::"
 
 export COMPILERS_e4
+
+
+# ---------- Isarco1 ----------
+declare -A COMPILERS_isarco1
+COMPILERS_isarco1["gcc"]="gcc:g++:gcc:::"
+# COMPILERS_isarco1["clang"]="clang:clang++:clang:::"
+
+export COMPILERS_isarco1
 
 
 # ==========================================

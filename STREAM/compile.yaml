@@ -1,0 +1,27 @@
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "vars.yaml"
+
+
+preprocess: |
+  mkdir -p bin
+  cd STREAM
+  make clean
+  TYPE={data_type}
+  TYPE_SIZE={data_type_size[data_type]}
+  BYTES=$(({array_mem_mb} * 1024 * 1024))
+  ARRAY_SIZE=$((BYTES / TYPE_SIZE))
+  VARS="-DSTREAM_ARRAY_SIZE=${ARRAY_SIZE} -DNTIMES={runs} -DSTREAM_TYPE_${TYPE^^} -DOFFSET={offset}"
+  BIN_NAME="../bin/stream_${CC}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
+
+command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="$VARS" stream_c_custom'
+check: '[[ -f "$BIN_NAME" ]]'
+postprocess: 'mv stream_c_custom "$BIN_NAME" && {compiler_disass[compiler]} "$BIN_NAME" > "$BIN_NAME".asm'
+
+
+jobs:
+  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}__"
+    config_jobs:
+      - tag: "compile_stream_{compiler}_{compiler_opt}_{compiler_extra_flags_name}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
+      

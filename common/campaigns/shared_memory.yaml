@@ -1,0 +1,19 @@
+# ! IMPORTANT !
+# Run the `sbatchman campaign common/campaigns/shared_memory.yaml`
+# From the repo ROOT
+
+apps:
+
+  - name: STREAM
+    dir: ./STREAM
+    blocking: true 
+    configs: ['common/sbm_configs/shared_memory.yaml']
+    steps:
+      - name: compile
+        jobs: compile.yaml
+        on_fails: terminate
+
+      - name: experiments
+        jobs: jobs.yaml
+        on_fails: continue
+

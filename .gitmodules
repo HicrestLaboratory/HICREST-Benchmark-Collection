@@ -21,3 +21,6 @@
 [submodule "NPB"]
 	path = NPB/NPB
 	url = git@github.com:llnl/NPB.git
+[submodule "llama.cpp"]
+	path = MLInference/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp

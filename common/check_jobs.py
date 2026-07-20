@@ -1,4 +1,5 @@
 import argparse
+import json
 from collections import Counter, defaultdict
 
 import sbatchman as sbm
@@ -25,6 +26,12 @@ def parse_args():
         help="Disable runtime statistics",
     )
 
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+
     return parser.parse_args()
 
 
@@ -39,8 +46,6 @@ def format_time(seconds: float) -> str:
 
 def main() -> None:
     args = parse_args()
-
-    print(f"System name: {sbm.get_cluster_name()}")
 
     jobs = sbm.jobs_list(
         from_active=True,
@@ -60,10 +65,76 @@ def main() -> None:
         grouped[key].append(job)
 
     # ---------------------------
-    # Iterate and print jobs
+    # Collect data
     # ---------------------------
     all_runtimes = []
     status_counter = Counter()
+
+    json_output = {
+        "system": sbm.get_cluster_name(),
+        "groups": {},
+    }
+
+    for group, group_jobs in grouped.items():
+        group_entries = []
+
+        for job in group_jobs:
+            tag = str(job.tag)
+            status = str(job.status)
+            runtime = job.get_run_time()
+
+            group_entries.append(
+                {
+                    "job_id": job.job_id,
+                    "tag": tag,
+                    "status": status,
+                    "runtime_seconds": runtime,
+                    "runtime": format_time(runtime),
+                }
+            )
+
+            # collect stats
+            status_counter[status] += 1
+            if runtime is not None:
+                all_runtimes.append(runtime)
+
+        json_output["groups"][group] = group_entries
+
+    # ---------------------------
+    # Stats
+    # ---------------------------
+    if not args.no_hist:
+        json_output["status_histogram"] = dict(status_counter)
+
+    if not args.no_stats and all_runtimes:
+        total = sum(all_runtimes)
+        avg = total / len(all_runtimes)
+        mx = max(all_runtimes)
+        mn = min(all_runtimes)
+
+        json_output["runtime_stats"] = {
+            "jobs_counted": len(all_runtimes),
+            "total_runtime_seconds": total,
+            "average_runtime_seconds": avg,
+            "min_runtime_seconds": mn,
+            "max_runtime_seconds": mx,
+            "total_runtime": format_time(total),
+            "average_runtime": format_time(avg),
+            "min_runtime": format_time(mn),
+            "max_runtime": format_time(mx),
+        }
+
+    # ---------------------------
+    # Output
+    # ---------------------------
+    if args.json:
+        print(json.dumps(json_output, indent=2))
+        return
+
+    # ---------------------------
+    # Human-readable output
+    # ---------------------------
+    print(f"System name: {json_output['system']}")
 
     for group, group_jobs in grouped.items():
         print(f"\n=== {group} ===")
@@ -80,23 +151,12 @@ def main() -> None:
                 f"    runtime: {format_time(runtime)}\n"
             )
 
-            # collect stats
-            status_counter[status] += 1
-            if runtime is not None:
-                all_runtimes.append(runtime)
-
-    # ---------------------------
-    # Histogram of statuses (ON by default)
-    # ---------------------------
     if not args.no_hist:
         print("\n=== Status Histogram ===")
         for status, count in status_counter.items():
             bar = "#" * count
             print(f"{status:15} | {bar} ({count})")
 
-    # ---------------------------
-    # Runtime statistics (ON by default)
-    # ---------------------------
     if not args.no_stats and all_runtimes:
         total = sum(all_runtimes)
         avg = total / len(all_runtimes)

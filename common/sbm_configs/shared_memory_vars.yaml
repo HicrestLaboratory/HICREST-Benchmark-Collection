@@ -1,0 +1,66 @@
+ncpus:
+  per_cluster:
+    leonardo:           [1, 2, 4, 8, 16, 32, 56, 64, 72, 112]
+    thea:               [1, 2, 4, 8, 16, 32, 56, 64, 72, 112, 128, 144]
+    e4:                 [1, 2, 4, 8, 16, 32, 56, 64, 72, 112, 128]
+    bsc-hca-pioneer:    [1, 2, 4, 8, 16, 32, 56, 64]
+    bsc-hca-bananaf3:   [1, 2, 4, 8]
+    bsc-hca-arriesgado: [1, 2, 4]
+    local:              [1, 2, 4]
+
+compiler:
+  default:              ["gcc", "clang"]
+  per_cluster:
+    bsc-hca-pioneer:    ["gcc", "clang", "clang_epi"]
+    bsc-hca-bananaf3:   ["gcc", "clang", "clang_epi"]
+    bsc-hca-arriesgado: ["gcc", "clang", "clang_epi"]
+
+compiler_c:
+  map:
+    gcc:       ['gcc']    
+    clang:     ['clang']    
+    clang_epi: ['clang']  
+
+compiler_cxx:
+  map:
+    gcc:       ['g++']    
+    clang:     ['clang++']    
+    clang_epi: ['clang++']
+
+compiler_common: ['-fopenmp -ffast-math']
+
+compiler_opt: 
+  - '-O0'
+  - '-O3'
+  - '-Ofast'
+  - '-Osize'
+
+compiler_march:
+  default: ['-march=native -mtune=native']
+  per_cluster:
+    # TODO fix these
+    bsc-hca-pioneer:    ['-march=rv64imafdcv']
+    bsc-hca-bananaf3:   ['-march=rv64imafdcv']
+    bsc-hca-arriesgado: ['-march=rv64imafdcv']
+
+# TODO add vectorization flags here
+compiler_extra_flags_name:
+  default:           ['none']
+  per_cluster:
+    local:           ['none']
+    bsc-hca-pioneer: ['none', 'novec']
+
+compiler_extra_flags:
+  map:
+    none:  ['']
+    novec: ['-fno-vectorize']
+
+compiler_disass:
+  map:
+    gcc:       ['objdump -d --demangle --no-show-raw-insn']
+    clang:     ['llvm-objdump -d --demangle --no-show-raw-insn']
+    clang_epi: ['llvm-objdump -d --demangle --no-show-raw-insn']
+
+libs:
+  per_cluster:
+    local: ['']

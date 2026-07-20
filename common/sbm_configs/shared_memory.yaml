@@ -1,105 +1,103 @@
-variables:
-  # Leonardo
-  leonardo_ncpus:     [1, 2, 4, 8, 16, 32, 56, 64, 112]
-  
-  # Thea
-  grace_ncpus:        [1, 2, 4, 8, 16, 32, 64, 72, 144]
+include_variables: "shared_memory_vars.yaml"
 
-  # E4
-  e4_ncpus:           [1, 2, 4, 8, 16, 32, 56, 64, 96, 128]
-
-  # BSC HCA
-  pioneer_ncpus:      [1, 2, 4, 8, 16, 32, 64]
-  bananaf3_ncpus:     [1, 2, 4, 8]
-  arriesgado_ncpus:   [1, 2, 4]
-
-
-bsc-hca:
+bsc-hca-pioneer:
   scheduler: slurm
 
   default_conf:
+    partition: "pioneer"
     nodes: 1
     ntasks: 1
     exclusive: true
-    time: "00:30:00"
+    time: "02:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
+    extra_headers:
+      - "source /etc/profile.d/modules.sh"
 
   configs:
-    - name: "pioneer__gcc__openblas__{pioneer_ncpus}"
-      partition: "pioneer"
-      cpus_per_task: "{pioneer_ncpus}"
-      # THESE DO NOT LOAD IN SBATCH SCRIPTS....
-      # modules:
-      #   - "openBLAS/ubuntu/0.3.20_gcc10.3.0"
+    - name: "compile__gcc__"
+      cpus_per_task: 64
+
+    - name: "compile__clang__"
+      cpus_per_task: 64
       env:
-        - "OPENBLAS_NUM_THREADS={pioneer_ncpus}"
-        - "GOTO_NUM_THREADS={pioneer_ncpus}"
-        - "OMP_NUM_THREADS={pioneer_ncpus}"
-        - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
+        - "PATH=$PATH:/apps/riscv/llvm/EPI-0.7/development/bin" # WORKAROUND modules do not work in sbatch scripts
+        - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/llvm/EPI-0.7/development/lib"
 
-    - name: "pioneer__clang__openblas__{pioneer_ncpus}"
-      partition: "pioneer"
-      cpus_per_task: "{pioneer_ncpus}"
-      # THESE DO NOT LOAD IN SBATCH SCRIPTS....
-      # modules:
-      #   - "openBLAS/ubuntu/0.3.29_llvmEPI1.0"
-        # - "llvm/EPI-development" 
-      env:
-        - "OPENBLAS_NUM_THREADS={pioneer_ncpus}"
-        - "GOTO_NUM_THREADS={pioneer_ncpus}"
-        - "OMP_NUM_THREADS={pioneer_ncpus}"
-        - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
+    # - name: "pioneer__gcc__openblas__{ncpus}"
+    #   partition: "pioneer"
+    #   cpus_per_task: "{ncpus}"
+    #   # THESE DO NOT LOAD IN SBATCH SCRIPTS....
+    #   # modules:
+    #   #   - "openBLAS/ubuntu/0.3.20_gcc10.3.0"
+    #   env:
+    #     - "OPENBLAS_NUM_THREADS={ncpus}"
+    #     - "GOTO_NUM_THREADS={ncpus}"
+    #     - "OMP_NUM_THREADS={ncpus}"
+    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
 
-
-    - name: "arriesgado__gcc__openblas__{arriesgado_ncpus}"
-      partition: "arriesgado-jammy"
-      cpus_per_task: "{arriesgado_ncpus}"
-      env:
-        - "OPENBLAS_NUM_THREADS={arriesgado_ncpus}"
-        - "GOTO_NUM_THREADS={arriesgado_ncpus}"
-        - "OMP_NUM_THREADS={arriesgado_ncpus}"
-        - "KMP_AFFINITY=disabled"
-        - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
-
-
-    - name: "arriesgado__clang__openblas__{arriesgado_ncpus}"
-      partition: "arriesgado-jammy"
-      cpus_per_task: "{arriesgado_ncpus}"
-      env:
-        - "OPENBLAS_NUM_THREADS={arriesgado_ncpus}"
-        - "GOTO_NUM_THREADS={arriesgado_ncpus}"
-        - "OMP_NUM_THREADS={arriesgado_ncpus}"
-        - "KMP_AFFINITY=disabled"
-        - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
+    # - name: "pioneer__clang__openblas__{ncpus}"
+    #   partition: "pioneer"
+    #   cpus_per_task: "{ncpus}"
+    #   # THESE DO NOT LOAD IN SBATCH SCRIPTS....
+    #   # modules:
+    #   #   - "openBLAS/ubuntu/0.3.29_llvmEPI1.0"
+    #     # - "llvm/EPI-development" 
+    #   env:
+    #     - "OPENBLAS_NUM_THREADS={ncpus}"
+    #     - "GOTO_NUM_THREADS={ncpus}"
+    #     - "OMP_NUM_THREADS={ncpus}"
+    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
 
 
-    - name: "bananaf3__gcc__openblas__{bananaf3_ncpus}"
-      partition: "bananaf3"
-      cpus_per_task: "{bananaf3_ncpus}"
-      env:
-        - "OPENBLAS_NUM_THREADS={bananaf3_ncpus}"
-        - "GOTO_NUM_THREADS={bananaf3_ncpus}"
-        - "OMP_NUM_THREADS={bananaf3_ncpus}"
-        - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
+    # - name: "arriesgado__gcc__openblas__{ncpus}"
+    #   partition: "arriesgado-jammy"
+    #   cpus_per_task: "{ncpus}"
+    #   env:
+    #     - "OPENBLAS_NUM_THREADS={ncpus}"
+    #     - "GOTO_NUM_THREADS={ncpus}"
+    #     - "OMP_NUM_THREADS={ncpus}"
+    #     - "KMP_AFFINITY=disabled"
+    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
 
 
-    - name: "bananaf3__clang__openblas__{bananaf3_ncpus}"
-      partition: "bananaf3"
-      cpus_per_task: "{bananaf3_ncpus}"
-      env:
-        - "OPENBLAS_NUM_THREADS={bananaf3_ncpus}"
-        - "GOTO_NUM_THREADS={bananaf3_ncpus}"
-        - "OMP_NUM_THREADS={bananaf3_ncpus}"
-        - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.30_vlen256_llvmEPI1.0/lib:/apps/riscv/llvm/EPI/development/lib" # WORKAROUND
+    # - name: "arriesgado__clang__openblas__{ncpus}"
+    #   partition: "arriesgado-jammy"
+    #   cpus_per_task: "{ncpus}"
+    #   env:
+    #     - "OPENBLAS_NUM_THREADS={ncpus}"
+    #     - "GOTO_NUM_THREADS={ncpus}"
+    #     - "OMP_NUM_THREADS={ncpus}"
+    #     - "KMP_AFFINITY=disabled"
+    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
+
+
+    # - name: "bananaf3__gcc__openblas__{ncpus}"
+    #   partition: "bananaf3"
+    #   cpus_per_task: "{ncpus}"
+    #   env:
+    #     - "OPENBLAS_NUM_THREADS={ncpus}"
+    #     - "GOTO_NUM_THREADS={ncpus}"
+    #     - "OMP_NUM_THREADS={ncpus}"
+    #     - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
+
+
+    # - name: "bananaf3__clang__openblas__{ncpus}"
+    #   partition: "bananaf3"
+    #   cpus_per_task: "{ncpus}"
+    #   env:
+    #     - "OPENBLAS_NUM_THREADS={ncpus}"
+    #     - "GOTO_NUM_THREADS={ncpus}"
+    #     - "OMP_NUM_THREADS={ncpus}"
+    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.30_vlen256_llvmEPI1.0/lib:/apps/riscv/llvm/EPI/development/lib" # WORKAROUND
 
 
 thea:
   scheduler: slurm
 
   default_conf:
-    time: "00:30:00"
+    time: "01:00:00"
     partition: "gg"
     nodes: 1
     ntasks: 1
@@ -109,26 +107,26 @@ thea:
       - "OMP_PLACES=cores"
 
   configs:
-    - name: "gg__gcc__nvpl__{grace_ncpus}"
-      cpus_per_task: "{grace_ncpus}"
+    - name: "gg__gcc__nvpl__{ncpus}"
+      cpus_per_task: "{ncpus}"
       modules:
         - "gcc/14.3.0"
         - "nvpl/25.5"
       env: 
-        - "OMP_NUM_THREADS={grace_ncpus}"
-        - "OPENBLAS_NUM_THREADS={grace_ncpus}"
-        - "GOTO_NUM_THREADS={grace_ncpus}"
+        - "OMP_NUM_THREADS={ncpus}"
+        - "OPENBLAS_NUM_THREADS={ncpus}"
+        - "GOTO_NUM_THREADS={ncpus}"
 
     # TODO openblas
 
-    # - name: "gg__clang__{grace_ncpus}"
-    #   cpus_per_task: "{grace_ncpus}"
+    # - name: "gg__clang__{ncpus}"
+    #   cpus_per_task: "{ncpus}"
     #   modules:
     #     - "WIP!!!"
     #   env: 
-    #     - "OMP_NUM_THREADS={grace_ncpus}"
-    #     - "OPENBLAS_NUM_THREADS={grace_ncpus}"
-    #     - "GOTO_NUM_THREADS={grace_ncpus}"
+    #     - "OMP_NUM_THREADS={ncpus}"
+    #     - "OPENBLAS_NUM_THREADS={ncpus}"
+    #     - "GOTO_NUM_THREADS={ncpus}"
 
 
 leonardo:
@@ -150,52 +148,52 @@ leonardo:
 
   configs:
 
-    - name: "dcgp__gcc____{leonardo_ncpus}"
-      cpus_per_task: "{leonardo_ncpus}"
+    - name: "dcgp__gcc____{ncpus}"
+      cpus_per_task: "{ncpus}"
       modules: 
         - "gcc/12.2.0"
       env:
-        - "OMP_NUM_THREADS={leonardo_ncpus}"
+        - "OMP_NUM_THREADS={ncpus}"
 
-    - name: "dcgp__gcc__openblas__{leonardo_ncpus}"
-      cpus_per_task: "{leonardo_ncpus}"
+    - name: "dcgp__gcc__openblas__{ncpus}"
+      cpus_per_task: "{ncpus}"
       modules: 
         - "gcc/12.2.0"
         - "openblas/0.3.26--gcc--12.2.0"
       env:
-        - "OMP_NUM_THREADS={leonardo_ncpus}"
-        - "OPENBLAS_NUM_THREADS={leonardo_ncpus}"
-        - "GOTO_NUM_THREADS={leonardo_ncpus}"
+        - "OMP_NUM_THREADS={ncpus}"
+        - "OPENBLAS_NUM_THREADS={ncpus}"
+        - "GOTO_NUM_THREADS={ncpus}"
 
 
-    - name: "dcgp__clang____{leonardo_ncpus}"
-      cpus_per_task: "{leonardo_ncpus}"
+    - name: "dcgp__clang____{ncpus}"
+      cpus_per_task: "{ncpus}"
       modules: 
         - "llvm/14.0.6--gcc--12.2.0-cuda-12.2"
       env:
-        - "OMP_NUM_THREADS={leonardo_ncpus}"
-        - "OPENBLAS_NUM_THREADS={leonardo_ncpus}"
-        - "GOTO_NUM_THREADS={leonardo_ncpus}"
+        - "OMP_NUM_THREADS={ncpus}"
+        - "OPENBLAS_NUM_THREADS={ncpus}"
+        - "GOTO_NUM_THREADS={ncpus}"
 
     # No OpenBLAS-clang available
 
 
-    - name: "dcgp__icx____{leonardo_ncpus}"
-      cpus_per_task: "{leonardo_ncpus}"
+    - name: "dcgp__icx____{ncpus}"
+      cpus_per_task: "{ncpus}"
       modules: 
         - "intel-oneapi-compilers/2024.1.0"
       env:
-        - "OMP_NUM_THREADS={leonardo_ncpus}"
-        - "MKL_NUM_THREADS={leonardo_ncpus}"
+        - "OMP_NUM_THREADS={ncpus}"
+        - "MKL_NUM_THREADS={ncpus}"
 
-    - name: "dcgp__icx__mkl__{leonardo_ncpus}"
-      cpus_per_task: "{leonardo_ncpus}"
+    - name: "dcgp__icx__mkl__{ncpus}"
+      cpus_per_task: "{ncpus}"
       modules: 
         - "intel-oneapi-compilers/2024.1.0"
         - "intel-oneapi-mkl/2024.0.0"
       env:
-        - "OMP_NUM_THREADS={leonardo_ncpus}"
-        - "MKL_NUM_THREADS={leonardo_ncpus}"
+        - "OMP_NUM_THREADS={ncpus}"
+        - "MKL_NUM_THREADS={ncpus}"
 
 
 e4:
@@ -208,18 +206,36 @@ e4:
 
   configs:
 
-    - name: "rc01__gcc____{e4_ncpus}"
+    - name: "rc01__gcc____{ncpus}"
       env:
-        - "OMP_NUM_THREADS={e4_ncpus}"
+        - "OMP_NUM_THREADS={ncpus}"
 
-    # - name: "rc01__gcc__openblas__{e4_ncpus}"
+    # - name: "rc01__gcc__openblas__{ncpus}"
     #   modules: 
     #     - "openblas/....."
     #   env:
-    #     - "OMP_NUM_THREADS={leonardo_ncpus}"
-    #     - "OPENBLAS_NUM_THREADS={leonardo_ncpus}"
-    #     - "GOTO_NUM_THREADS={leonardo_ncpus}"
+    #     - "OMP_NUM_THREADS={ncpus}"
+    #     - "OPENBLAS_NUM_THREADS={ncpus}"
+    #     - "GOTO_NUM_THREADS={ncpus}"
 
-    - name: "rc01__clang____{e4_ncpus}"
+    - name: "rc01__clang____{ncpus}"
       env:
-        - "OMP_NUM_THREADS={e4_ncpus}"
+        - "OMP_NUM_THREADS={ncpus}"
+
+
+local:
+  scheduler: local
+
+  default_conf:
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+
+  configs:
+    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}__"
+      env:
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt} {compiler_common} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - "CLINK="
+        

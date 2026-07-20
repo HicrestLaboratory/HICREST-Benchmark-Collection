@@ -1,0 +1,20 @@
+data_type:
+  - "double"
+  - "uint32"
+  - "float"
+  - "int32"
+
+data_type_size:
+  map:
+    float:  [4]
+    double: [8]
+    uint32: [4]
+    int32:  [4]
+
+# Footprint of a single array
+array_mem_mb:
+  - 512
+  # - 8
+
+offset: [0]
+runs: [15]

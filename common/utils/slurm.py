@@ -1,3 +1,7 @@
+from collections import defaultdict
+import re
+
+
 class NodeListParseError(Exception):
     pass
 
@@ -102,3 +106,58 @@ def _split_preserving_brackets(s: str) -> list[str]:
         result.append(''.join(current))
 
     return result
+
+def compress_slurm_nodelist(nodes: list[str]) -> str:
+    """
+    Convert an expanded node list into a compact SLURM node list.
+
+    Example:
+        ["node01", "node02", "node03", "node05"]
+        -> "node[01-03,05]"
+    """
+    groups = defaultdict(list)
+
+    for node in sorted(nodes):
+        m = re.match(r"^(.*?)(\d+)$", node)
+        if m:
+            prefix, num = m.groups()
+            groups[(prefix, len(num))].append(int(num))
+        else:
+            groups[(node, None)].append(None)
+
+    result = []
+
+    for (prefix, width), values in sorted(groups.items()):
+        if width is None:
+            result.append(prefix)
+            continue
+
+        values = sorted(set(values))
+
+        ranges = []
+        start = prev = values[0]
+
+        for v in values[1:]:
+            if v == prev + 1:
+                prev = v
+            else:
+                ranges.append((start, prev))
+                start = prev = v
+
+        ranges.append((start, prev))
+
+        parts = []
+        for a, b in ranges:
+            if a == b:
+                parts.append(str(a).zfill(width))
+            else:
+                parts.append(
+                    f"{str(a).zfill(width)}-{str(b).zfill(width)}"
+                )
+
+        if len(parts) == 1 and "-" not in parts[0]:
+            result.append(f"{prefix}{parts[0]}")
+        else:
+            result.append(f"{prefix}[{','.join(parts)}]")
+
+    return ",".join(result)

@@ -133,44 +133,39 @@ python expand_experiments.py experiments_leonardo_3_groups_uniform.json \
 
 ---
 
-### 2. Alps (@ 64 Nodes)
+### 2. Alps
 
-The Alps experiments target a 64-node scale using H200 GPUs. 
 
 #### Environment Setup
-Before running the Python scripts on Alps, the correct software modules and environment must be loaded:
 
 ```bash
-uenv start --view=modules prgenv-gnu-openmpi/25.12:v1
-ml gcc/14.3.0 cuda/12.9.1 nccl/2.28.9-1 openmpi/5.0.9 python/3.14.0
+uenv start --view=default prgenv-gnu/26.3:v1
 ```
 
 
 ```bash
 # Baselines
-python experiments_generator.py -G $((352*4)) --util-min 0.8 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 6 --max-experiments 1 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_alps_baselines.json --baseline-extended
+python experiments_generator.py -G $((512*4)) --util-min 0.8 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 6 --max-experiments 1 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_alps_baselines.json --baseline-extended
 
 # Concurrent
 # Powerlaw
-python experiments_generator.py -G $((352*4)) --util-min 0.95 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 5 --max-experiments 15 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_alps.json
+python experiments_generator.py -G $((330*4)) --util-min 0.99 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 5 --max-experiments 13 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_alps.json
 # Uniform
-python experiments_generator.py -G $((352*4)) --util-min 0.94 --util-max 1.0 --util-steps 30 --n-stochastic-patterns 0 --include-uniform --max-experiments 20 --n-samples-per-bin 5 --k-max 300 --output-json experiments_alps_uniform.json
-
-# Concurrent test @ 64 nodes
-python experiments_generator.py -G $((64*4)) --util-min 0.95 --util-max 1.0 --util-steps 10 --use-topology --n-stochastic-patterns 5 --max-experiments 1 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 200 --placement-bin-med-hi 2.55 --output-json experiments_alps_test_64.json
-python expand_experiments.py experiments_alps_test_64.json --placement-mode linear --system alps --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_alps_test_64
-
-# python experiments_generator.py -G $((650*4)) --util-min 0.85 --util-max 1.0 --util-steps 40 --use-topology --n-stochastic-patterns 0 --include-uniform-patterns --max-experiments 10 --n-samples-per-bin 1 --n-placement-samples-per-bin 1 --k-max 400 --placement-bin-med-hi 2.55 --output-json experiments_jupiter_3_groups_uniform.json
+python experiments_generator.py -G $((330*4)) --util-min 0.985 --util-max 1.0 --util-steps 30 --use-topology --n-stochastic-patterns 0 --include-uniform --max-experiments 10 --n-samples-per-bin 5 --k-max 200 --output-json experiments_alps_uniform.json
 ```
 
 ```bash
 # Baselines
-py run_baselines_no_placement.py --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --cpus-per-task 72 --system alps experiments_alps_baselines.json --max-n-nodes 8 --no-serial
+python run_baselines_no_placement.py --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --cpus-per-task 72 --system alps_clariden experiments_alps_baselines.json --no-serial
+
+python run_baselines_placements.py --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --cpus-per-task 72 --system alps_clariden experiments_alps_baselines.json --nodelist "nid[006120,006122-006187,006189-006231,006680-006741,006743-006791,007464-007493,007495-007575]"
 
 # Concurrent
-python expand_experiments.py experiments_alps.json --placement-mode linear --system alps --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_alps
+python expand_experiments.py experiments_alps.json --placement-mode linear --system alps_clariden --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_alps_user
 
-# python expand_experiments.py experiments_jupiter_3_groups_uniform.json --placement-mode runtime --system jupiter --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_jupiter_3_groups_uniform_nccl
+python expand_experiments.py experiments_alps.json --placement-mode runtime --system alps_clariden --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_alps
+
+python expand_experiments.py experiments_alps_uniform.json --placement-mode runtime --system alps_clariden --comm-lib nccl --gpu-model GH200 --gpus-per-node 4 --output-dir experiments_alps_uniform
 ```
 
 ---

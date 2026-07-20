@@ -5,7 +5,7 @@ set -e
 BIN_DIR=../../bin
 
 cd NetGraph500
-if [[ ! -d ../../common/ccutils/ ]]; then
+if [[ ! -d "$CCUTILS_INCLUDE" ]]; then
     echo "ccutils not found (common/ccutils). Please download it with 'git submodule update --init ccutils.'"
     exit 1
 fi
@@ -14,7 +14,7 @@ cd src
 mkdir -p $BIN_DIR
 
 # Standard benchmark
-make deep_clean
+make clean
 CFLAGS="-DBENCHPIN" PREPROCESSOR_FLAGS="-DAGGR_intra=32768 -DAGGR=32768" make graph500_reference_bfs
 mv graph500_reference_bfs $BIN_DIR/graph500_bfs_32KiB
 

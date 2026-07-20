@@ -1,0 +1,34 @@
+# Uncomment the following line if you want experiments to run one after the another
+# sequential: true
+
+variables:
+  nodes: [4, 8, 16]
+  model: ['llama3-8b', 'minerva-7b']
+  
+  comm_lib: ['nccl']
+
+  srun_extra_args:
+    default: ['']
+    per_cluster:
+      alps-clariden: ['--mpi=cray_shasta']
+
+
+preprocess: 'echo "Allocated nodes: $SLURM_JOB_NODELIST"'
+
+jobs:
+  - config: "DLNetBench__{nodes}_nodes"
+    config_jobs:
+
+      # FSDP
+      - tag: "fsdp_{model}_{nodes}"
+        variables:
+          num_units: [16]
+          sharding_factor: [4]
+        command: "srun {srun_extra_args} -N {nodes} ./bin/{comm_lib}/cpp/data_parallel/fsdp {model} {num_units} {sharding_factor} . -b 16"
+
+      # Data + Pipeline parallelism
+      - tag: "dppp_{model}_{nodes}"
+        variables:
+          num_stages: [4]
+          num_microbatches: [16]
+        command: "srun {srun_extra_args} -N {nodes} ./bin/{comm_lib}/cpp/hybrid_parallel/hybrid_2d {model} {num_stages} {num_microbatches} . -b 16"
