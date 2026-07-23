@@ -12,7 +12,7 @@
       "y": [
         "copy_rate_mb_s"
       ],
-      "group": "data_type",
+      "group": "energy",
       "z": "",
       "xLabel": "",
       "yLabel": "",
@@ -24,15 +24,20 @@
         "mode": "lines+markers"
       },
       "customScript": "",
+      "transformScript": "",
+      "layoutScript": "",
       "columns": [
         "array_mem_mb",
         "compiler",
-        "compiler_flag_set",
+        "compiler_extra_flags_name",
+        "compiler_opt",
         "data_type",
         "libs",
         "ncpus",
         "offset",
         "runs",
+        "cluster",
+        "tot_runtime",
         "copy_rate_mb_s",
         "copy_avg_time_s",
         "copy_min_time_s",
@@ -52,7 +57,8 @@
         "bytes_per_element",
         "array_size_elements",
         "memory_per_array_mib",
-        "total_memory_required_mib"
+        "total_memory_required_mib",
+        "energy"
       ]
     },
     {
@@ -66,7 +72,7 @@
       "y": [
         "copy_rate_mb_s"
       ],
-      "group": "data_type",
+      "group": "energy",
       "z": "",
       "xLabel": "",
       "yLabel": "",
@@ -78,15 +84,20 @@
         "mode": "lines+markers"
       },
       "customScript": "",
+      "transformScript": "",
+      "layoutScript": "",
       "columns": [
         "array_mem_mb",
         "compiler",
-        "compiler_flag_set",
+        "compiler_extra_flags_name",
+        "compiler_opt",
         "data_type",
         "libs",
         "ncpus",
         "offset",
         "runs",
+        "cluster",
+        "tot_runtime",
         "copy_rate_mb_s",
         "copy_avg_time_s",
         "copy_min_time_s",
@@ -106,7 +117,46 @@
         "bytes_per_element",
         "array_size_elements",
         "memory_per_array_mib",
-        "total_memory_required_mib"
+        "total_memory_required_mib",
+        "energy"
+      ]
+    },
+    {
+      "version": 2,
+      "label": "Power Consumption",
+      "database": "data",
+      "sql": "SELECT *, voltage_V*current_A as watts\nFROM energy_stream_energy_clang__double_M512_C1_R15_O0",
+      "plotType": "line",
+      "chartTitle": "Power Consumption",
+      "x": "timestamp_ms",
+      "y": [
+        "watts"
+      ],
+      "group": "",
+      "z": "",
+      "xLabel": "",
+      "yLabel": "",
+      "xScale": "linear",
+      "yScale": "linear",
+      "xTickFmt": "",
+      "yTickFmt": "",
+      "extra": {
+        "mode": "lines+markers"
+      },
+      "customScript": "",
+      "transformScript": "",
+      "layoutScript": "",
+      "columns": [
+        "timestamp_ms",
+        "probe",
+        "probe_id",
+        "channel",
+        "flags",
+        "temperature_C",
+        "voltage_V",
+        "current_A",
+        "energy_J",
+        "watts"
       ]
     }
   ]

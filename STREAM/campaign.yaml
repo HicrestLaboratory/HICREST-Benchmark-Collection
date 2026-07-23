@@ -1,0 +1,17 @@
+apps:
+  - name: STREAM
+    dir: .
+    blocking: true
+
+    steps:
+      - name: compile
+        jobs: compile.yaml
+        on_fails: terminate
+
+      - name: experiments_performance
+        jobs: jobs.yaml
+        on_fails: continue
+
+      - name: experiments_energy
+        jobs: jobs_energy.yaml
+        on_fails: continue

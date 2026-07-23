@@ -10,7 +10,7 @@ local:
       - "OMP_PLACES=cores"
 
   configs:
-    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}__"
+    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}____{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -25,6 +25,7 @@ dalek-mono-bpi-f3:
     exclusive: true
     partition: "mono"
     nodelist: "mono-bpi-f3"
+    time: "02:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
@@ -41,10 +42,39 @@ dalek-mono-bpi-f3:
         - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
+        - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
-        - "--cpus-per-task={ncpus}"
       
 
+# Milk-V Pioneer @ BSC HCA
+bsc-hca-pioneer: 
+  scheduler: slurm
+
+  default_conf:
+    partition: "pioneer"
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    nodelist: "pioneer-4"
+    time: "02:00:00"
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+    modules:
+      - "TODO"
+      # TODO uniform compiler versions
+
+  configs:
+    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}____{ncpus}"
+      env:
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt} {compiler_common} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - "CLINK="
+        - "OMP_NUM_THREADS={ncpus}"
+      custom_headers:
+        - "#SBATCH --cpus-per-task={ncpus}"
+        - "source /etc/profile.d/modules.sh"
 
 
 # bsc-hca-pioneer:

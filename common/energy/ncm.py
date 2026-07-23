@@ -54,20 +54,28 @@ import time
 from pathlib import Path
 
 DEFAULT_PIDFILE = "/tmp/ncm_monitor.pid"
-DEFAULT_COMMAND = "ncm-control -t 0"
+DEFAULT_COMMAND = "/opt/software/ncm-1.1.2/bin/ncm-control -t 0"
 DEFAULT_PRE = [
-    "ncm-control -P 1",
-    "ncm-control -P 2",
-    "ncm-control -M 1",
-    "ncm-control -M 2",
+    "/opt/software/ncm-1.1.2/bin/ncm-control -P 1",
+    "/opt/software/ncm-1.1.2/bin/ncm-control -P 2",
+    "/opt/software/ncm-1.1.2/bin/ncm-control -M 1",
+    "/opt/software/ncm-1.1.2/bin/ncm-control -M 2",
 ]
 DEFAULT_POST = [
-    "ncm-control -m 1",
-    "ncm-control -m 2",
-    "ncm-control -p 1",
-    "ncm-control -p 2",
+    "/opt/software/ncm-1.1.2/bin/ncm-control -m 1",
+    "/opt/software/ncm-1.1.2/bin/ncm-control -m 2",
+    "/opt/software/ncm-1.1.2/bin/ncm-control -p 1",
+    "/opt/software/ncm-1.1.2/bin/ncm-control -p 2",
 ]
 
+def default_core() -> int:
+    """Return the highest-numbered CPU available to this process."""
+    try:
+        # Respects cpusets/affinity restrictions.
+        return max(os.sched_getaffinity(0))
+    except AttributeError:
+        # Fallback for platforms without sched_getaffinity().
+        return (os.cpu_count() or 1) - 1
 
 def pin_to_core(core: int):
     def _pin():
@@ -83,19 +91,29 @@ def pid_alive(pid: int) -> bool:
         return False
 
 
-def run_step(cmd: str, best_effort: bool = False) -> bool:
-    """Run a single shell command synchronously. Returns True on success.
-    If best_effort is True, a failure is logged but not raised (used for
-    --post cleanup commands, so one failure doesn't skip the rest)."""
+def run_step(cmd: str) -> bool:
+    """Run a single shell command synchronously.
+    Failures are logged to stderr but do not raise exceptions."""
     print(f"$ {cmd}")
     try:
-        subprocess.run(cmd, shell=True, check=True)
-        return True
-    except subprocess.CalledProcessError as e:
-        if best_effort:
-            print(f"WARNING: command failed (exit {e.returncode}): {cmd}")
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            print(
+                f"WARNING: command failed (exit {result.returncode}): {cmd}",
+                file=sys.stderr,
+            )
             return False
-        raise
+        return True
+    except Exception as e:
+        print(
+            f"WARNING: failed to execute command '{cmd}': {e}",
+            file=sys.stderr,
+        )
+        return False
 
 
 def cmd_start(args):
@@ -107,20 +125,36 @@ def cmd_start(args):
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    log_file = open(output_path, "wb")
+
+    try:
+        log_file = open(output_path, "wb")
+    except OSError as e:
+        print(f"Failed to open output file {output_path}: {e}")
+        return
 
     print(f"$ {command}   (background, core {args.core}, output -> {output_path})")
-    proc = subprocess.Popen(
-        command,
-        shell=True,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,       # own process group, so it can be signaled cleanly
-        preexec_fn=pin_to_core(args.core),
-    )
+
+    try:
+        proc = subprocess.Popen(
+            command,
+            shell=True,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            preexec_fn=pin_to_core(args.core),
+        )
+    except Exception as e:
+        print(f"Failed to start command: {e}")
+        log_file.close()
+        return
 
     pidfile = Path(args.pidfile)
-    pidfile.write_text(str(proc.pid))
+    try:
+        pidfile.write_text(str(proc.pid))
+    except OSError as e:
+        print(f"Warning: could not write pidfile {pidfile}: {e}")
+
     print(f"Started monitor: pid={proc.pid}  pidfile={pidfile}")
 
 
@@ -173,7 +207,7 @@ def cmd_stop(args):
     post_cmds = args.post if args.post is not None else DEFAULT_POST
     ok = True
     for post_cmd in post_cmds:
-        if not run_step(post_cmd, best_effort=True):
+        if not run_step(post_cmd):
             ok = False
     if not ok:
         sys.exit(1)
@@ -184,7 +218,7 @@ def main():
     sub = parser.add_subparsers(dest="action", required=True)
 
     p_start = sub.add_parser("start", help="Start the monitor in the background")
-    p_start.add_argument("--core", type=int, required=True, help="CPU core to pin the monitor to")
+    p_start.add_argument("--core", type=int, default=default_core(), help="CPU core to pin the monitor to (default: highest available core)")
     p_start.add_argument("--output", required=True, help="File to redirect stdout+stderr to")
     p_start.add_argument("--pidfile", default=DEFAULT_PIDFILE, help=f"Where to store the PID (default: {DEFAULT_PIDFILE})")
     p_start.add_argument("--pre", action="append", metavar="CMD",

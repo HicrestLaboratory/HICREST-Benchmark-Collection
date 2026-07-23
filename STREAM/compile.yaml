@@ -1,3 +1,5 @@
+sequential: true
+
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
