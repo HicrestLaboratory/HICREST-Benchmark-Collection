@@ -1,3 +1,7 @@
+################
+# System specs #
+################
+
 ncpus:
   per_cluster:
     leonardo:           [1, 2, 4, 8, 16, 32, 56, 64, 72, 112]
@@ -9,12 +13,17 @@ ncpus:
     dalek-mono-bpi-f3:  [1, 2, 4, 8]
     local:              [1, 2, 4]
 
+
+########################
+# Compiler definitions #
+########################
+
 compiler:
   default:              ["gcc", "clang"]
   per_cluster:
-    bsc-hca-pioneer:    ["gcc", "clang", "clang_epi"]
-    bsc-hca-bananaf3:   ["gcc", "clang", "clang_epi"]
-    bsc-hca-arriesgado: ["gcc", "clang", "clang_epi"]
+    bsc-hca-pioneer:    ["gcc", "clang_epi"] # "clang",
+    bsc-hca-bananaf3:   ["gcc", "clang_epi"] # "clang",
+    bsc-hca-arriesgado: ["gcc", "clang_epi"] # "clang",
 
 compiler_c:
   map:
@@ -27,6 +36,11 @@ compiler_cxx:
     gcc:       ['g++']    
     clang:     ['clang++']    
     clang_epi: ['clang++']
+
+
+######################
+# Compiler Arguments #
+######################
 
 compiler_common: ['-fopenmp -ffast-math']
 
@@ -41,27 +55,53 @@ compiler_march:
   per_cluster:
     # TODO fix these
     dalek-mono-bpi-f3:  ['-march=rv64gcv_zvl256b -mabi=lp64d']
-    bsc-hca-pioneer:    ['-march=rv64imafdcv']
-    bsc-hca-bananaf3:   ['-march=rv64imafdcv']
-    bsc-hca-arriesgado: ['-march=rv64imafdcv']
+    bsc-hca-pioneer:    ['-march=rv64imafdc']
+    bsc-hca-bananaf3:   ['-march=rv64imafdc']
+    bsc-hca-arriesgado: ['-march=rv64imafdc']
 
-# TODO add vectorization flags here
 compiler_extra_flags_name:
-  default:           ['none']
   per_cluster:
-    local:           ['none']
-    bsc-hca-pioneer: ['none', 'novec']
+    default: ['none']
+    bsc-hca-pioneer:
+      map:
+        clang_epi: ['autovec', 'novec']
+        default: ['none']
 
 compiler_extra_flags:
   map:
     none:  ['']
-    novec: ['-fno-vectorize']
+    autovec:
+      per_cluster:
+        bsc-hca-pioneer: ['-mepi -mcpu=pioneer -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize']
+    novec:
+      per_cluster:
+        bsc-hca-pioneer: ['-mcpu=pioneer -fno-vectorize -fno-slp-vectorize -mllvm -combiner-store-merging=0 -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize']
 
 compiler_disass:
   map:
     gcc:       ['objdump -d --demangle --no-show-raw-insn']
-    clang:     ['llvm-objdump -d --demangle --no-show-raw-insn']
-    clang_epi: ['llvm-objdump -d --demangle --no-show-raw-insn']
+    clang:     ['objdump -d --demangle --no-show-raw-insn'] # llvm-
+    clang_epi: ['objdump -d --demangle --no-show-raw-insn'] # llvm-
+
+
+#######################
+# Modules & Libraries #
+#######################
+
+compiler_module:
+  map:
+    gcc:
+      per_cluster:
+        default: ['']
+    clang:
+      per_cluster:
+        default: ['']
+        
+    clang_epi:
+      per_cluster:
+        bsc-hca-pioneer:    ['llvm/EPI-0.7-development']
+        bsc-hca-bananaf3:   ['llvm/EPI-development']
+        bsc-hca-arriesgado: ['llvm/EPI-0.7-development']
 
 libs:
   default: ['']

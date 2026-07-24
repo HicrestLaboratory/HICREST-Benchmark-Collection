@@ -1,5 +1,16 @@
 include_variables: "shared_memory_vars.yaml"
 
+# == Environment variables ==
+# Each configuration sets:
+# CC     --> C compiler executable
+# CXX    --> C++ compiler executable
+# CFLAGS --> Arguments to be passed to the compiler
+# CLINK  --> -L/-l arguments to be passed to the compiler (link libraries)
+
+# TODOs
+# - uniform compiler versions
+
+
 # Local testing
 local:
   scheduler: local
@@ -10,12 +21,13 @@ local:
       - "OMP_PLACES=cores"
 
   configs:
-    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}____{ncpus}"
+    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt} {compiler_common} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
+
 
 # BananaPiF3 @ Dalek
 dalek-mono-bpi-f3: 
@@ -31,10 +43,9 @@ dalek-mono-bpi-f3:
       - "OMP_PLACES=cores"
     modules:
       - "ncm/1.1.2"
-      # TODO uniform compiler versions
 
   configs:
-    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}____{ncpus}"
+    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -60,12 +71,9 @@ bsc-hca-pioneer:
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
-    modules:
-      - "TODO"
-      # TODO uniform compiler versions
 
   configs:
-    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name}____{ncpus}"
+    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -74,7 +82,11 @@ bsc-hca-pioneer:
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
+        - 'export LANG=en_US.UTF-8'
+        - 'export LC_ALL=en_US.UTF-8'
         - "source /etc/profile.d/modules.sh"
+      modules:
+        - "{compiler_module[compiler]}"
 
 
 # bsc-hca-pioneer:
