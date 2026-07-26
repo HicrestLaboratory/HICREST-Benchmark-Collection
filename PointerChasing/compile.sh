@@ -5,19 +5,16 @@ set -e
 source ../common/compile/utils.sh
 source ../common/compile/compilers.sh
 
-SUPPORTED_SYSTEMS=("bsc-hca" "thea" "leonardo")
-SUPPORTED_BOARDS=("default" "pioneer" "arriesgado" "bananaf3")
+SUPPORTED_SYSTEMS=("bsc-hca" "thea" "leonardo" "e4")
 
 if [[ $# -eq 0 ]]; then
-    echo "Usage: $0 <system> [<board>]"
+    echo "Usage: $0 <system>"
     exit 1
 fi
 
 system="$1"
-board="${2:-default}"
 
 validate_argument "$system" "system" "${SUPPORTED_SYSTEMS[@]}"
-validate_argument "$board" "board" "${SUPPORTED_BOARDS[@]}"
 
 root_dir=$(pwd)
 
@@ -29,22 +26,20 @@ build() {
     local extra_libs="$4"
     local extra_link_opts="$5"
 
-    build_dir="build_${name}_${board}"
-    mkdir -p "$build_dir"
-
     echo
     echo "==== Building PointerChasing with $name ===="
     echo "Build directory: $build_dir"
 
     cd pointer-chasing
 
+    build_dir="bin/${name}"
+    mkdir -p "$build_dir"
+
     echo "Compiling with command:"
     echo "make BINDIR=$build_dir CXX=$cxx -j$(nproc)"
 
     make clean
     make BINDIR=$build_dir CXX=$cxx -j"$(nproc)"
-
-    mv "$build_dir" ..
 
     # Return to original directory
     cd $root_dir
@@ -65,15 +60,7 @@ for compiler_name in "${!compilers[@]}"; do
     build "$name" "$cxx" "$cc" "$libs" "$link_opts"
 done
 
+[[ -d bin ]] && rm -r bin
+mv pointer-chasing/bin .
+
 echo "PointerChasing build completed."
-
-
-
-
-
-
-
-
-
-
-

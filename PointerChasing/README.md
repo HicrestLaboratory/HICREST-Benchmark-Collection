@@ -17,9 +17,3 @@ of pointers where:
 * beginning from any pointer all other pointers can be reached
   following the pointer chain, and where
 * all locations are reached.
-
-As configs, use:
-
-```
-../common/sbm_configs/shared_memory.yaml
-```

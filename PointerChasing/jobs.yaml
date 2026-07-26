@@ -1,9 +1,22 @@
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+
 variables:
-  program: ["linear-chase", "random-chase", "fused-linear-chase"]
+  compiler: ['gcc']
+  compiler_opt: ['-O3']
+  compiler_extra_flags_name: ['none']
+  ncpus: [1]
+
+  program:
+    - "linear-chase"
+    - "random-chase"
+    - "fused-linear-chase"
+    - "fused-random-chase"
   
-command: "./pointer-chasing/{program}"
+command: "./bin/{program}"
 
 jobs:
-  - config: "brah"
+  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
       - tag: "{program}"

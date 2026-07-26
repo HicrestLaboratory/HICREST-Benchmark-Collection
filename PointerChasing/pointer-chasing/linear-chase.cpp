@@ -32,20 +32,20 @@
 #include <iostream>
 #include <unistd.h>
 #include <sys/times.h>
-#include <printf.hpp> /* see https://github.com/afborchert/fmt */
+#include "fmt/printf.hpp" /* see https://github.com/afborchert/fmt */
 #include "chase-pointers.hpp"
 #include "linear-chain.hpp"
 
-#ifndef MIN_STRIDE
-#define MIN_STRIDE (sizeof(void*))
+#ifndef LINEAR_CHASE_MIN_STRIDE
+#define LINEAR_CHASE_MIN_STRIDE (sizeof(void*))
 #endif
-#ifndef MAX_STRIDE
-#define MAX_STRIDE 1600
+#ifndef LINEAR_CHASE_MAX_STRIDE
+#define LINEAR_CHASE_MAX_STRIDE 1024
 #endif
 
 int main() {
    fmt::printf("   stride  time in ns\n");
-   for (std::size_t stride = MIN_STRIDE; stride <= MAX_STRIDE;
+   for (std::size_t stride = LINEAR_CHASE_MIN_STRIDE; stride <= LINEAR_CHASE_MAX_STRIDE;
 	 stride += sizeof(void*)) {
       size_t memsize = std::min(std::size_t{1}<<26, stride * 1024 * sizeof(void*));
       void** memory = create_linear_chain(memsize, stride);

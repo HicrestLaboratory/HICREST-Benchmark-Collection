@@ -34,7 +34,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <sys/times.h>
-#include <printf.hpp> /* see https://github.com/afborchert/fmt */
+#include "fmt/printf.hpp" /* see https://github.com/afborchert/fmt */
 #include "linear-chain.hpp"
 #include "walltime.hpp"
 
@@ -64,11 +64,11 @@ double fused_chase(std::size_t count, Pointers&... ptrs) {
    return elapsed;
 }
 
-#ifndef MIN_STRIDE
-#define MIN_STRIDE (sizeof(void*))
+#ifndef FUSED_LINEAR_CHASE_MIN_STRIDE
+#define FUSED_LINEAR_CHASE_MIN_STRIDE (sizeof(void*))
 #endif
-#ifndef MAX_STRIDE
-#define MAX_STRIDE 120
+#ifndef FUSED_LINEAR_CHASE_MAX_STRIDE
+#define FUSED_LINEAR_CHASE_MAX_STRIDE 128
 #endif
 
 int main() {
@@ -79,7 +79,7 @@ int main() {
    fmt::printf("     fuse");
    for (int i = 1; i <= 8; ++i) fmt::printf("%12d", i);
    fmt::printf("\n    stride\n");
-   for (std::size_t stride = MIN_STRIDE; stride <= MAX_STRIDE;
+   for (std::size_t stride = FUSED_LINEAR_CHASE_MIN_STRIDE; stride <= FUSED_LINEAR_CHASE_MAX_STRIDE;
 	 stride += sizeof(void*)) {
       size_t memsize = std::min(std::size_t{1}<<26,
 	 stride * 1024 * sizeof(void*));

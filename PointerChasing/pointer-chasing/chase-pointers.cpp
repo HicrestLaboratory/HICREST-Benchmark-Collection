@@ -26,7 +26,7 @@
 /* follow a circular pointer chain a given number of times
    and return the real time used in seconds as double */
 
-#include <printf.hpp>
+#include "fmt/printf.hpp"
 #include "chase-pointers.hpp"
 #include "walltime.hpp"
 

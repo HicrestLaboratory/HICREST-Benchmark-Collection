@@ -1,5 +1,3 @@
-sequential: true
-
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
@@ -10,4 +8,4 @@ jobs:
   - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
       - tag: "stream_{compiler}_{libs}_{data_type}_M{array_mem_mb}_C{ncpus}_R{runs}_O{offset}"
-        command: "./bin/stream_{compiler}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
+        command: "./bin/stream_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"

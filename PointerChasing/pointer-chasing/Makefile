@@ -9,8 +9,8 @@ linear-chase-objects := linear-chase.o chase-pointers.o linear-chain.o
 random-chase-objects := random-chase.o chase-pointers.o
 
 CXX ?= g++
-CPPFLAGS ?= -std=gnu++11 -Ifmt
-EXTRA_FLAGS ?=
+CFLAGS ?= 
+CUSTOM_PREPROCESSOR_VARS ?= 
 
 Targets := fused-linear-chase fused-random-chase linear-chase random-chase
 BinTargets := $(addprefix $(BINDIR)/,$(Targets))
@@ -30,16 +30,16 @@ $(BINDIR):
 	mkdir -p $@
 
 $(BINDIR)/fused-linear-chase: $(fused-linear-chase-objects) | $(BINDIR)
-	$(CXX) $(CPPFLAGS) $(EXTRA_FLAGS) $(LDFLAGS) -o $@ $^
+	$(CXX) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(CUSTOM_PREPROCESSOR_VARS) -o $@ $^
 
 $(BINDIR)/fused-random-chase: $(fused-random-chase-objects) | $(BINDIR)
-	$(CXX) $(CPPFLAGS) $(EXTRA_FLAGS) $(LDFLAGS) -o $@ $^
+	$(CXX) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(CUSTOM_PREPROCESSOR_VARS) -o $@ $^
 
 $(BINDIR)/linear-chase: $(linear-chase-objects) | $(BINDIR)
-	$(CXX) $(CPPFLAGS) $(EXTRA_FLAGS) $(LDFLAGS) -o $@ $^
+	$(CXX) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(CUSTOM_PREPROCESSOR_VARS) -o $@ $^
 
 $(BINDIR)/random-chase: $(random-chase-objects) | $(BINDIR)
-	$(CXX) $(CPPFLAGS) $(EXTRA_FLAGS) $(LDFLAGS) -o $@ $^
+	$(CXX) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(CUSTOM_PREPROCESSOR_VARS) -o $@ $^
 
 
 random-chase.o: random-chase.cpp fmt/printf.hpp chase-pointers.hpp uniform-int-distribution.hpp

@@ -29,7 +29,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
-#include <printf.hpp> /* see https://github.com/afborchert/fmt */
+#include "fmt/printf.hpp" /* see https://github.com/afborchert/fmt */
 #include "chase-pointers.hpp"
 #include "uniform-int-distribution.hpp"
 
@@ -72,8 +72,8 @@ unsigned int log2(std::size_t val) {
 #ifndef MIN_SIZE
 #define MIN_SIZE 1024
 #endif
-#ifndef MAX_SIZE
-#define MAX_SIZE 1024 * 1024 * 128
+#ifndef RANDOM_CHASE_MAX_SIZE
+#define RANDOM_CHASE_MAX_SIZE 1024 * 1024 * 64
 #endif
 #ifndef GRANULARITY
 #define GRANULARITY (1u)
@@ -81,7 +81,7 @@ unsigned int log2(std::size_t val) {
 
 int main() {
    fmt::printf("   memsize  time in ns\n");
-   for (std::size_t memsize = MIN_SIZE; memsize <= MAX_SIZE;
+   for (std::size_t memsize = MIN_SIZE; memsize <= RANDOM_CHASE_MAX_SIZE;
 	 memsize += (std::size_t{1} <<
 	    (std::max(GRANULARITY, log2(memsize))-GRANULARITY))) {
       void** memory = create_random_chain(memsize);

@@ -40,7 +40,7 @@
 
    Preprocessor knobs (same as random-chase):
      MIN_SIZE    – smallest buffer in bytes  (default: 1024)
-     MAX_SIZE    – largest  buffer in bytes  (default: 128 MiB)
+     FUSED_RANDOM_CHASE_MAX_SIZE    – largest  buffer in bytes  (default: 128 MiB)
      GRANULARITY – controls intermediate sizes between powers of two
                    (default: 1; for n>0 gives 2^(n-1) extra sizes per octave)
 */
@@ -48,7 +48,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
-#include <printf.hpp>          /* https://github.com/afborchert/fmt */
+#include "fmt/printf.hpp" /* https://github.com/afborchert/fmt */
 #include "walltime.hpp"
 #include "uniform-int-distribution.hpp"
 
@@ -119,8 +119,8 @@ static unsigned int log2(std::size_t val) {
 #ifndef MIN_SIZE
 #  define MIN_SIZE 1024
 #endif
-#ifndef MAX_SIZE
-#  define MAX_SIZE (1024u * 1024u * 128u)
+#ifndef FUSED_RANDOM_CHASE_MAX_SIZE
+#  define FUSED_RANDOM_CHASE_MAX_SIZE (1024u * 1024u * 16u)
 #endif
 #ifndef GRANULARITY
 #  define GRANULARITY (1u)
@@ -138,7 +138,7 @@ int main() {
    for (int i = 1; i <= 8; ++i) fmt::printf("%12d", i);
    fmt::printf("\n   memsize\n");
 
-   for (std::size_t memsize = MIN_SIZE; memsize <= MAX_SIZE;
+   for (std::size_t memsize = MIN_SIZE; memsize <= FUSED_RANDOM_CHASE_MAX_SIZE;
         memsize += (std::size_t{1} <<
            (std::max(GRANULARITY, log2(memsize)) - GRANULARITY))) {
 

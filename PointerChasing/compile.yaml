@@ -1,0 +1,45 @@
+sequential: true
+
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+
+variables:
+  compiler: ['gcc']
+  compiler_opt: ['-O3']
+  compiler_extra_flags_name: ['none']
+  ncpus: [1]
+
+  linear_chase_max_stride:        [1500]
+  fused_linear_chase_max_stride:  [128]
+
+  random_chase_max_size:          [67108864] # 1024 * 1024 * 64 --> 64MB
+  fused_random_chase_max_size:    [16777216] # 1024 * 1024 * 16 --> 16MB
+
+
+preprocess: 'mkdir -p bin; cd pointer-chasing && make clean'
+postprocess: 'mv bin/* ../bin'
+
+jobs:
+  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+    config_jobs:
+
+      # linear-chase
+      - tag: "compile_linear-chase_gcc_-O3_none_{linear_chase_max_stride}"
+        command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="-DLINEAR_CHASE_MAX_STRIDE={linear_chase_max_stride}" bin/linear-chase'
+        check: '[[ -f ../bin/linear-chase ]]'
+
+      # fused-linear-chase
+      - tag: "compile_fused-linear-chase_gcc_-O3_none_{fused_linear_chase_max_stride}"
+        command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="-DFUSED_LINEAR_CHASE_MAX_STRIDE={fused_linear_chase_max_stride}" bin/fused-linear-chase'
+        check: '[[ -f ../bin/fused-linear-chase ]]'
+
+      # random-chase
+      - tag: "compile_random-chase_gcc_-O3_none_{random_chase_max_size}"
+        command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="-DRANDOM_CHASE_MAX_SIZE={random_chase_max_size}" bin/random-chase'
+        check: '[[ -f ../bin/random-chase ]]'
+
+      # fused-random-chase
+      - tag: "compile_fused-random-chase_gcc_-O3_none_{fused_random_chase_max_size}"
+        command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="-DFUSED_RANDOM_CHASE_MAX_SIZE={fused_random_chase_max_size}" bin/fused-random-chase'
+        check: '[[ -f ../bin/fused-random-chase ]]'

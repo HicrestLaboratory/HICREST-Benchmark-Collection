@@ -46,7 +46,7 @@ compiler_common: ['-fopenmp -ffast-math']
 
 compiler_opt: 
   - '-O0'
-  # - '-O3'
+  - '-O3'
   # - '-Ofast'
   # - '-Osize'
 
