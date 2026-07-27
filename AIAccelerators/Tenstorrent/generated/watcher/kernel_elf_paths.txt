@@ -1,9 +1,0 @@
-0: blank
-3: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_dispatch_subordinate/5566235951908281310//ncrisc/ncrisc.elf
-2: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_dispatch/7569889482669251595//brisc/brisc.elf
-1: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_prefetch/11335267578667543055//brisc/brisc.elf
-4: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_dispatch_subordinate_compute/15027020289101300306//trisc0/trisc0.elf:/home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_dispatch_subordinate_compute/15027020289101300306//trisc1/trisc1.elf:/home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_dispatch_subordinate_compute/15027020289101300306//trisc2/trisc2.elf
-6: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_realtime_profiler_push/15171965979505494304//ncrisc/ncrisc.elf
-5: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_realtime_profiler/16072810570076002999//brisc/brisc.elf
-7: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/writer_uniform/1963756185646472589//brisc/brisc.elf
-8: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/compute_uniform/16849670939355667107//trisc0/trisc0.elf:/home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/compute_uniform/16849670939355667107//trisc1/trisc1.elf:/home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/compute_uniform/16849670939355667107//trisc2/trisc2.elf

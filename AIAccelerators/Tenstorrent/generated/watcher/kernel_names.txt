@@ -1,9 +1,0 @@
-0: blank
-1: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
-2: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
-3: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
-4: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate_compute.cpp
-5: tt_metal/impl/dispatch/kernels/cq_realtime_profiler.cpp
-6: tt_metal/impl/dispatch/kernels/cq_realtime_profiler_push.cpp
-7: ttnn/cpp/ttnn/operations/uniform/device/kernels/writer_uniform.cpp
-8: ttnn/cpp/ttnn/operations/uniform/device/kernels/compute_uniform.cpp

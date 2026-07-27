@@ -29,3 +29,5 @@ DLNetBench/experiments*/
 DLNetBench/topos*/
 DLNetBench/**.json
 DLNetBench/**.dot
+
+/AIAccelerators/Tenstorrent/generated/
