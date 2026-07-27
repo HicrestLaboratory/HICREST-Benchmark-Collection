@@ -1,0 +1,12 @@
+path: ./graphs
+
+large_diameter:
+  suite_sparse_matrix_list:
+    - GAP/GAP-road
+    - DIMACS10/europe_osm
+    - DIMACS10/rgg_n_2_22_s0
+    # - DIMACS10/asia_osm
+    # - Janna/Hook_1498
+    # - Janna/Geo_1438
+    # - Janna/PFlow_742
+    

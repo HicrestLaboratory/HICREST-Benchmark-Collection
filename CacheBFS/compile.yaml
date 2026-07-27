@@ -1,0 +1,31 @@
+sequential: true
+
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "vars.yaml"
+
+
+jobs:
+  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____1"
+    config_jobs:
+      - tag: "compile_MergedCSR-BFS_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{ncpus}"
+        preprocess: |
+          cd MergedCSR_{implementation}/pthreads
+          mkdir -p ../bin
+          make clean
+        command: "CHUNK_SIZE={chunksize} MAX_THREADS={ncpus} make bin/bfs"
+        postprocess: 'mv bin/bfs ../bin/bfs_chunksize{chunksize}_{ncpus}cpus && {compiler_disass[compiler]} ../bin/bfs_chunksize{chunksize}_{ncpus}cpus > "$SBATCHMAN_JOB_DIR/bfs_chunksize{chunksize}_{ncpus}cpus".asm'
+        check: '[[ -f "../bin/bfs_chunksize{chunksize}_{ncpus}cpus" ]]'
+
+      # OpenMP target (single, built with CMake)
+      - tag: "compile_MergedCSR-BFS_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}"
+        variables:
+          implementation: ['openmp']
+        preprocess: |
+          cd MergedCSR_{implementation}
+          mkdir -p bin
+          rm -rf build
+        command: 'cmake -DCMAKE_C_COMPILER=${CC} -DCMAKE_CXX_COMPILER=${CXX} -B build && make -C build BFS'
+        postprocess: 'mv build/BFS bin/bfs_{implementation} && {compiler_disass[compiler]} bin/bfs_{implementation} > "$SBATCHMAN_JOB_DIR/bfs_{implementation}".asm'
+        check: '[[ -f "bin/bfs_{implementation}" ]]'

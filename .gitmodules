@@ -27,3 +27,19 @@
 [submodule "AI-accelerators-benchmark"]
 	path = AIAccelerators/AI-accelerators-benchmark
 	url = git@github.com:JacopoRaffi/AI-accelerators-benchmark.git
+[submodule "CacheBFS/MergedCSR_mutex"]
+	path = CacheBFS/MergedCSR_mutex
+	url = https://github.com/Sasso0101/thesis.git
+	branch = main
+[submodule "CacheBFS/MergedCSR_atomic"]
+	path = CacheBFS/MergedCSR_atomic
+	url = https://github.com/Sasso0101/thesis.git
+	branch = atomic
+[submodule "CacheBFS/MergedCSR_cnalock"]
+	path = CacheBFS/MergedCSR_cnalock
+	url = https://github.com/Sasso0101/thesis.git
+	branch = cnalock
+[submodule "CacheBFS/MergedCSR_openmp"]
+	path = CacheBFS/MergedCSR_openmp
+	url = https://github.com/Sasso0101/thesis.git
+	branch = openmp

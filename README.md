@@ -13,7 +13,11 @@ This repository gathers and uniforms the usage of benchmarks from different doma
 - [HICREST AXCCL](./AXCCL/) (submodule)
 - [HICREST DLNetBench](./DLNetBench/) (submodule)
 
-<!-- ### Shared Memory -->
+### Shared Memory
+
+- [STREAM](./STREAM) (included in this repo)
+- [Pointer Chasing](./PointerChasing/) (included in this repo)
+- [Cache-optimized BFS](./CacheBFS/) (multi-branch submodule)
 
 ## Structure
 
@@ -22,10 +26,10 @@ Each benchmark has its dedicated sub-directory. Benchmarks may have different ve
 Each benchmark directory contains the following files:
 
 - `compile.sh`
-- `configs.yaml`
+- `configs.yaml` or delegated to files in `common/sbm_configs/`
+- `compile.[yaml|sh]`
 - `jobs.yaml`
-- `parse_results.py`
-- `plots.py`
+- `parser.py` or `parse_results.py` + `plots.py`
 - `README.md`
 
 ## Usage
@@ -56,12 +60,15 @@ sbatchman launch -f jobs.yaml
 squeue --me # If using SLURM or PBS
 sbatchman status
 
-# Once all jobs have run
-python parse_results.py
+# Once all jobs have run..
 
+# If you have a `parser.py`
+sbatchman visualize
+
+# Else
+python parse_results.py
 # After gathering all results files
 python plots.py <results_file_1> <results_file_2> ...
-
 # Checkout the results in the `plot` directory
 ```
 
@@ -113,3 +120,6 @@ When you create a new `parse_results.py` script, please check out utilities in [
 ### Plots with Python
 
 When you create a new `plots.py` script, please check out utilities in [`common/constants`](common/constants) and [`common/utils`](common/utils).
+
+> [!NOTE]  
+> For parsing and plots we suggest using SbatchMan's WebUI: `parser.py` + `visualize` command.

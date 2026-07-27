@@ -82,11 +82,10 @@ bsc-hca-pioneer:
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
-        - 'export LANG=en_US.UTF-8'
-        - 'export LC_ALL=en_US.UTF-8'
         - "source /etc/profile.d/modules.sh"
       modules:
         - "{compiler_module[compiler]}"
+        - "cmake/3.28.1"
 
 
 # Sophgo SG2044 @ MCv3
