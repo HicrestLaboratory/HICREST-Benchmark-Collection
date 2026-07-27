@@ -1,0 +1,11 @@
+disi-frankenstein:
+  scheduler: local
+
+  default_conf:
+    env:
+      - "TT_METAL_HOME=$TT_METAL_HOME"
+      - "TT_METAL_RUNTIME_ROOT=$TT_METAL_RUNTIME_ROOT"
+
+  configs:
+    - name: "tenstorrent_local"
+

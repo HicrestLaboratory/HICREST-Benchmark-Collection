@@ -1,0 +1,34 @@
+variables:
+  experiment_id: ["nonlinearity_sweep_01"]
+  operation: ["relu", "gelu", "softmax"]
+  size: [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768]
+  dtype: [bfp8, bf16, fp32]
+  layout: ["tile"]
+  memory_layout: ["interleaved"]
+  shard_grid_x: [8]
+  shard_grid_y: [9]
+  softmax_dim: [-1]
+  warmup: [5]
+  runs: [10]
+
+sequential: true
+
+jobs:
+  - config: "tenstorrent_local"
+    config_jobs:
+      - tag: "tt_{experiment_id}_{operation}_{dtype}_s{size}"
+        command: >
+          ../AI-accelerators-benchmark/tenstorrent/scripts/launch_benchmark.sh
+          nonlinearity
+          --result-id tt_{experiment_id}_{operation}_{dtype}_s{size}
+          --
+          {size} {size}
+          --op {operation}
+          --softmax-dim {softmax_dim}
+          --dtype {dtype}
+          --layout {layout}
+          --memory-layout {memory_layout}
+          --shard-grid-x {shard_grid_x}
+          --shard-grid-y {shard_grid_y}
+          --warmup={warmup}
+          --run={runs}

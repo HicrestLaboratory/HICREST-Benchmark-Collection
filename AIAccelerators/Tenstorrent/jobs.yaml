@@ -1,0 +1,48 @@
+include_variables:
+  - "vars.yaml"
+
+# A Tenstorrent device must not be shared by concurrent benchmark processes.
+# Keep this enabled unless the scheduler assigns a distinct device to each job.
+sequential: true
+
+jobs:
+  - config: "tenstorrent_local"
+    config_jobs:
+      - tag: "tt_{experiment_id}_{gemm_operation}_{dtype}_{math_fidelity}_s{gemm_size}_g{compute_grid_x}x{compute_grid_y}"
+        command: >
+          ../AI-accelerators-benchmark/tenstorrent/scripts/launch_benchmark.sh
+          gemm
+          --result-id tt_{experiment_id}_{gemm_operation}_{dtype}_{math_fidelity}_s{gemm_size}_g{compute_grid_x}x{compute_grid_y}
+          --
+          {gemm_size} {gemm_size} {gemm_size}
+          --op {gemm_operation}
+          --dtype {dtype}
+          --math-fidelity {math_fidelity}
+          --layout {layout}
+          --memory-layout {memory_layout}
+          --compute-grid-x {compute_grid_x}
+          --compute-grid-y {compute_grid_y}
+          --shard-grid-x {shard_grid_x}
+          --shard-grid-y {shard_grid_y}
+          --warmup {warmup}
+          --run {runs}
+
+  - config: "tenstorrent_local"
+    config_jobs:
+      - tag: "tt_{experiment_id}_{nonlinearity_operation}_{dtype}_{tensor_height}x{tensor_width}"
+        command: >
+          ../AI-accelerators-benchmark/tenstorrent/scripts/launch_benchmark.sh
+          nonlinearity
+          --result-id tt_{experiment_id}_{nonlinearity_operation}_{dtype}_{tensor_height}x{tensor_width}
+          --
+          {tensor_height} {tensor_width}
+          --op {nonlinearity_operation}
+          --softmax-dim {softmax_dim}
+          --dtype {dtype}
+          --layout {layout}
+          --memory-layout {memory_layout}
+          --shard-grid-x {shard_grid_x}
+          --shard-grid-y {shard_grid_y}
+          --warmup {warmup}
+          --run {runs}
+

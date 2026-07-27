@@ -24,3 +24,6 @@
 [submodule "llama.cpp"]
 	path = MLInference/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp
+[submodule "AI-accelerators-benchmark"]
+	path = AIAccelerators/AI-accelerators-benchmark
+	url = git@github.com:JacopoRaffi/AI-accelerators-benchmark.git

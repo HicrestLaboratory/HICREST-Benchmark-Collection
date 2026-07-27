@@ -1,0 +1,38 @@
+variables:
+  experiment_id: [gemm_single_core_sweep_01]
+  operation: [matmul]
+  size: [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+  dtype: [bfp8, bf16, fp32]
+  math_fidelity:  [lofi, hifi2, hifi4]
+  layout: [tile]
+  memory_layout: [interleaved]
+  compute_grid_x: [1]
+  compute_grid_y: [1]
+  shard_grid_x: [1]
+  shard_grid_y: [1]
+  warmup: [5]
+  runs: [10]
+
+sequential: true
+
+jobs:
+  - config: "tenstorrent_local"
+    config_jobs:
+      - tag: "tt_{experiment_id}_{operation}_{dtype}_{math_fidelity}_s{size}_g1x1"
+        command: >
+          ../AI-accelerators-benchmark/tenstorrent/scripts/launch_benchmark.sh
+          gemm
+          --result-id tt_{experiment_id}_{operation}_{dtype}_{math_fidelity}_s{size}_g1x1
+          --
+          {size} {size} {size}
+          --op {operation}
+          --dtype {dtype}
+          --math-fidelity {math_fidelity}
+          --layout {layout}
+          --memory-layout {memory_layout}
+          --compute-grid-x {compute_grid_x}
+          --compute-grid-y {compute_grid_y}
+          --shard-grid-x {shard_grid_x}
+          --shard-grid-y {shard_grid_y}
+          --warmup={warmup}
+          --run={runs}

@@ -1,0 +1,109 @@
+- program_created:
+    id: 0
+    timestamp_ns: 1785151529858087567
+- program_compile_started:
+    id: 0
+    timestamp_ns: 1785151529858527292
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1785151529860186688
+    duration_ns: 1659396
+    watcher_kernel_id: 3
+    name: cq_dispatch_subordinate
+    path: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_dispatch_subordinate/5566235951908281310/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1785151529861594461
+    duration_ns: 3067169
+    watcher_kernel_id: 2
+    name: cq_dispatch
+    path: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_dispatch/7569889482669251595/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1785151529862861488
+    duration_ns: 4334196
+    watcher_kernel_id: 1
+    name: cq_prefetch
+    path: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_prefetch/11335267578667543055/
+    source: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
+- program_kernel_compile_finished:
+    id: 0
+    timestamp_ns: 1785151529864156873
+    duration_ns: 5629581
+    watcher_kernel_id: 4
+    name: cq_dispatch_subordinate_compute
+    path: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_dispatch_subordinate_compute/15027020289101300306/
+    source: tt_metal/impl/dispatch/kernels/cq_dispatch_subordinate_compute.cpp
+- program_compile_finished:
+    id: 0
+    timestamp_ns: 1785151529864234249
+    duration_ns: 5706957
+- program_created:
+    id: 1
+    timestamp_ns: 1785151529878573504
+- program_compile_started:
+    id: 1
+    timestamp_ns: 1785151529878649712
+- program_kernel_compile_finished:
+    id: 1
+    timestamp_ns: 1785151529879789207
+    duration_ns: 1139495
+    watcher_kernel_id: 6
+    name: cq_realtime_profiler_push
+    path: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_realtime_profiler_push/15171965979505494304/
+    source: tt_metal/impl/dispatch/kernels/cq_realtime_profiler_push.cpp
+- program_kernel_compile_finished:
+    id: 1
+    timestamp_ns: 1785151529880638334
+    duration_ns: 1988622
+    watcher_kernel_id: 5
+    name: cq_realtime_profiler
+    path: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/cq_realtime_profiler/16072810570076002999/
+    source: tt_metal/impl/dispatch/kernels/cq_realtime_profiler.cpp
+- program_compile_finished:
+    id: 1
+    timestamp_ns: 1785151529880701711
+    duration_ns: 2051999
+- program_created:
+    id: 2
+    timestamp_ns: 1785151530477004742
+- program_created:
+    id: 3
+    timestamp_ns: 1785151530477479739
+- program_destroyed:
+    id: 3
+    timestamp_ns: 1785151530477500209
+- program_compile_started:
+    id: 2
+    timestamp_ns: 1785151530477629426
+- program_kernel_compile_finished:
+    id: 2
+    timestamp_ns: 1785151530490187338
+    duration_ns: 12557912
+    watcher_kernel_id: 7
+    name: writer_uniform
+    path: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/writer_uniform/1963756185646472589/
+    source: ttnn/cpp/ttnn/operations/uniform/device/kernels/writer_uniform.cpp
+- program_kernel_compile_finished:
+    id: 2
+    timestamp_ns: 1785151530499345653
+    duration_ns: 21716227
+    watcher_kernel_id: 8
+    name: compute_uniform
+    path: /home/jennylynn.almerol/.cache/tt-metal-cache/14623297219604673696/kernels/compute_uniform/16849670939355667107/
+    source: ttnn/cpp/ttnn/operations/uniform/device/kernels/compute_uniform.cpp
+- program_compile_finished:
+    id: 2
+    timestamp_ns: 1785151530499403655
+    duration_ns: 21774229
+- program_destroyed:
+    id: 1
+    timestamp_ns: 1785151531940099843
+- program_destroyed:
+    id: 0
+    timestamp_ns: 1785151532151153844
+- program_destroyed:
+    id: 2
+    timestamp_ns: 1785151532151262179

@@ -1,0 +1,41 @@
+experiment_id:
+  - "gemm_single_core_sweep_01"
+
+operation:
+  - "matmul"
+
+size:
+  - 256
+  - 512
+  - 1024
+  - 2048
+
+dtype:
+  - "bf16"
+
+math_fidelity:
+  - "hifi4"
+
+layout:
+  - "tile"
+
+memory_layout:
+  - "interleaved"
+
+compute_grid_x:
+  - 1
+
+compute_grid_y:
+  - 1
+
+shard_grid_x:
+  - 1
+
+shard_grid_y:
+  - 1
+
+warmup:
+  - 5
+
+runs:
+  - 10

@@ -1,0 +1,27 @@
+- mesh_workload_created:
+    mesh_workload_id: 0
+    timestamp_ns: 1785151530476808382
+- mesh_workload_add_program:
+    mesh_workload_id: 0
+    program_id: 2
+    timestamp_ns: 1785151530477458715
+    coordinates:
+      - [0, 0]
+- mesh_workload_set_program_binary_status:
+    mesh_workload_id: 0
+    mesh_id: 1
+    status: InFlight
+    timestamp_ns: 1785151530500333676
+- mesh_workload_set_program_binary_status:
+    mesh_workload_id: 0
+    mesh_id: 1
+    status: Committed
+    timestamp_ns: 1785151530500766011
+- mesh_workload_set_program_binary_status:
+    mesh_workload_id: 0
+    mesh_id: 1
+    status: Committed
+    timestamp_ns: 1785151530501532521
+- mesh_workload_destroyed:
+    mesh_workload_id: 0
+    timestamp_ns: 1785151532151254031
