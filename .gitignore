@@ -30,4 +30,4 @@ DLNetBench/topos*/
 DLNetBench/**.json
 DLNetBench/**.dot
 
-/AIAccelerators/Tenstorrent/generated/
+AIAccelerators/Tenstorrent/generated/
