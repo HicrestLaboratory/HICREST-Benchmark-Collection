@@ -18,9 +18,6 @@
 [submodule "RAJAPerf"]
 	path = RAJAPerf/RAJAPerf
 	url = https://github.com/llnl/RAJAPerf
-[submodule "NPB"]
-	path = NPB/NPB
-	url = git@github.com:llnl/NPB.git
 [submodule "llama.cpp"]
 	path = MLInference/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp
@@ -43,3 +40,6 @@
 	path = CacheBFS/MergedCSR_openmp
 	url = https://github.com/Sasso0101/thesis.git
 	branch = openmp
+[submodule "NPB"]
+	path = NPB/NPB-CPP
+	url = https://github.com/dalvangriebler/NPB-CPP.git
