@@ -5,7 +5,7 @@ import sbatchman as sbm
 from typing import Optional, Dict
 
 sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from ncm_parser import parse_ncm_energy_log
+from ncm_parser import parse_ncm_tot_energy_print #, parse_ncm_energy_log
 
 def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
     """
@@ -57,13 +57,17 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
     if m:
         data["total_memory_required_mib"] = float(m.group(1))
         
-    data['energy'] = 'no_energy'
+    tot_energy = parse_ncm_tot_energy_print(stdout)
+    if tot_energy:
+        data['tot_energy_J'] = tot_energy
+        
+    data['detailed_energy'] = 'no'
     res = { 'stream': data }
 
     # If available, include energy measurements
-    energy_log: Path = job.get_job_base_path() / 'energy.log'
-    if energy_log.exists():
-        res[f'energy_{job.tag}'] = parse_ncm_energy_log(energy_log)
-        res['stream']['energy'] = 'with_energy'
+    # energy_log: Path = job.get_job_base_path() / 'energy.log'
+    # if energy_log.exists():
+    #     res[f'energy_{job.tag}'] = parse_ncm_energy_log(energy_log)
+    #     res['stream']['energy'] = 'with_energy'
 
     return res

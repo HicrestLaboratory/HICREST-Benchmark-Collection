@@ -1,0 +1,56 @@
+{
+  "version": 3,
+  "tabs": [
+    {
+      "version": 3,
+      "label": "Performance",
+      "mode": "single",
+      "database": "data",
+      "sql": "SELECT *\nFROM npb\nORDER BY benchmark, class, compiler, compiler_extra_flags_name, compiler_opt, ncpus",
+      "plotType": "line",
+      "chartTitle": "NPB - Performance",
+      "x": "ncpus",
+      "y": [
+        "mops"
+      ],
+      "group": [
+        "benchmark",
+        "class",
+        "compiler",
+        "compiler_extra_flags_name",
+        "compiler_opt",
+        "cluster"
+      ],
+      "markerBy": "compiler",
+      "dashBy": "compiler_extra_flags_name",
+      "xLabel": "# of CPUs",
+      "yLabel": "Mop/s",
+      "yScale": "log"
+    },
+    {
+      "version": 3,
+      "label": "Energy",
+      "mode": "single",
+      "database": "data",
+      "sql": "SELECT *\nFROM npb\nORDER BY benchmark, class, compiler, compiler_extra_flags_name, compiler_opt, ncpus",
+      "plotType": "line",
+      "chartTitle": "NPB - Energy",
+      "x": "ncpus",
+      "y": [
+        "tot_energy_J"
+      ],
+      "group": [
+        "benchmark",
+        "class",
+        "compiler",
+        "compiler_extra_flags_name",
+        "compiler_opt",
+        "cluster"
+      ],
+      "markerBy": "compiler",
+      "dashBy": "compiler_extra_flags_name",
+      "xLabel": "# of CPUs",
+      "yLabel": "Tot Energy Consumed (J)"
+    }
+  ]
+}

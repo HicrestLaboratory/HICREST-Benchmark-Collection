@@ -1,0 +1,4 @@
+bin/
+NPB-OMP/bin
+NPB-OMP/**/*.x
+NPB-OMP/**/*.o

@@ -1,0 +1,10 @@
+benchmark:
+  - "CG"
+  - "EP"
+  - "FT"
+  - "IS"
+  - "MG"
+
+class:
+  map:
+    default: ['A']

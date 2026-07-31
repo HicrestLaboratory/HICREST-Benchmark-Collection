@@ -1,32 +1,16 @@
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "vars.yaml"
+
 variables:
-  system: ['leonardo-dcgp'] # pioneer
-
-  grace_ncpus: [1, 2, 4, 8, 16, 32, 64, 72]
-  pioneer_ncpus: [1, 2, 4, 8, 16, 32, 64]
-  bananaf3_ncpus: [1, 2, 4, 8]
-  arriesgado_ncpus: [1, 2, 4]
-
-  npb_exec:
-    - "ft.C.x"
-    - "cg.C.x"
-    - "ep.C.x"
-    - "mg.C.x"
-    - "bt.C.x"
-    - "lu.C.x"
-    - "sp.C.x"
-    - "is.C.x"
-    
-command: "./NPB/NPB3.4/NPB3.4-OMP/bin/{npb_exec}"
+  compiler: ['clang_epi_rvv1']
+  compiler_opt: ['-O3']
 
 jobs:
-  - config: "{system}_{pioneer_ncpus}cpus"
+  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
-      - tag: "{npb_exec}_{pioneer_ncpus}cpus"
-
-  # - config: "arriesgado_{arriesgado_ncpus}cpus"
-  #   config_jobs:
-  #     - tag: "{npb_exec}_{arriesgado_ncpus}cpus"
-
-  # - config: "bananaf3_{bananaf3_ncpus}cpus"
-  #   config_jobs:
-  #     - tag: "{npb_exec}_{bananaf3_ncpus}cpus"
+      - tag: "NPB-OMP_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{benchmark}_{class[benchmark]}"
+        preprocess: "{energy_measure_start}"
+        command: "bin/{benchmark}_{class[benchmark]}_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}.x"
+        postprocess: "{energy_measure_stop}"
