@@ -12,7 +12,7 @@ include_variables: "shared_memory_vars.yaml"
 
 
 # Local testing
-local:
+debug:
   scheduler: local
 
   default_conf:
@@ -25,7 +25,7 @@ local:
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
-        - 'CFLAGS="{compiler_opt} {compiler_common} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - 'CFLAGS="{compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
 
 
@@ -49,12 +49,13 @@ dalek-mono-bpi-f3:
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
-        - 'CFLAGS="{compiler_opt} {compiler_common} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - 'CFLAGS="{compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
+        - "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{ld_library_path_append[compiler]}"
       
 
 # Milk-V Pioneer @ BSC HCA
@@ -77,7 +78,7 @@ bsc-hca-pioneer:
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
-        - 'CFLAGS="{compiler_opt} {compiler_common} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - 'CFLAGS="{compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
@@ -107,11 +108,12 @@ mcv3-SG2044:
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
-        - 'CFLAGS="{compiler_opt} {compiler_common} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - 'CFLAGS="{compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
+        - "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{ld_library_path_append[compiler]}"
       modules:
         - "{compiler_module[compiler]}"
 
