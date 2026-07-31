@@ -9,8 +9,8 @@ ncpus:
     e4:                 [1, 2, 4, 8, 16, 32, 56, 64, 72, 112, 128]
     bsc-hca-pioneer:    [1, 2, 4, 8, 16, 32, 56, 64]
     bsc-hca-bananaf3:   [1, 2, 4, 8]
-    bsc-hca-arriesgado: [1, 2, 4]
     dalek-mono-bpi-f3:  [1, 2, 4, 8]
+    dalek-mono-sip-k3:  [1, 2, 4, 8]
     debug:              [1, 2, 4]
 
 
@@ -23,7 +23,8 @@ compiler:
   per_cluster:
     bsc-hca-pioneer:    ["gcc", "clang_epi_rvv071"]
     bsc-hca-bananaf3:   ["gcc", "clang_epi_rvv1"]
-    dalek-mono-bpi-f3:  ["gcc", "clang", "clang_epi_rvv1"]
+    dalek-mono-bpi-f3:  ["clang_epi_rvv1"] # "gcc", "clang", 
+    dalek-mono-sip-k3:  ["clang_epi_rvv1"]
 
 compiler_c:
   map:
@@ -56,16 +57,17 @@ compiler_common:
     clang_epi_rvv1: ['-I$HOME/software_env/llvm-EPI-rvv1/include -fopenmp -ffast-math'] # These are in LD_LIBRARY_PATH from config -L$HOME/software_env/llvm-EPI-rvv1/lib
     clang_epi_rvv071: ['-I$HOME/software_env/llvm-EPI-rvv071/include -fopenmp -ffast-math'] # -L$HOME/software_env/llvm-EPI-rvv071/lib
  
-compiler_opt: 
-  - '-O0'
-  - '-O3'
-  # - '-Ofast'
-  # - '-Osize'
+compiler_opt:
+  map:
+    default: ['-O0', '-O3']
+    # - '-Ofast'
+    # - '-Osize'
 
 compiler_march:
   default: ['-march=native -mtune=native']
   per_cluster:
     dalek-mono-bpi-f3:  ['-march=rv64gc']
+    dalek-mono-sip-k3:  ['-march=rv64gc']
     bsc-hca-bananaf3:   ['-march=rv64gc']
     bsc-hca-pioneer:    ['-march=rv64gc']
 
@@ -124,9 +126,11 @@ energy_measure_start:
   per_cluster:
     default: ['']
     dalek-mono-bpi-f3: ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log"']
+    dalek-mono-sip-k3: ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log"']
 
 energy_measure_stop:
   per_cluster:
     default: ['']
     dalek-mono-bpi-f3: ['python3 ../common/energy/ncm.py stop --print-tot-energy']
+    dalek-mono-sip-k3: ['python3 ../common/energy/ncm.py stop --print-tot-energy']
  

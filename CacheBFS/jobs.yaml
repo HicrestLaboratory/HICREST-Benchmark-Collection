@@ -9,12 +9,12 @@ variables:
 
 
 jobs:
-  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
-      - tag: "MergedCSR-BFS_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{graph_filename}"
+      - tag: "MergedCSR-BFS_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{graph_filename}"
         command: "./MergedCSR_{implementation}/bin/bfs_chunksize{chunksize}_{ncpus}cpus -f {graph} -n {nruns}"
 
-      - tag: "MergedCSR-BFS_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{graph_filename}"
+      - tag: "MergedCSR-BFS_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{graph_filename}"
         variables:
           implementation: ['openmp']
         command: "./MergedCSR_{implementation}/bin/bfs_{implementation}"

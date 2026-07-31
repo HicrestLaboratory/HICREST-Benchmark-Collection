@@ -5,9 +5,6 @@ include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
   - "vars.yaml"
 
-variables:
-  compiler: ['clang_epi_rvv1']
-  compiler_opt: ['-O3']
 
 preprocess: |
   mkdir -p bin
@@ -29,8 +26,8 @@ preprocess: |
   CLINK = {compiler_cxx[compiler]}
 
   # Compiler and linker flags
-  CFLAGS = {compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}
-  CLINKFLAGS = {compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}
+  CFLAGS = {compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}
+  CLINKFLAGS = {compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}
 
   # Include and library paths
   C_INC  =
@@ -70,7 +67,7 @@ preprocess: |
   make clean
   mkdir -p bin
   NPB_BENCH={benchmark}
-  BIN_NAME="{benchmark}_{class[benchmark]}_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}.x"
+  BIN_NAME="{benchmark}_{class[benchmark]}_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}.x"
   
   
 command: 'make {benchmark} CLASS={class[benchmark]}'
@@ -79,6 +76,6 @@ check: '[[ -f "../bin/$BIN_NAME" ]]'
 
 
 jobs:
-  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____1"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____1"
     config_jobs:
-      - tag: "compile_NPB-OMP_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{benchmark}_{class[benchmark]}"
+      - tag: "compile_NPB-OMP_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{benchmark}_{class[benchmark]}"

@@ -17,6 +17,6 @@ variables:
 command: "./bin/{program}"
 
 jobs:
-  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
       - tag: "{program}"

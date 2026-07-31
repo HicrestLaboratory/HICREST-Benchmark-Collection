@@ -3,14 +3,11 @@ include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
   - "vars.yaml"
 
-variables:
-  compiler: ['clang_epi_rvv1']
-  compiler_opt: ['-O3']
 
 jobs:
-  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
-      - tag: "NPB-OMP_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{benchmark}_{class[benchmark]}"
+      - tag: "NPB-OMP_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{benchmark}_{class[benchmark]}"
         preprocess: "{energy_measure_start}"
-        command: "bin/{benchmark}_{class[benchmark]}_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}.x"
+        command: "bin/{benchmark}_{class[benchmark]}_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}.x"
         postprocess: "{energy_measure_stop}"

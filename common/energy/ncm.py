@@ -79,21 +79,26 @@ from pathlib import Path
 
 DEFAULT_PIDFILE = "/tmp/ncm_monitor.pid"
 DEFAULT_COMMAND = ""
-DEFAULT_COMMAND_DETAILED = "/opt/software/ncm-1.1.2/bin/ncm-control -t 0"
+
+# By default just call "ncm-control" and rely on $PATH. If NCM_PATH is set,
+# use it as the absolute path to the binary instead.
+NCM_BIN = os.environ.get("NCM_PATH") or "ncm-control"
+
+DEFAULT_COMMAND_DETAILED = f"{NCM_BIN} -t 0"
 DEFAULT_PRE = [
-    "/opt/software/ncm-1.1.2/bin/ncm-control -P 1",
-    "/opt/software/ncm-1.1.2/bin/ncm-control -P 2",
-    "/opt/software/ncm-1.1.2/bin/ncm-control -M 1",
-    "/opt/software/ncm-1.1.2/bin/ncm-control -M 2",
+    f"{NCM_BIN} -P 1",
+    f"{NCM_BIN} -P 2",
+    f"{NCM_BIN} -M 1",
+    f"{NCM_BIN} -M 2",
 ]
 DEFAULT_POST = [
-    "/opt/software/ncm-1.1.2/bin/ncm-control -m 1",
-    "/opt/software/ncm-1.1.2/bin/ncm-control -m 2",
-    "/opt/software/ncm-1.1.2/bin/ncm-control -p 1",
-    "/opt/software/ncm-1.1.2/bin/ncm-control -p 2",
+    f"{NCM_BIN} -m 1",
+    f"{NCM_BIN} -m 2",
+    f"{NCM_BIN} -p 1",
+    f"{NCM_BIN} -p 2",
 ]
 JUMP_THRESHOLD = 100  # a skip of more than this many timestamps counts as "the jump"
-DEFAULT_STABLE_TIMEOUT = 5.0
+DEFAULT_STABLE_TIMEOUT = 1.0
 
 
 def default_core() -> int:
@@ -175,7 +180,6 @@ def terminate_process_group(pid: int, timeout: float) -> bool:
     except ProcessLookupError:
         return True
 
-    # SIGINT does not work
     print(f"Sending SIGINT to process group {pgid} (pid {pid})...")
     os.killpg(pgid, signal.SIGINT)
 

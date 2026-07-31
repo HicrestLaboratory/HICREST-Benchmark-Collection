@@ -21,11 +21,11 @@ debug:
       - "OMP_PLACES=cores"
 
   configs:
-    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
-        - 'CFLAGS="{compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
 
 
@@ -45,18 +45,49 @@ dalek-mono-bpi-f3:
       - "ncm/1.1.2"
 
   configs:
-    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
-        - 'CFLAGS="{compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
         - "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{ld_library_path_append[compiler]}"
+        - "export NCM_PATH=/opt/software/ncm-1.1.2/bin/ncm-control"
       
+
+# SpacemiT K3 Pico ITX @ Dalek
+dalek-mono-sip-k3: 
+  scheduler: slurm
+
+  default_conf:
+    exclusive: true
+    partition: "mono"
+    nodelist: "mono-sip-k3"
+    time: "03:00:00"
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+    modules:
+      - "ncm/1.2.0"
+
+  configs:
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+      env:
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - "CLINK="
+        - "OMP_NUM_THREADS={ncpus}"
+      custom_headers:
+        - "#SBATCH --cpus-per-task={ncpus}"
+        - "source /etc/profile.d/modules.sh"
+        - "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{ld_library_path_append[compiler]}"
+        - "export NCM_PATH=/opt/software/ncm-1.2.0/bin/ncm-control"
+
 
 # Milk-V Pioneer @ BSC HCA
 bsc-hca-pioneer: 
@@ -74,11 +105,11 @@ bsc-hca-pioneer:
       - "OMP_PLACES=cores"
 
   configs:
-    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
-        - 'CFLAGS="{compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
@@ -104,11 +135,11 @@ mcv3-SG2044:
       - "OMP_PLACES=cores"
 
   configs:
-    - name: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
-        - 'CFLAGS="{compiler_opt} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:

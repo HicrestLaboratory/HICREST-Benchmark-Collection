@@ -21,7 +21,7 @@ preprocess: 'mkdir -p bin; cd pointer-chasing && make clean'
 postprocess: 'mv bin/* ../bin'
 
 jobs:
-  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
 
       # linear-chase

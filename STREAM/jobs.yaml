@@ -5,9 +5,9 @@ include_variables:
 
 
 jobs:
-  - config: "{compiler}__{compiler_opt}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
-      - tag: "stream_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_C{ncpus}_R{runs}_O{offset}"
+      - tag: "stream_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_C{ncpus}_R{runs}_O{offset}"
         preprocess: "{energy_measure_start}"
-        command: "./bin/stream_{compiler}_{compiler_opt}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
+        command: "./bin/stream_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
         postprocess: "{energy_measure_stop}"
