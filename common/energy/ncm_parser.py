@@ -42,3 +42,10 @@ def parse_ncm_energy_log(filename: Path):
             })
 
     return samples
+
+def parse_ncm_tot_energy_print(stdout: str):
+    # Example target line: "STABLE ENERGY MEASUREMENT: 11469 0.0 0xff 35.3dC 12.128V 0.1989A 47.316J"
+    for line in stdout.splitlines():
+        if line.startswith('STABLE ENERGY MEASUREMENT'):
+            return float(line.split(': ')[1].split(' ')[-1][:-1])
+    return None
