@@ -1,8 +1,6 @@
 implementation:
   - 'mutex'
-  # - 'atomic'
-  # - 'cnalock' # NUMA-aware lock
+  - 'atomic'
+  - 'cnalock' # NUMA-aware lock
 
 chunksize: [64]
-
-compiler_opt: ['-O3']

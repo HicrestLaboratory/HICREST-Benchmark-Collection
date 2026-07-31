@@ -7,6 +7,10 @@ for impl in openmp mutex atomic cnalock; do
     cd ..
 done
 
+cd MergedCSR_mutex
+rm -rf gapbs
+git clone https://github.com/sasso0101/gapbs.git
+
 # cd MergedCSR_openmp
 # git submodule update --init --recursive
 

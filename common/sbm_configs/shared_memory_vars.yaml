@@ -54,8 +54,8 @@ ld_library_path_append:
 compiler_common:
   map:
     default: ['-fopenmp -ffast-math']
-    clang_epi_rvv1: ['-I$HOME/software_env/llvm-EPI-rvv1/include -fopenmp -ffast-math'] # These are in LD_LIBRARY_PATH from config -L$HOME/software_env/llvm-EPI-rvv1/lib
-    clang_epi_rvv071: ['-I$HOME/software_env/llvm-EPI-rvv071/include -fopenmp -ffast-math'] # -L$HOME/software_env/llvm-EPI-rvv071/lib
+    clang_epi_rvv1: ['-L$HOME/software_env/llvm-EPI-rvv1/lib -I$HOME/software_env/llvm-EPI-rvv1/include -fopenmp -ffast-math'] # These are in LD_LIBRARY_PATH from config 
+    clang_epi_rvv071: ['-L$HOME/software_env/llvm-EPI-rvv071/lib -I$HOME/software_env/llvm-EPI-rvv071/include -fopenmp -ffast-math'] # -L$HOME/software_env/llvm-EPI-rvv071/lib
  
 compiler_opt:
   map:
@@ -83,7 +83,7 @@ compiler_extra_flags:
     autovec:
       # TODO figure out the -mcpu=pioneer arg
       per_cluster:
-        default: ['-mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize']
+        default: ['-mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize -lprovector-vecclonevp-atrevido_vec']
     novec:
       per_cluster:
         default: ['-fno-vectorize -fno-slp-vectorize -mllvm -combiner-store-merging=0 -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize']
