@@ -1,0 +1,18 @@
+lock:
+  - MCS
+  - SpinLock
+  - HemLock
+  - PthreadLock
+  - Reciprocating
+  - FissileTicket
+
+compiler_extra_flags_name:
+  map:
+    default: ['none']
+
+# FIXME set this as per_cluster (only gcc works)
+compiler: ['gcc']
+
+compiler_opt:
+  map:
+    default: ['-O3']

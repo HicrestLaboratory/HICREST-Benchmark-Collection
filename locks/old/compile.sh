@@ -9,8 +9,7 @@ outdir=$(hostname | tr '.-' '__')
 
 mkdir -p "${rawhost}"
 
-cflag="-Wall -Wextra -Werror -Wno-implicit-fallthrough \
--std=gnu11 -O3 -DNDEBUG -fno-reorder-functions -DPIN"
+cflag="-DNDEBUG -DPIN -Wall -Wextra -Werror -Wno-implicit-fallthrough -std=gnu11 -O3-fno-reorder-functions"
 
 atomicinst=""
 
