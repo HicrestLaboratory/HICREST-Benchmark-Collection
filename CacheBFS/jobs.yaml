@@ -4,7 +4,7 @@ include_variables:
   - "vars.yaml"
 
 variables:
-  graph: "graphs/matrices_list.txt"
+  graph: "graphs/matrices_list_mtx.txt"
   nruns: [15]
 
   # TODO delete
@@ -24,12 +24,12 @@ jobs:
       - tag: "MergedCSR-BFS_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{graph_filename}_{ncpus}"
         variables:
           implementation: ['mutex', 'atomic', 'cnalock']
-        command: "bfs_{implementation}_chunksize{chunksize}_{ncpus}cpus_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]} -f {graph} -n {nruns}"
+        command: "bin/bfs_{implementation}_chunksize{chunksize}_{ncpus}cpus_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]} -f {graph} -n {nruns}"
 
-      # - tag: "MergedCSR-BFS_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{graph_filename}_{ncpus}"
-      #   variables:
-      #     implementation: ['openmp']
-      #   command: "./MergedCSR_{implementation}/bin/bfs_{implementation}"
+      - tag: "MergedCSR-BFS_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{graph_filename}_{ncpus}"
+        variables:
+          implementation: ['openmp']
+        command: "bin/bfs_{implementation}_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}  -f {graph} -n {nruns}"
       
       - tag: "MergedCSR-BFS_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{implementation}_{chunksize}_{graph_filename}_{ncpus}"
         variables:
