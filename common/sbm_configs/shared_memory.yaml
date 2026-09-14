@@ -27,6 +27,7 @@ debug:
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "CLINK="
+        - "OMP_NUM_THREADS={ncpus}"
 
 
 # BananaPiF3 @ Dalek
