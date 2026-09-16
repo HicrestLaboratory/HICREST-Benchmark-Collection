@@ -26,7 +26,7 @@ ggml-bench/
 If your clone lives somewhere else, either move it, or symlink it:
 
 ```bash
-ln -s /path/to/your/llama.cpp /path/to/ggml-bench/llama.cpp
+ln -s /path/to/your/llama.cpp /path/to/MLOps/llama.cpp
 ```
 
 (Or edit the single `add_subdirectory(...)` path near the top of
@@ -35,10 +35,9 @@ ln -s /path/to/your/llama.cpp /path/to/ggml-bench/llama.cpp
 ## Build
 
 ```bash
-cd ggml-bench
+cd MLOps
 mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..     # add -DGGML_NATIVE=OFF if building
-                                         # for a different CPU than you run on
+cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build . -j
 ```
 
@@ -53,16 +52,16 @@ Every flag is `--name value`, all have defaults, order doesn't matter.
 
 ```bash
 # GEMM: C[M,N] = B[M,K] x A[K,N]   (A = "weight", quantizable; B = f32 activations)
-./gemm --m 32 --k 4096 --n 4096 --dtype bf16 --threads 0 --iters 20 --warmup 5
+./build/gemm --m 32 --k 4096 --n 4096 --dtype bf16 --threads 0 --iters 20 --warmup 5
 
 # GEMV: y[N] = W[K,N]^T x[K]       (batch-1 GEMM, the decode-time op)
-./gemv --k 4096 --n 4096 --dtype q8_0 --threads 0 --iters 50 --warmup 10
+./build/gemv --k 4096 --n 4096 --dtype q8_0 --threads 0 --iters 50 --warmup 10
 
 # GELU: elementwise, rows x cols
-./gelu --rows 1 --cols 14336 --dtype f32 --threads 0 --iters 50 --warmup 10
+./build/gelu --rows 1 --cols 14336 --dtype f32 --threads 0 --iters 50 --warmup 10
 
 # Softmax: per-row, rows x cols
-./softmax --rows 32 --cols 4096 --threads 0 --iters 50 --warmup 10
+./build/softmax --rows 32 --cols 4096 --threads 0 --iters 50 --warmup 10
 ```
 
 `--threads 0` (the default) uses all detected cores. Output is CSV, one row

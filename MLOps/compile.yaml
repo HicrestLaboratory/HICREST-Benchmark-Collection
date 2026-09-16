@@ -1,0 +1,18 @@
+sequential: true
+
+configs: "../common/sbm_configs/shared_memory.yaml"
+# include_variables:
+#   - "../common/sbm_configs/shared_memory_vars.yaml"
+
+preprocess: |
+  mkdir -p bin
+  
+command: ''
+postprocess: ''
+check: ''
+
+
+jobs:
+  - config: ""
+    config_jobs:
+      - tag: ""

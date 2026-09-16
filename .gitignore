@@ -31,3 +31,5 @@ DLNetBench/**.json
 DLNetBench/**.dot
 
 AIAccelerators/Tenstorrent/generated/
+MLOps/results/*
+MLInference/results/*

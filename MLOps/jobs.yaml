@@ -1,0 +1,19 @@
+sequential: true
+
+configs: "../common/sbm_configs/shared_memory.yaml"
+# include_variables:
+#   - "../common/sbm_configs/shared_memory_vars.yaml"
+
+variables:
+  iters: [10]
+  warmup: [5]
+  dtypes: ['f32', 'bf16', 'q8_0']
+  var_M: [4096]
+  var_N: [4096]
+  var_K: [4096]
+
+jobs:
+  - config: ""
+    config_jobs:
+      - tag: ""
+        command: ""
