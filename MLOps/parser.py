@@ -12,7 +12,7 @@ def job_to_json(stdout: str, metadata: dict, cluster_name: str, indent: int = 4)
     # Clean output and filter out empty lines
     lines = [line.strip() for line in stdout.strip().splitlines() if line.strip()]
     if not lines:
-        return json.dumps([], indent=indent)
+        raise ValueError("No valid lines found in stdout.")
 
     reader = csv.DictReader(lines)
     data = []
