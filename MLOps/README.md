@@ -65,13 +65,26 @@ Every flag is `--name value`, all have defaults, order doesn't matter.
 ./softmax --rows 32 --cols 4096 --threads 0 --iters 50 --warmup 10
 ```
 
-`--threads 0` (the default) uses all detected cores. Each run prints one
-line with min/mean/median/max latency plus a throughput figure
-(GFLOP/s for gemm/gemv, GB/s for gelu/softmax — pipe the output through
-`grep`/`awk` or redirect to a file to collect a sweep):
+`--threads 0` (the default) uses all detected cores. Output is CSV, one row
+per **timed iteration** (warmup rows are not included) — every sample is
+kept, not just a mean:
 
 ```
-op=gemm  shape=M=32,K=4096,N=4096  dtype=bf16  threads=8  min_ms=1.2044  mean_ms=1.2532  median_ms=1.2301  max_ms=1.3877  GFLOPS=..
+op,M,K,N,dtype,threads,iter,ms,gflops
+gemm,32,4096,4096,bf16,8,0,1.2044,27.85
+gemm,32,4096,4096,bf16,8,1,1.1998,27.96
+...
+```
+
+`gemv` uses `K,N`; `gelu`/`softmax` use `rows,cols`, with a `gbps` column
+instead of `gflops`. Redirect a single run to a file, or build up a sweep
+across multiple dtypes/shapes with `--no-header` on every call after the
+first:
+
+```bash
+./gemm --k 4096 --n 4096 --dtype f32  --iters 20            > sweep.csv
+./gemm --k 4096 --n 4096 --dtype bf16 --iters 20 --no-header >> sweep.csv
+./gemm --k 4096 --n 4096 --dtype q8_0 --iters 20 --no-header >> sweep.csv
 ```
 
 ## Datatype support — why it isn't uniform across the four ops
