@@ -47,7 +47,7 @@ from utils.slurm import expand_slurm_nodelist
 from JobPlacer.cli_wrapper import JobPlacer
 import shutil
 
-SYSTEMS = ["jupiter", "leonardo", "nvl72", "alps", "dgxA100", "lumi"] # , "intel"]
+SYSTEMS = ["lumi"] # , "intel"]
 SBM_SYSTEM_NAME_MAP = {"dgxA100": "baldo", "intel": "enea"}
 
 SBM_SYSTEM_ARCHIVES = {

@@ -222,12 +222,12 @@ def ensure_placement(x: Union[str, Placement]) -> Placement:
 # FOR PLOTS
 
 SYSTEM_ORDER = [
-    "dgxA100",
-    "nvl72",
-    # "intel",
-    "leonardo",
-    "alps_clariden",
-    "jupiter",
+    # "dgxA100",
+    # "nvl72",
+    # # "intel",
+    # "leonardo",
+    # "alps",
+    # "jupiter",
     "lumi",
 ]
 
@@ -590,7 +590,7 @@ class ConcurrentRun:
     def is_in_reservation(self) -> bool:
         # FIXME this is specific for what we have
         # TODO make sure is correct
-        by_system = self.system in ['leonardo', 'jupiter', 'intel', 'dgxA100', 'nvl72']
+        by_system = self.system in ['leonardo', 'jupiter', 'intel', 'dgxA100', 'nvl72', 'lumi']
         less_than_three_groups = None
         if self.allocation_stats:
             less_than_three_groups = len(self.allocation_stats.distinct_groups) < 3
