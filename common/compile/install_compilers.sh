@@ -17,7 +17,9 @@
 # final prefix.  IMPORTANT: conda environments must not be created in /tmp
 # and then moved, because absolute prefixes may be embedded in packages.
 #
-# Clang uses official LLVM release archives.
+# Clang is installed from conda-forge, which provides native packages for
+# x86_64, aarch64, and riscv64.  This is important because upstream LLVM
+# release archives do not publish a native Linux RISC-V64 binary.
 #
 # Usage:
 #   ./install_compilers.sh --gcc 15.2.0
@@ -45,7 +47,7 @@ DEFAULT_GCC_VERSION="${DEFAULT_GCC_VERSION:-15.2.0}"
 DEFAULT_CLANG_VERSION="${DEFAULT_CLANG_VERSION:-23.1.1}"
 
 GCC_CHANNEL="${GCC_CHANNEL:-conda-forge}"
-LLVM_PROVIDER="${LLVM_PROVIDER:-llvm}"
+CLANG_CHANNEL="${CLANG_CHANNEL:-conda-forge}"
 
 TARGETS=(x86_64 aarch64 riscv64)
 
@@ -349,60 +351,33 @@ find_top_directory() {
 }
 
 # -----------------------------------------------------------------------------
-# LLVM / Clang
+# LLVM / Clang via conda-forge / micromamba
 # -----------------------------------------------------------------------------
 
-llvm_release_json() {
-    local version="$1"
-
-    curl \
-        --fail \
-        --location \
-        --silent \
-        --show-error \
-        --retry 5 \
-        --retry-delay 2 \
-        "https://api.github.com/repos/llvm/llvm-project/releases/tags/llvmorg-${version}"
-}
-
-find_llvm_asset() {
-    local version="$1"
-    local target="$2"
-    local base_url
-    local archive
-
-    case "${target}" in
-        x86_64)
-            archive="LLVM-${version}-Linux-X64.tar.xz"
-            ;;
-        aarch64)
-            archive="LLVM-${version}-Linux-ARM64.tar.xz"
-            ;;
-        riscv64)
-            die "LLVM ${version}: no official native Linux RISC-V64 binary is published."
-            ;;
-        *)
-            die "Unsupported LLVM target: ${target}"
-            ;;
+clang_conda_subdir() {
+    case "$1" in
+        x86_64)  printf '%s\n' linux-64 ;;
+        aarch64) printf '%s\n' linux-aarch64 ;;
+        riscv64) printf '%s\n' linux-riscv64 ;;
+        *) die "Unsupported Clang target: $1" ;;
     esac
-
-    base_url="https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}"
-
-    printf '%s/%s\n' "${base_url}" "${archive}"
 }
 
 install_clang_target() {
     local version="$1"
     local target="$2"
     local destination="${CLANG_DIR}/${target}/${version}"
-    local url
-    local archive
-    local temporary
-    local top
+    local mamba
+    local subdir
+    local mamba_root
 
     if [[ -x "${destination}/bin/clang" ]]; then
         info "Clang ${version} / ${target} is already installed."
         verify_native_binary "${destination}/bin/clang" "${target}"
+
+        [[ -x "${destination}/bin/clang++" ]] ||
+            die "Existing Clang installation has no clang++: ${destination}"
+        verify_native_binary "${destination}/bin/clang++" "${target}"
         return
     fi
 
@@ -411,29 +386,37 @@ install_clang_target() {
 
     info "Preparing native Clang ${version} for ${target}"
 
-    url="$(find_llvm_asset "${version}" "${target}")"
-    archive="${DOWNLOAD_DIR}/$(basename "${url}")"
+    mamba="$(find_mamba)"
+    subdir="$(clang_conda_subdir "${target}")"
+    mamba_root="${DOWNLOAD_DIR}/micromamba-root"
 
-    download "${url}" "${archive}"
+    mkdir -p -- "${CLANG_DIR}/${target}" "${mamba_root}"
 
-    temporary="$(mktemp -d)"
-    TMP_DIRS+=("${temporary}")
+    step "Architecture: ${target}"
+    step "Conda subdir: ${subdir}"
+    step "Version:      ${version}"
+    step "Channel:      ${CLANG_CHANNEL}"
 
-    info "Extracting LLVM archive..."
-    extract "${archive}" "${temporary}"
-
-    top="$(find_top_directory "${temporary}")"
-
-    mkdir -p -- "${CLANG_DIR}/${target}"
-    mv -- "${temporary}/${top}" "${destination}"
+    # Install directly into the final prefix.  Conda packages may contain
+    # absolute prefix references, so do not create the environment elsewhere
+    # and move it afterwards.
+    #
+    # clang provides the compiler implementation and clangxx provides the
+    # C++ driver/package.  --platform selects the *native* target package
+    # even when this installer is being run from a different login-node ISA.
+    "${mamba}" create \
+        --yes \
+        --no-rc \
+        --override-channels \
+        --root-prefix "${mamba_root}" \
+        --platform "${subdir}" \
+        --channel "${CLANG_CHANNEL}" \
+        --prefix "${destination}" \
+        "clang=${version}" \
+        "clangxx=${version}"
 
     verify_native_binary "${destination}/bin/clang" "${target}"
-
-    # Verify the C++ driver too when present. LLVM release archives normally
-    # contain clang++ next to clang.
-    if [[ -e "${destination}/bin/clang++" ]]; then
-        verify_native_binary "${destination}/bin/clang++" "${target}"
-    fi
+    verify_native_binary "${destination}/bin/clang++" "${target}"
 
     info "Native Clang installed."
     step "${destination}"
@@ -622,8 +605,7 @@ Usage:
 
 Options:
   --gcc VERSION       Install native GCC for all targets.
-  --clang VERSION     Install native Clang for all targets where an official
-                      native LLVM release archive exists.
+  --clang VERSION     Install native Clang for all targets from conda-forge.
   --all               Install the default GCC and Clang versions.
   --base DIRECTORY    Change the installation root.
   --help              Show this help.
@@ -631,6 +613,7 @@ Options:
 Environment:
   MAMBA_EXE           Path to micromamba, if it is not in PATH.
   GCC_CHANNEL         Conda channel for GCC (default: conda-forge).
+  CLANG_CHANNEL       Conda channel for Clang (default: conda-forge).
   INSTALL_BASE        Installation root (default: \$HOME/software_env).
 
 Bootstrap:

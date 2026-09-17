@@ -18,6 +18,7 @@ ncpus:
 # Compiler definitions #
 ########################
 
+# Abstract compiler name
 compiler:
   default:              ["gcc", "clang"]
   per_cluster:
@@ -26,19 +27,37 @@ compiler:
     dalek-mono-bpi-f3:  ["clang_epi_rvv1"] # "gcc", "clang", 
     dalek-mono-sip-k3:  ["clang_epi_rvv1"]
 
+# Actual C compiler paths mappings
 compiler_c:
   map:
-    gcc:              ['gcc']
-    clang:            ['clang']
-    clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI-rvv1/bin/clang']
-    clang_epi_rvv071: ['$HOME/software_env/llvm-EPI-rvv071/bin/clang']
+    gcc:
+      default: ['$HOME/software_env/gcc/riscv64/16.1.0/bin/gcc']
+      per_cluster:
+        other: ['othergcc']
 
+    clang:
+      default: ['$HOME/software_env/clang/riscv64/23.1.0/bin/clang']
+      per_cluster:
+        other: ['othergcc']
+
+    clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/bin/clang']
+    clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/bin/clang']
+
+# Actual C++ compiler paths mappings
 compiler_cxx:
   map:
-    gcc:              ['g++']
-    clang:            ['clang++']
-    clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI-rvv1/bin/clang++']
-    clang_epi_rvv071: ['$HOME/software_env/llvm-EPI-rvv071/bin/clang++']
+    gcc:
+      default: ['$HOME/software_env/gcc/riscv64/16.1.0/bin/g++']
+      per_cluster:
+        other: ['othergcc']
+
+    clang:
+      default: ['$HOME/software_env/clang/riscv64/23.1.0/bin/clang++']
+      per_cluster:
+        other: ['othergcc']
+        
+    clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/bin/clang++']
+    clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/bin/clang++']
 
 
 ######################
@@ -48,14 +67,14 @@ compiler_cxx:
 ld_library_path_append:
   map:
     default: ['']
-    clang_epi_rvv1: ['$HOME/software_env/llvm-EPI-rvv1/lib']
-    clang_epi_rvv071: ['$HOME/software_env/llvm-EPI-rvv071/lib']
+    clang_epi_rvv1: ['$HOME/software_env/llvm-EPI/riscv64/rvv1/lib']
+    clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/lib']
 
 compiler_common:
   map:
     default: ['-fopenmp -ffast-math']
-    clang_epi_rvv1: ['-L$HOME/software_env/llvm-EPI-rvv1/lib -I$HOME/software_env/llvm-EPI-rvv1/include -fopenmp -ffast-math'] # These are in LD_LIBRARY_PATH from config
-    clang_epi_rvv071: ['-L$HOME/software_env/llvm-EPI-rvv071/lib -I$HOME/software_env/llvm-EPI-rvv071/include -fopenmp -ffast-math'] # -L$HOME/software_env/llvm-EPI-rvv071/lib
+    clang_epi_rvv1: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -fopenmp -ffast-math'] # These are in LD_LIBRARY_PATH from config
+    clang_epi_rvv071: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -fopenmp -ffast-math'] # -L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib
  
 compiler_opt:
   map:
