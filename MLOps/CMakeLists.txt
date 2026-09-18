@@ -12,6 +12,22 @@ endif()
 # Because this is add_subdirectory'd from an outer project, GGML_STANDALONE
 # is OFF inside ggml/CMakeLists.txt, so ggml's own tests/examples are not
 # built as a side effect.
+set(BACKEND "cpu" CACHE STRING "Compute backend: cpu | blas | blis")
+set_property(CACHE BACKEND PROPERTY STRINGS cpu blas blis)
+
+if(BACKEND STREQUAL "blas")
+    set(GGML_BLAS ON CACHE BOOL "")
+    set(GGML_BLAS_VENDOR "Generic" CACHE STRING "")
+elseif(BACKEND STREQUAL "blis")
+    set(GGML_BLAS ON CACHE BOOL "")
+    set(GGML_BLAS_VENDOR "FLAME" CACHE STRING "")
+elseif(NOT BACKEND STREQUAL "cpu")
+    message(FATAL_ERROR "Unknown BACKEND '${BACKEND}' (expected cpu, blas, or blis)")
+endif()
+
+message(STATUS "ggml-bench backend: ${BACKEND}  (GGML_BLAS=${GGML_BLAS}, GGML_BLAS_VENDOR=${GGML_BLAS_VENDOR})")
+
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/ggml ${CMAKE_CURRENT_BINARY_DIR}/ggml)
 
 function(add_bench name)
