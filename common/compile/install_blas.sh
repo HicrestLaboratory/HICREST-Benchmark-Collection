@@ -10,15 +10,15 @@ if [ "$ARCH" == "sg2044" ]; then
     OPENBLAS_TARGET="RISCV64_ZVL128B"
     BLIS_TARGET="rv64iv"
 
-    CC="${HOME}/software_env/llvm-EPI-rvv1/bin/clang"
-    CXX="${HOME}/software_env/llvm-EPI-rvv1/bin/clang++"
-    EPI_INC="${HOME}/software_env/llvm-EPI-rvv1/include"
-    EPI_LIB="${HOME}/software_env/llvm-EPI-rvv1/lib"
-    GCC_LIB="/usr/lib/gcc/riscv64-openEuler-linux/12"
+    CC="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang"
+    CXX="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang++"
+    EPI_INC="${HOME}/software_env/llvm-EPI/riscv64/rvv1/include"
+    EPI_LIB="${HOME}/software_env/llvm-EPI/riscv64/rvv1/lib"
+    GCC_LIB="/usr/lib/gcc/riscv64-linux-gnu/13/"
 
 elif [ "$ARCH" == "sg2042" ]; then
-    CC="${HOME}/software_env/llvm-EPI-rvv071/bin/clang"
-    CXX="${HOME}/software_env/llvm-EPI-rvv071/bin/clang++"
+    CC="${HOME}/software_env/llvm-EPI/riscv64/rvv071/bin/clang"
+    CXX="${HOME}/software_env/llvm-EPI/riscv64/rvv071/bin/clang++"
 else
     echo "Unknown architecture: $ARCH"
     exit 1
