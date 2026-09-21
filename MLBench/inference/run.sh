@@ -3,7 +3,7 @@
 # run.sh — run llama-bench
 #
 # Usage:
-#   ./run.sh -- -m model.gguf -p 512 -n 128 -t 4,8 -r 10
+#   ./run.sh -- -m model.gguf -p 512 -n 128 -t 4,8 -r 10 -o json
 
 set -euo pipefail
 cd "$(dirname "$0")"
