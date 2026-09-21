@@ -40,9 +40,6 @@
 [submodule "NPB"]
 	path = NPB/NPB-CPP
 	url = https://github.com/dalvangriebler/NPB-CPP.git
-[submodule "MLBench/MLBench/llamacpp"]
-	path = MLBench/MLBench/llamacpp
-	url = git@github.com:ggml-org/llama.cpp.git
 [submodule "MLBench/llamacpp"]
 	path = MLBench/llamacpp
 	url = git@github.com:ggml-org/llama.cpp.git
