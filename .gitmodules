@@ -40,6 +40,6 @@
 [submodule "NPB"]
 	path = NPB/NPB-CPP
 	url = https://github.com/dalvangriebler/NPB-CPP.git
-[submodule "MLOps/llama.cpp"]
-	path = MLOps/llama.cpp
-	url = https://github.com/ggml-org/llama.cpp
+[submodule "MLBench/llama.cpp"]
+	path = MLBench/llama.cpp
+	url = git@github.com:ggml-org/llama.cpp.git

@@ -39,8 +39,8 @@ int main(int argc, char ** argv) {
     const int n_warmup    = (int) args.get_int("warmup", 5);
     const unsigned seed   = (unsigned) args.get_int("seed", 42);
 
-    const enum ggml_type wtype = bench::parse_type(dt); // weight dtype
-    const enum ggml_type atype = bench::parse_type(dt); //GGML_TYPE_F32;          // activation dtype
+    const enum ggml_type wtype = bench::parse_type(dt);             // weight dtype
+    const enum ggml_type atype = bench::parse_type(dt);             // activation dtype
 
     if (K % ggml_blck_size(wtype) != 0) {
         fprintf(stderr, "error: k=%lld must be a multiple of the block size (%lld) for dtype %s\n",
