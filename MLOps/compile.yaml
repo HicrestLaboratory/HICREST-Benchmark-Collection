@@ -1,16 +1,10 @@
 sequential: true
 
 configs: "../common/sbm_configs/shared_memory.yaml"
-# include_variables:
-#   - "../common/sbm_configs/shared_memory_vars.yaml"
-
-preprocess: |
-  mkdir -p bin
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
   
-command: ''
-postprocess: ''
-check: ''
-
+command: './compile.sh'
 
 jobs:
   - config: ""
