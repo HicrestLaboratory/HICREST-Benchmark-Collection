@@ -36,7 +36,7 @@ int main(int argc, char ** argv) {
     const int n_iters   = (int) args.get_int("iters", 50);
     const int n_warmup  = (int) args.get_int("warmup", 10);
     const unsigned seed = (unsigned) args.get_int("seed", 42);
-    const std::string dt  = args.get_str("dtype", "bf16");
+    const std::string dt  = args.get_str("dtype", "f32");
 
     const enum ggml_type type = bench::parse_type(dt);
 

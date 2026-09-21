@@ -15,7 +15,7 @@
 //
 //   --rows     number of rows                                       default 1
 //   --cols     number of columns (elements per row)                default 14336
-//  --dtype    f32 | f16 | bf16 | q8_0 | q4_0 (weight dtype)      default bf16
+//  --dtype    f32 | f16
 //   --threads  0 = use all cores                                  default 0
 //   --iters    timed iterations                                    default 50
 //   --warmup   untimed warmup iterations                            default 10
