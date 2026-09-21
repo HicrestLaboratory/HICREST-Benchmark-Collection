@@ -17,6 +17,7 @@
 //   --rows     number of independent rows (softmax is per-row)   default 32
 //   --cols     row length (the softmax reduction dimension)      default 4096
 //   --threads  0 = use all cores                                  default 0
+//   --dtype    f32 | f16 | bf16 | q8_0 | q4_0 (weight dtype)      default bf16
 //   --iters    timed iterations                                    default 50
 //   --warmup   untimed warmup iterations                            default 10
 //   --seed     RNG seed                                             default 42
@@ -35,8 +36,9 @@ int main(int argc, char ** argv) {
     const int n_iters   = (int) args.get_int("iters", 50);
     const int n_warmup  = (int) args.get_int("warmup", 10);
     const unsigned seed = (unsigned) args.get_int("seed", 42);
+    const std::string dt  = args.get_str("dtype", "bf16");
 
-    const enum ggml_type type = GGML_TYPE_F32; // only supported dtype on CPU
+    const enum ggml_type type = bench::parse_type(dt);
 
     bench::Env env;
     env.init(/*n_tensors=*/2, n_threads);
