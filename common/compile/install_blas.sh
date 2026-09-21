@@ -30,16 +30,26 @@ elif [ "$ARCH" == "grace" ]; then
     OPENBLAS_MAKE_OPTS="USE_OPENMP=1 TARGET=$OPENBLAS_TARGET"
     BLIS_CONFIG_OPTS=""
 
+    #NVIDIA NVPL
+    wget https://developer.download.nvidia.com/compute/nvpl/26.5/local_installers/nvpl-linux-sbsa-26.5.tar.gz
+    mkdir -p "${HOME}/software_env/nvpl"
+    tar -xzf nvpl-linux-sbsa-26.5.tar.gz -C "${HOME}/software_env/nvpl" --strip-components=1
+
 elif [ "$ARCH" == "sapphirerapids" ]; then
     OPENBLAS_TARGET="SAPPHIRERAPIDS"
     BLIS_TARGET="auto"
 
     OPENBLAS_MAKE_OPTS="USE_OPENMP=1 TARGET=$OPENBLAS_TARGET"
     BLIS_CONFIG_OPTS=""
+
+    #Intel MKL
+    wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/33cb2a22-ddf1-4aa9-8d68-1f5a118acaf2/intel-oneapi-toolkit-2026.1.0.192_offline.sh
+    sh ./intel-oneapi-toolkit-2026.1.0.192_offline.sh -a --silent --eula accept --install-dir "${HOME}/software_env/intel-mkl" 
+
 else
     echo "No special vars for this architecture"
     BLIS_TARGET="auto"
-    
+
     OPENBLAS_MAKE_OPTS="USE_OPENMP=1"
     BLIS_CONFIG_OPTS=""
 fi
