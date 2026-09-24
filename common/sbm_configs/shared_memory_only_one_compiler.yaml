@@ -1,0 +1,12 @@
+compiler:
+  default:              ["gcc"]
+  per_cluster:
+    bsc-hca-pioneer:    ["clang_epi_rvv071"]
+    bsc-hca-bananaf3:   ["clang_epi_rvv1"]
+    dalek-mono-bpi-f3:  ["clang_epi_rvv1"]
+    dalek-mono-sip-k3:  ["clang_epi_rvv1"]
+    # They default to GCC
+    # dalek-mono-jts-onx: [""]
+    # dalek-mono-rpi-5b:  [""]
+    # dalek-mono-oh5:     [""]
+    # dalek-minix:        [""]

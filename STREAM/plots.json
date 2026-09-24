@@ -1,9 +1,10 @@
 {
-  "version": 2,
+  "version": 3,
   "tabs": [
     {
-      "version": 2,
+      "version": 3,
       "label": "Copy GCC",
+      "mode": "single",
       "database": "data",
       "sql": "SELECT *\nFROM stream\nWHERE compiler = \"gcc\"\nORDER BY data_type, ncpus",
       "plotType": "line",
@@ -12,58 +13,12 @@
       "y": [
         "copy_rate_mb_s"
       ],
-      "group": "energy",
-      "z": "",
-      "xLabel": "",
-      "yLabel": "",
-      "xScale": "linear",
-      "yScale": "linear",
-      "xTickFmt": "",
-      "yTickFmt": "",
-      "extra": {
-        "mode": "lines+markers"
-      },
-      "customScript": "",
-      "transformScript": "",
-      "layoutScript": "",
-      "columns": [
-        "array_mem_mb",
-        "compiler",
-        "compiler_extra_flags_name",
-        "compiler_opt",
-        "data_type",
-        "libs",
-        "ncpus",
-        "offset",
-        "runs",
-        "cluster",
-        "tot_runtime",
-        "copy_rate_mb_s",
-        "copy_avg_time_s",
-        "copy_min_time_s",
-        "copy_max_time_s",
-        "scale_rate_mb_s",
-        "scale_avg_time_s",
-        "scale_min_time_s",
-        "scale_max_time_s",
-        "add_rate_mb_s",
-        "add_avg_time_s",
-        "add_min_time_s",
-        "add_max_time_s",
-        "triad_rate_mb_s",
-        "triad_avg_time_s",
-        "triad_min_time_s",
-        "triad_max_time_s",
-        "bytes_per_element",
-        "array_size_elements",
-        "memory_per_array_mib",
-        "total_memory_required_mib",
-        "energy"
-      ]
+      "showLegend": true
     },
     {
-      "version": 2,
+      "version": 3,
       "label": "Copy CLANG",
+      "mode": "single",
       "database": "data",
       "sql": "SELECT *\nFROM stream\nWHERE compiler = \"clang\"\nORDER BY data_type, ncpus",
       "plotType": "line",
@@ -72,92 +27,58 @@
       "y": [
         "copy_rate_mb_s"
       ],
-      "group": "energy",
-      "z": "",
-      "xLabel": "",
-      "yLabel": "",
-      "xScale": "linear",
-      "yScale": "linear",
-      "xTickFmt": "",
-      "yTickFmt": "",
-      "extra": {
-        "mode": "lines+markers"
-      },
-      "customScript": "",
-      "transformScript": "",
-      "layoutScript": "",
-      "columns": [
-        "array_mem_mb",
-        "compiler",
-        "compiler_extra_flags_name",
-        "compiler_opt",
-        "data_type",
-        "libs",
-        "ncpus",
-        "offset",
-        "runs",
-        "cluster",
-        "tot_runtime",
-        "copy_rate_mb_s",
-        "copy_avg_time_s",
-        "copy_min_time_s",
-        "copy_max_time_s",
-        "scale_rate_mb_s",
-        "scale_avg_time_s",
-        "scale_min_time_s",
-        "scale_max_time_s",
-        "add_rate_mb_s",
-        "add_avg_time_s",
-        "add_min_time_s",
-        "add_max_time_s",
-        "triad_rate_mb_s",
-        "triad_avg_time_s",
-        "triad_min_time_s",
-        "triad_max_time_s",
-        "bytes_per_element",
-        "array_size_elements",
-        "memory_per_array_mib",
-        "total_memory_required_mib",
-        "energy"
-      ]
+      "showLegend": true
     },
     {
-      "version": 2,
-      "label": "Power Consumption",
-      "database": "data",
-      "sql": "SELECT *, voltage_V*current_A as watts\nFROM energy_stream_energy_clang__double_M512_C1_R15_O0",
-      "plotType": "line",
-      "chartTitle": "Power Consumption",
-      "x": "timestamp_ms",
-      "y": [
-        "watts"
-      ],
-      "group": "",
-      "z": "",
-      "xLabel": "",
-      "yLabel": "",
-      "xScale": "linear",
-      "yScale": "linear",
-      "xTickFmt": "",
-      "yTickFmt": "",
-      "extra": {
-        "mode": "lines+markers"
-      },
-      "customScript": "",
-      "transformScript": "",
-      "layoutScript": "",
-      "columns": [
-        "timestamp_ms",
-        "probe",
-        "probe_id",
-        "channel",
-        "flags",
-        "temperature_C",
-        "voltage_V",
-        "current_A",
-        "energy_J",
-        "watts"
-      ]
+      "version": 3,
+      "label": "AllKernels",
+      "mode": "grid",
+      "grid": {
+        "rows": 2,
+        "cols": 2,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM stream\nWHERE compiler = \"clang_epi_rvv1\"\nORDER BY data_type, ncpus",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "copy_rate_mb_s"
+            ],
+            "showLegend": true
+          },
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM stream\nWHERE compiler = \"clang_epi_rvv1\"\nORDER BY data_type, ncpus",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "scale_rate_mb_s"
+            ],
+            "showLegend": true
+          },
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM stream\nWHERE compiler = \"clang_epi_rvv1\"\nORDER BY data_type, ncpus",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "add_rate_mb_s"
+            ],
+            "showLegend": true
+          },
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM stream\nWHERE compiler = \"clang_epi_rvv1\"\nORDER BY data_type, ncpus",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "triad_avg_time_s"
+            ],
+            "showLegend": true
+          }
+        ]
+      }
     }
   ]
 }

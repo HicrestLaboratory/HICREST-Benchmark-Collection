@@ -77,7 +77,7 @@ import sys
 import time
 from pathlib import Path
 
-DEFAULT_PIDFILE = "/tmp/ncm_monitor.pid"
+DEFAULT_PIDFILE = os.environ.get("NCM_PIDFILE") or "/tmp/ncm_monitor.pid"
 DEFAULT_COMMAND = ""
 
 # By default just call "ncm-control" and rely on $PATH. If NCM_PATH is set,
@@ -86,6 +86,13 @@ NCM_BIN = os.environ.get("NCM_PATH") or "ncm-control"
 
 DEFAULT_COMMAND_DETAILED = f"{NCM_BIN} -t 0"
 DEFAULT_PRE = [
+    # Make sure probes and measurements are off
+    f"{NCM_BIN} -m 1",
+    f"{NCM_BIN} -m 2",
+    f"{NCM_BIN} -p 1",
+    f"{NCM_BIN} -p 2",
+    "sleep 1",
+    # Turn probes and measurements back on
     f"{NCM_BIN} -P 1",
     f"{NCM_BIN} -P 2",
     f"{NCM_BIN} -M 1",
@@ -98,7 +105,7 @@ DEFAULT_POST = [
     f"{NCM_BIN} -p 2",
 ]
 JUMP_THRESHOLD = 100  # a skip of more than this many timestamps counts as "the jump"
-DEFAULT_STABLE_TIMEOUT = 2.0
+DEFAULT_STABLE_TIMEOUT = 4.0
 
 
 def default_core() -> int:
@@ -273,6 +280,7 @@ def _find_stable_sample(proc, stable_timeout: float):
 
     while time.time() < deadline:
         line = proc.stdout.readline()
+        # print(f'Line: {line}')
         if not line:
             if proc.poll() is not None:
                 break
@@ -288,9 +296,9 @@ def _find_stable_sample(proc, stable_timeout: float):
         except ValueError:
             continue
 
-        # print(f'Line: {tokens}')
+        # print(f'Tokens: {tokens}')
         if prev_ts is not None and (ts - prev_ts) > JUMP_THRESHOLD:
-            # print(f'JUMP!!')
+            # print('JUMP!!')
             return line
 
         prev_ts = ts
@@ -306,6 +314,7 @@ def cmd_stop(args):
 
     state = read_state(pidfile)
     mode = state.get("mode", "active")
+    # print(f'Stopping {state}')
 
     if mode == "passive":
         _stop_passive(args, pidfile, state)

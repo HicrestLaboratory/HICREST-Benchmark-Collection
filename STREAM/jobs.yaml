@@ -1,6 +1,7 @@
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
   - "vars.yaml"
 
 
@@ -8,6 +9,7 @@ jobs:
   - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
       - tag: "stream_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_C{ncpus}_R{runs}_O{offset}"
+        category: "stream"
         preprocess: "{energy_measure_start}"
         command: "./bin/stream_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
-        postprocess: "{energy_measure_stop}"
+        postprocess: '{energy_measure_stop}'
