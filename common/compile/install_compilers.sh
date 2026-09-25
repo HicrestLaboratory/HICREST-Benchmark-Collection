@@ -26,6 +26,12 @@
 #   ./install_compilers.sh --clang 23.1.1
 #   ./install_compilers.sh --all
 #
+# Restrict installation to specific ISAs:
+#   ./install_compilers.sh --gcc 15.2.0 --isa x86_64
+#   ./install_compilers.sh --gcc 15.2.0 --isa x86_64 --isa aarch64
+#   ./install_compilers.sh --clang 23.1.1 --isa riscv64
+#   ./install_compilers.sh --all --isa x86_64
+#
 # Optional:
 #   ./install_compilers.sh --base /shared/software_env --all
 #
@@ -39,7 +45,7 @@
 #   or system package manager is required.
 #
 #   A downloader is needed for the initial bootstrap: curl, wget, or python3.
-#
+
 set -Eeuo pipefail
 
 INSTALL_BASE="${INSTALL_BASE:-${HOME}/software_env}"
@@ -49,7 +55,12 @@ DEFAULT_CLANG_VERSION="${DEFAULT_CLANG_VERSION:-23.1.1}"
 GCC_CHANNEL="${GCC_CHANNEL:-conda-forge}"
 CLANG_CHANNEL="${CLANG_CHANNEL:-conda-forge}"
 
-TARGETS=(x86_64 aarch64 riscv64)
+# All supported native target ISAs.
+ALL_TARGETS=(x86_64 aarch64 riscv64)
+
+# Targets selected by the command line.
+# By default, all supported targets are selected.
+TARGETS=("${ALL_TARGETS[@]}")
 
 DOWNLOAD_DIR="${INSTALL_BASE}/downloads"
 GCC_DIR="${INSTALL_BASE}/gcc"
@@ -66,13 +77,16 @@ die()   { error "$*"; exit 1; }
 
 cleanup() {
     local d
+
     for d in "${TMP_DIRS[@]}"; do
         if [[ -n "${d}" && -d "${d}" ]]; then
             rm -rf -- "${d}"
         fi
     done
+
     return 0
 }
+
 trap cleanup EXIT
 
 require_command() {
@@ -82,11 +96,42 @@ require_command() {
 
 host_arch() {
     case "$(uname -m)" in
-        x86_64|amd64) printf '%s' x86_64 ;;
-        aarch64|arm64) printf '%s' aarch64 ;;
-        riscv64) printf '%s' riscv64 ;;
-        *) die "Unsupported host architecture: $(uname -m)" ;;
+        x86_64|amd64)
+            printf '%s' x86_64
+            ;;
+        aarch64|arm64)
+            printf '%s' aarch64
+            ;;
+        riscv64)
+            printf '%s' riscv64
+            ;;
+        *)
+            die "Unsupported host architecture: $(uname -m)"
+            ;;
     esac
+}
+
+validate_target() {
+    case "$1" in
+        x86_64|aarch64|riscv64)
+            ;;
+        *)
+            die "Unsupported target ISA: $1. Valid values: ${ALL_TARGETS[*]}"
+            ;;
+    esac
+}
+
+append_unique_target() {
+    local target="$1"
+    local existing
+
+    for existing in "${TARGETS[@]}"; do
+        if [[ "${existing}" == "${target}" ]]; then
+            return 0
+        fi
+    done
+
+    TARGETS+=("${target}")
 }
 
 download_bootstrap() {
@@ -106,6 +151,7 @@ import sys
 import urllib.request
 
 url, destination = sys.argv[1], sys.argv[2]
+
 with urllib.request.urlopen(url) as response, open(destination, "wb") as out:
     while True:
         chunk = response.read(1024 * 1024)
@@ -119,6 +165,7 @@ PY
 
     [[ -s "${destination}.partial" ]] ||
         die "Downloaded bootstrap archive is empty: ${url}"
+
     mv -- "${destination}.partial" "${destination}"
 }
 
@@ -130,11 +177,21 @@ extract_tar() {
 
     if command -v tar >/dev/null 2>&1; then
         case "${archive}" in
-            *.tar.bz2) tar -xjf "${archive}" -C "${directory}" ;;
-            *.tar.xz)  tar -xJf "${archive}" -C "${directory}" ;;
-            *.tar.gz|*.tgz) tar -xzf "${archive}" -C "${directory}" ;;
-            *.tar.zst) tar --zstd -xf "${archive}" -C "${directory}" ;;
-            *) die "Unsupported bootstrap archive format: ${archive}" ;;
+            *.tar.bz2)
+                tar -xjf "${archive}" -C "${directory}"
+                ;;
+            *.tar.xz)
+                tar -xJf "${archive}" -C "${directory}"
+                ;;
+            *.tar.gz|*.tgz)
+                tar -xzf "${archive}" -C "${directory}"
+                ;;
+            *.tar.zst)
+                tar --zstd -xf "${archive}" -C "${directory}"
+                ;;
+            *)
+                die "Unsupported bootstrap archive format: ${archive}"
+                ;;
         esac
     elif command -v python3 >/dev/null 2>&1; then
         python3 - "${archive}" "${directory}" <<'PY'
@@ -142,6 +199,7 @@ import sys
 import tarfile
 
 archive, directory = sys.argv[1], sys.argv[2]
+
 with tarfile.open(archive, "r:*") as tar:
     tar.extractall(directory, filter="data")
 PY
@@ -216,11 +274,13 @@ install_host_tools() {
           -x "${tools_root}/bin/head" &&
           -x "${tools_root}/bin/find" &&
           -x "${tools_root}/bin/mktemp" ]]; then
+
         export PATH="${tools_root}/bin:${PATH}"
         return
     fi
 
     info "Installing missing host-side utilities into ${tools_root}"
+
     "${mamba}" create \
         --yes \
         --no-rc \
@@ -258,10 +318,18 @@ check_requirements() {
 
 target_elf_regex() {
     case "$1" in
-        x86_64)  printf '%s\n' 'ELF 64-bit.*x86-64' ;;
-        aarch64) printf '%s\n' 'ELF 64-bit.*ARM aarch64' ;;
-        riscv64) printf '%s\n' 'ELF 64-bit.*RISC-V' ;;
-        *) die "Unsupported target ISA: $1" ;;
+        x86_64)
+            printf '%s\n' 'ELF 64-bit.*x86-64'
+            ;;
+        aarch64)
+            printf '%s\n' 'ELF 64-bit.*ARM aarch64'
+            ;;
+        riscv64)
+            printf '%s\n' 'ELF 64-bit.*RISC-V'
+            ;;
+        *)
+            die "Unsupported target ISA: $1"
+            ;;
     esac
 }
 
@@ -302,6 +370,7 @@ download() {
     fi
 
     rm -f -- "${partial}"
+
     step "URL: ${url}"
 
     curl \
@@ -313,7 +382,9 @@ download() {
         --output "${partial}" \
         "${url}"
 
-    [[ -s "${partial}" ]] || die "Downloaded archive is empty: ${url}"
+    [[ -s "${partial}" ]] ||
+        die "Downloaded archive is empty: ${url}"
+
     mv -- "${partial}" "${destination}"
 }
 
@@ -324,12 +395,18 @@ extract() {
     mkdir -p -- "${directory}"
 
     case "${archive}" in
-        *.tar.xz)  tar -xJf "${archive}" -C "${directory}" ;;
-        *.tar.gz|*.tgz) tar -xzf "${archive}" -C "${directory}" ;;
+        *.tar.xz)
+            tar -xJf "${archive}" -C "${directory}"
+            ;;
+        *.tar.gz|*.tgz)
+            tar -xzf "${archive}" -C "${directory}"
+            ;;
         *.tar.zst)
-            tar --zstd -xf "${archive}" -C "${directory}" ;;
+            tar --zstd -xf "${archive}" -C "${directory}"
+            ;;
         *)
-            die "Unsupported archive format: ${archive}" ;;
+            die "Unsupported archive format: ${archive}"
+            ;;
     esac
 }
 
@@ -339,14 +416,20 @@ find_top_directory() {
     local top
 
     mapfile -t _top_dirs < <(
-        find "${directory}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
+        find "${directory}" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            -type d \
+            -printf '%f\n'
     )
 
     count="${#_top_dirs[@]}"
+
     [[ "${count}" -eq 1 ]] ||
         die "Expected exactly one top-level directory in ${directory}, found ${count}."
 
     top="${_top_dirs[0]}"
+
     printf '%s\n' "${top}"
 }
 
@@ -356,10 +439,18 @@ find_top_directory() {
 
 clang_conda_subdir() {
     case "$1" in
-        x86_64)  printf '%s\n' linux-64 ;;
-        aarch64) printf '%s\n' linux-aarch64 ;;
-        riscv64) printf '%s\n' linux-riscv64 ;;
-        *) die "Unsupported Clang target: $1" ;;
+        x86_64)
+            printf '%s\n' linux-64
+            ;;
+        aarch64)
+            printf '%s\n' linux-aarch64
+            ;;
+        riscv64)
+            printf '%s\n' linux-riscv64
+            ;;
+        *)
+            die "Unsupported Clang target: $1"
+            ;;
     esac
 }
 
@@ -373,11 +464,14 @@ install_clang_target() {
 
     if [[ -x "${destination}/bin/clang" ]]; then
         info "Clang ${version} / ${target} is already installed."
+
         verify_native_binary "${destination}/bin/clang" "${target}"
 
         [[ -x "${destination}/bin/clang++" ]] ||
             die "Existing Clang installation has no clang++: ${destination}"
+
         verify_native_binary "${destination}/bin/clang++" "${target}"
+
         return
     fi
 
@@ -397,12 +491,12 @@ install_clang_target() {
     step "Version:      ${version}"
     step "Channel:      ${CLANG_CHANNEL}"
 
-    # Install directly into the final prefix.  Conda packages may contain
+    # Install directly into the final prefix. Conda packages may contain
     # absolute prefix references, so do not create the environment elsewhere
     # and move it afterwards.
     #
     # clang provides the compiler implementation and clangxx provides the
-    # C++ driver/package.  --platform selects the *native* target package
+    # C++ driver/package. --platform selects the native target package
     # even when this installer is being run from a different login-node ISA.
     "${mamba}" create \
         --yes \
@@ -427,6 +521,7 @@ install_clang() {
     local target
 
     info "Installing native Clang ${version}"
+
     for target in "${TARGETS[@]}"; do
         install_clang_target "${version}" "${target}"
         create_clang_environment "${version}" "${target}"
@@ -441,6 +536,7 @@ find_mamba() {
     if [[ -n "${MAMBA_EXE:-}" ]]; then
         [[ -x "${MAMBA_EXE}" ]] ||
             die "MAMBA_EXE is not executable: ${MAMBA_EXE}"
+
         printf '%s\n' "${MAMBA_EXE}"
         return
     fi
@@ -457,10 +553,18 @@ find_mamba() {
 
 gcc_conda_subdir() {
     case "$1" in
-        x86_64)  printf '%s\n' linux-64 ;;
-        aarch64) printf '%s\n' linux-aarch64 ;;
-        riscv64) printf '%s\n' linux-riscv64 ;;
-        *) die "Unsupported GCC target: $1" ;;
+        x86_64)
+            printf '%s\n' linux-64
+            ;;
+        aarch64)
+            printf '%s\n' linux-aarch64
+            ;;
+        riscv64)
+            printf '%s\n' linux-riscv64
+            ;;
+        *)
+            die "Unsupported GCC target: $1"
+            ;;
     esac
 }
 
@@ -474,11 +578,14 @@ install_gcc_target() {
 
     if [[ -x "${destination}/bin/gcc" ]]; then
         info "GCC ${version} / ${target} is already installed."
+
         verify_native_binary "${destination}/bin/gcc" "${target}"
 
         [[ -x "${destination}/bin/g++" ]] ||
             die "Existing GCC installation has no g++: ${destination}"
+
         verify_native_binary "${destination}/bin/g++" "${target}"
+
         return
     fi
 
@@ -499,7 +606,7 @@ install_gcc_target() {
     step "Channel:      ${GCC_CHANNEL}"
 
     # DO NOT create this environment in /tmp and move it afterwards.
-    # Conda packages can contain absolute prefix references.  Creating the
+    # Conda packages can contain absolute prefix references. Creating the
     # environment directly at its final location keeps those references valid.
     "${mamba}" create \
         --yes \
@@ -524,6 +631,7 @@ install_gcc() {
     local target
 
     info "Installing native GCC ${version}"
+
     for target in "${TARGETS[@]}"; do
         install_gcc_target "${version}" "${target}"
         create_gcc_environment "${version}" "${target}"
@@ -587,9 +695,9 @@ install_compilers.sh
 ====================
 
 Install NATIVE GCC and/or Clang compiler binaries into a shared Linux/GNU
-filesystem.  No cross compiler is accepted.
+filesystem. No cross compiler is accepted.
 
-Targets:
+Supported target ISAs:
   x86_64
   aarch64
   riscv64
@@ -603,10 +711,20 @@ Usage:
   ./install_compilers.sh --gcc 15.2.0 --clang 23.1.1
   ./install_compilers.sh --all
 
+Restrict installation to specific ISAs:
+  ./install_compilers.sh --gcc 15.2.0 --isa x86_64
+  ./install_compilers.sh --gcc 15.2.0 --isa x86_64 --isa aarch64
+  ./install_compilers.sh --clang 23.1.1 --isa riscv64
+  ./install_compilers.sh --all --isa x86_64
+
 Options:
-  --gcc VERSION       Install native GCC for all targets.
-  --clang VERSION     Install native Clang for all targets from conda-forge.
+  --gcc VERSION       Install native GCC.
+  --clang VERSION     Install native Clang.
   --all               Install the default GCC and Clang versions.
+  --isa ISA           Restrict installation to an ISA.
+                      May be specified multiple times.
+                      Valid values: x86_64, aarch64, riscv64.
+                      If omitted, all ISAs are installed.
   --base DIRECTORY    Change the installation root.
   --help              Show this help.
 
@@ -629,6 +747,24 @@ Result:
     env/<target>/clang-<version>.sh
     downloads/
 
+Examples:
+  # Install GCC only for x86_64:
+  ./install_compilers.sh --gcc 15.2.0 --isa x86_64
+
+  # Install GCC for x86_64 and aarch64:
+  ./install_compilers.sh --gcc 15.2.0 \\
+      --isa x86_64 \\
+      --isa aarch64
+
+  # Install Clang only for RISC-V:
+  ./install_compilers.sh --clang 23.1.1 --isa riscv64
+
+  # Install both compilers only for x86_64:
+  ./install_compilers.sh --all --isa x86_64
+
+  # Install both compilers for all supported ISAs:
+  ./install_compilers.sh --all
+
 Example on a compute node:
   source "\$HOME/software_env/env/\$TARGET_ISA/gcc-15.2.0.sh"
   gcc --version
@@ -650,19 +786,25 @@ print_summary() {
     printf '%s\n' '================================================================'
     printf '\nShared installation:\n  %s\n\n' "${INSTALL_BASE}"
 
-    [[ -n "${gcc_version}" ]] && printf 'GCC:   %s\n' "${gcc_version}"
-    [[ -n "${clang_version}" ]] && printf 'Clang: %s\n' "${clang_version}"
+    [[ -n "${gcc_version}" ]] &&
+        printf 'GCC:   %s\n' "${gcc_version}"
+
+    [[ -n "${clang_version}" ]] &&
+        printf 'Clang: %s\n' "${clang_version}"
 
     printf '\nTarget ISAs:\n'
     printf '  - %s\n' "${TARGETS[@]}"
 
     printf '\nSelect a compiler on a compute node with:\n'
+
     [[ -n "${gcc_version}" ]] &&
         printf '  source "%s/env/${TARGET_ISA}/gcc-%s.sh"\n' \
             "${INSTALL_BASE}" "${gcc_version}"
+
     [[ -n "${clang_version}" ]] &&
         printf '  source "%s/env/${TARGET_ISA}/clang-%s.sh"\n' \
             "${INSTALL_BASE}" "${clang_version}"
+
     printf '\n'
 }
 
@@ -677,6 +819,8 @@ main() {
     local clang_version=""
     local do_gcc=0
     local do_clang=0
+    local requested_targets=()
+    local target
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -686,12 +830,14 @@ main() {
                 do_gcc=1
                 shift 2
                 ;;
+
             --clang)
                 [[ $# -ge 2 ]] || die "--clang requires a version."
                 clang_version="$2"
                 do_clang=1
                 shift 2
                 ;;
+
             --all)
                 gcc_version="${DEFAULT_GCC_VERSION}"
                 clang_version="${DEFAULT_CLANG_VERSION}"
@@ -699,19 +845,31 @@ main() {
                 do_clang=1
                 shift
                 ;;
+
+            --isa)
+                [[ $# -ge 2 ]] || die "--isa requires a target ISA."
+                validate_target "$2"
+                requested_targets+=("$2")
+                shift 2
+                ;;
+
             --base)
                 [[ $# -ge 2 ]] || die "--base requires a directory."
+
                 INSTALL_BASE="$2"
                 DOWNLOAD_DIR="${INSTALL_BASE}/downloads"
                 GCC_DIR="${INSTALL_BASE}/gcc"
                 CLANG_DIR="${INSTALL_BASE}/clang"
                 ENV_DIR="${INSTALL_BASE}/env"
+
                 shift 2
                 ;;
+
             --help|-h)
                 print_help
                 exit 0
                 ;;
+
             *)
                 error "Unknown option: $1"
                 print_help
@@ -719,6 +877,16 @@ main() {
                 ;;
         esac
     done
+
+    # If --isa was specified, restrict installation to those targets.
+    # Otherwise retain the historical behavior of installing all targets.
+    if [[ "${#requested_targets[@]}" -gt 0 ]]; then
+        TARGETS=()
+
+        for target in "${requested_targets[@]}"; do
+            append_unique_target "${target}"
+        done
+    fi
 
     if [[ "${do_gcc}" -eq 0 && "${do_clang}" -eq 0 ]]; then
         print_help
@@ -739,6 +907,7 @@ main() {
     printf '%s\n' 'Native compiler installer'
     printf '%s\n' '================================================================'
     printf 'Install base: %s\n\n' "${INSTALL_BASE}"
+
     printf 'Native targets:\n'
     printf '  - %s\n' "${TARGETS[@]}"
     printf '\n'

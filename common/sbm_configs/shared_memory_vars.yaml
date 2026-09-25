@@ -159,7 +159,7 @@ compiler_extra_flags:
     autovec_gcc: ['-ftree-loop-vectorize -ftree-slp-vectorize'] # this is already gcc's default starting from O2, just specified explicitly (https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html)
     autovec_clang: ['-fvectorize -fslp-vectorize'] # this is already clang's default, just specified explicitly (https://llvm.org/docs/Vectorizers.html#auto-vectorization-in-llvm)
     autovec_clang_epi_rvv1: ['-mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize -lprovector-vecclonevp-atrevido_vec']
-    autovec_clang_epi_rvv071: ['-mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize -lprovector-vecclonevp-atrevido_vec']
+    autovec_clang_epi_rvv071: ['-mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize']
     
     novec_gcc: ['-fno-tree-loop-vectorize -fno-tree-slp-vectorize']
     novec_clang: ['-fno-vectorize -fno-slp-vectorize']
@@ -201,7 +201,7 @@ blas_lib: ['', 'openblas', 'blis']
 energy_measure_start:
   per_cluster:
     default: ['']
-    bsc-hca-pioneer:    ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
+    bsc-hca-pioneer:    ['mkdir -p $HOME/tmp && python3 ../common/energy/ncm.py start --output "$HOME/tmp/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "$HOME/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-bpi-f3:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-sip-k3:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-bpi-f3:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
@@ -214,7 +214,7 @@ energy_measure_start:
 energy_measure_stop:
   per_cluster:
     default: ['']
-    bsc-hca-pioneer:    ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
+    bsc-hca-pioneer:    ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "$HOME/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-bpi-f3:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-sip-k3:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-bpi-f3:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']

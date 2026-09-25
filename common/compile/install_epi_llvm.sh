@@ -5,8 +5,7 @@ cd
 wget https://ssh.hca.bsc.es/epi/ftp/llvm-EPI-development-toolchain-native-latest.tar.bz2 #for RVV 1.0
 wget https://ssh.hca.bsc.es/epi/ftp/llvm-EPI-0.7-development-toolchain-native-latest.tar.bz2 #for RVV 0.7.1
 
-mkdir -p software_env/llvm-EPI/riscv64/rvv1
-mkdir -p software_env/llvm-EPI/riscv64/rvv071
+mkdir -p software_env/llvm-EPI/riscv64/
 
 tar -xf llvm-EPI-development-toolchain-native-latest.tar.bz2
 mv llvm-EPI-development-toolchain-native software_env/llvm-EPI/riscv64/rvv1

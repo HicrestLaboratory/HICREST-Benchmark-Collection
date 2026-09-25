@@ -1,5 +1,6 @@
 apps:
   - name: STREAM
+    systems: ['dalek-mono-sip-k3', 'dalek-mono-bpi-f3']
     dir: .
     blocking: true
 

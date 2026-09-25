@@ -103,6 +103,7 @@ DEFAULT_POST = [
     f"{NCM_BIN} -m 2",
     f"{NCM_BIN} -p 1",
     f"{NCM_BIN} -p 2",
+    "sleep 1",
 ]
 JUMP_THRESHOLD = 100  # a skip of more than this many timestamps counts as "the jump"
 DEFAULT_STABLE_TIMEOUT = 4.0
