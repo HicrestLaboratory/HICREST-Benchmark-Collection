@@ -2,6 +2,7 @@ configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
   - "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
+  - "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
   - "vars.yaml"
 
 preprocess: "{energy_measure_start}"
@@ -12,21 +13,21 @@ jobs:
     config_jobs:
 
       # linear-chase
-      - tag: "linear-chase_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{linear_chase_max_stride}_C{ncpus}"
-        command: "./bin/linear-chase_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{linear_chase_max_stride}"
+      - tag: "linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{linear_chase_max_stride}_C{ncpus}"
+        command: "./bin/{isa}/linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{linear_chase_max_stride}"
         category: "linear-chase"
 
       # fused-linear-chase
-      - tag: "fused-linear-chase_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_linear_chase_max_stride}_C{ncpus}"
-        command: "./bin/fused-linear-chase_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_linear_chase_max_stride}"
+      - tag: "fused-linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_linear_chase_max_stride}_C{ncpus}"
+        command: "./bin/{isa}/fused-linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_linear_chase_max_stride}"
         category: "fused-linear-chase"
 
       # random-chase
-      - tag: "random-chase_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{random_chase_max_size}_C{ncpus}"
-        command: "./bin/random-chase_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{random_chase_max_size}"
+      - tag: "random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{random_chase_max_size}_C{ncpus}"
+        command: "./bin/{isa}/random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{random_chase_max_size}"
         category: "random-chase"
 
       # fused-random-chase
-      - tag: "fused-random-chase_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_random_chase_max_size}_C{ncpus}"
-        command: "./bin/fused-random-chase_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_random_chase_max_size}"
+      - tag: "fused-random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_random_chase_max_size}_C{ncpus}"
+        command: "./bin/{isa}/fused-random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_random_chase_max_size}"
         category: "fused-random-chase"

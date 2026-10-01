@@ -38,7 +38,7 @@ dalek-mono-bpi-f3:
     exclusive: true
     partition: "mono"
     nodelist: "mono-bpi-f3"
-    time: "03:00:00"
+    time: "04:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
@@ -60,6 +60,33 @@ dalek-mono-bpi-f3:
         - "export NCM_PATH=/opt/software/ncm-1.1.2/bin/ncm-control"
       
 
+# Minix @ Dalek
+dalek-minix: 
+  scheduler: slurm
+
+  default_conf:
+    exclusive: true
+    partition: "special"
+    nodelist: "minix"
+    time: "04:00:00"
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+
+  configs:
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      env:
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - "CLINK="
+        - "OMP_NUM_THREADS={ncpus}"
+      custom_headers:
+        - "#SBATCH --cpus-per-task={ncpus}"
+        - "source /etc/profile.d/modules.sh"
+        - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
+        - "export NCM_PATH=/mnt/nfs/software/ncm-1.1.2/bin/ncm-control"
+
 # SpacemiT K3 Pico ITX @ Dalek
 dalek-mono-sip-k3: 
   scheduler: slurm
@@ -68,7 +95,7 @@ dalek-mono-sip-k3:
     exclusive: true
     partition: "mono"
     nodelist: "mono-sip-k3"
-    time: "03:00:00"
+    time: "04:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
@@ -100,7 +127,7 @@ bsc-hca-pioneer:
     ntasks: 1
     exclusive: true
     nodelist: "pioneer-4"
-    time: "02:00:00"
+    time: "04:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"

@@ -18,9 +18,27 @@ ncpus:
     dalek-mono-sip-k3:  [1, 2, 4, 8]
     dalek-mono-jts-onx: [1, 2, 4, 8]
     dalek-mono-oh5:     [1, 2, 4, 8]
-    dalek-minix:        [1, 2, 4, 8]
+    dalek-minix:        [1, 2, 4, 8, 16]
     dalek-mono-rpi-5b:  [1, 2, 4]
 
+isa:
+  per_cluster:
+    debug:              ['x86']
+    leonardo:           ['x86']
+    thea:               ['arm']
+    e4:                 ['riscv']
+
+    # BSC HCA
+    bsc-hca-pioneer:    ['riscv']
+    bsc-hca-bananaf3:   ['riscv']
+
+    # Dalek
+    dalek-mono-bpi-f3:  ['riscv']
+    dalek-mono-sip-k3:  ['riscv']
+    dalek-mono-jts-onx: ['arm']
+    dalek-mono-rpi-5b:  ['arm']
+    dalek-mono-oh5:     ['x86']
+    dalek-minix:        ['x86']
 
 ########################
 # Compiler definitions #
