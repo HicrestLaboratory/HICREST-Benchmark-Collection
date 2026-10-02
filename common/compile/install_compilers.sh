@@ -58,9 +58,21 @@ CLANG_CHANNEL="${CLANG_CHANNEL:-conda-forge}"
 # All supported native target ISAs.
 ALL_TARGETS=(x86_64 aarch64 riscv64)
 
+# glibc versions of the COMPUTE NODES on which the staged native
+# compiler binaries will run. These are NOT the glibc versions of the
+# x86_64 login node used to run this installer.
+#
+# Leave a value empty to use micromamba/conda's normal host detection.
+# Set a value only when the target compute nodes are known to provide
+# at least that glibc version. CONDA_OVERRIDE_GLIBC changes the solver's
+# virtual package detection; it does not install or upgrade glibc.
+TARGET_GLIBC_X86_64="${TARGET_GLIBC_X86_64:-}"
+TARGET_GLIBC_AARCH64="${TARGET_GLIBC_AARCH64:-}"
+TARGET_GLIBC_RISCV64="${TARGET_GLIBC_RISCV64:-}"
+
 # Targets selected by the command line.
-# By default, all supported targets are selected.
-TARGETS=("${ALL_TARGETS[@]}")
+# If --isa is omitted, main() selects the login-node ISA.
+TARGETS=()
 
 DOWNLOAD_DIR="${INSTALL_BASE}/downloads"
 GCC_DIR="${INSTALL_BASE}/gcc"
@@ -454,6 +466,23 @@ clang_conda_subdir() {
     esac
 }
 
+target_glibc() {
+    case "$1" in
+        x86_64)
+            printf '%s\n' "${TARGET_GLIBC_X86_64}"
+            ;;
+        aarch64)
+            printf '%s\n' "${TARGET_GLIBC_AARCH64}"
+            ;;
+        riscv64)
+            printf '%s\n' "${TARGET_GLIBC_RISCV64}"
+            ;;
+        *)
+            die "Unsupported target ISA: $1"
+            ;;
+    esac
+}
+
 install_clang_target() {
     local version="$1"
     local target="$2"
@@ -461,6 +490,8 @@ install_clang_target() {
     local mamba
     local subdir
     local mamba_root
+    local glibc
+    local -a mamba_env=()
 
     if [[ -x "${destination}/bin/clang" ]]; then
         info "Clang ${version} / ${target} is already installed."
@@ -491,6 +522,14 @@ install_clang_target() {
     step "Version:      ${version}"
     step "Channel:      ${CLANG_CHANNEL}"
 
+    glibc="$(target_glibc "${target}")"
+    if [[ -n "${glibc}" ]]; then
+        step "Target glibc: ${glibc}"
+        mamba_env+=("CONDA_OVERRIDE_GLIBC=${glibc}")
+    else
+        step "Target glibc: not overridden"
+    fi
+
     # Install directly into the final prefix. Conda packages may contain
     # absolute prefix references, so do not create the environment elsewhere
     # and move it afterwards.
@@ -498,16 +537,17 @@ install_clang_target() {
     # clang provides the compiler implementation and clangxx provides the
     # C++ driver/package. --platform selects the native target package
     # even when this installer is being run from a different login-node ISA.
-    "${mamba}" create \
-        --yes \
-        --no-rc \
-        --override-channels \
-        --root-prefix "${mamba_root}" \
-        --platform "${subdir}" \
-        --channel "${CLANG_CHANNEL}" \
-        --prefix "${destination}" \
-        "clang=${version}" \
-        "clangxx=${version}"
+    env "${mamba_env[@]}" \
+        "${mamba}" create \
+            --yes \
+            --no-rc \
+            --override-channels \
+            --root-prefix "${mamba_root}" \
+            --platform "${subdir}" \
+            --channel "${CLANG_CHANNEL}" \
+            --prefix "${destination}" \
+            "clang=${version}" \
+            "clangxx=${version}"
 
     verify_native_binary "${destination}/bin/clang" "${target}"
     verify_native_binary "${destination}/bin/clang++" "${target}"
@@ -575,6 +615,8 @@ install_gcc_target() {
     local mamba
     local subdir
     local mamba_root
+    local glibc
+    local -a mamba_env=()
 
     if [[ -x "${destination}/bin/gcc" ]]; then
         info "GCC ${version} / ${target} is already installed."
@@ -605,19 +647,28 @@ install_gcc_target() {
     step "Version:      ${version}"
     step "Channel:      ${GCC_CHANNEL}"
 
+    glibc="$(target_glibc "${target}")"
+    if [[ -n "${glibc}" ]]; then
+        step "Target glibc: ${glibc}"
+        mamba_env+=("CONDA_OVERRIDE_GLIBC=${glibc}")
+    else
+        step "Target glibc: not overridden"
+    fi
+
     # DO NOT create this environment in /tmp and move it afterwards.
     # Conda packages can contain absolute prefix references. Creating the
     # environment directly at its final location keeps those references valid.
-    "${mamba}" create \
-        --yes \
-        --no-rc \
-        --override-channels \
-        --root-prefix "${mamba_root}" \
-        --platform "${subdir}" \
-        --channel "${GCC_CHANNEL}" \
-        --prefix "${destination}" \
-        "gcc=${version}" \
-        "gxx=${version}"
+    env "${mamba_env[@]}" \
+        "${mamba}" create \
+            --yes \
+            --no-rc \
+            --override-channels \
+            --root-prefix "${mamba_root}" \
+            --platform "${subdir}" \
+            --channel "${GCC_CHANNEL}" \
+            --prefix "${destination}" \
+            "gcc=${version}" \
+            "gxx=${version}"
 
     verify_native_binary "${destination}/bin/gcc" "${target}"
     verify_native_binary "${destination}/bin/g++" "${target}"
@@ -724,7 +775,7 @@ Options:
   --isa ISA           Restrict installation to an ISA.
                       May be specified multiple times.
                       Valid values: x86_64, aarch64, riscv64.
-                      If omitted, all ISAs are installed.
+                      If omitted, only the login-node ISA is installed.
   --base DIRECTORY    Change the installation root.
   --help              Show this help.
 
@@ -733,6 +784,16 @@ Environment:
   GCC_CHANNEL         Conda channel for GCC (default: conda-forge).
   CLANG_CHANNEL       Conda channel for Clang (default: conda-forge).
   INSTALL_BASE        Installation root (default: \$HOME/software_env).
+  TARGET_GLIBC_X86_64 glibc version on x86_64 compute nodes (optional).
+  TARGET_GLIBC_AARCH64
+                      glibc version on aarch64 compute nodes (optional).
+  TARGET_GLIBC_RISCV64
+                      glibc version on riscv64 compute nodes (optional).
+
+  These TARGET_GLIBC_* values describe the machines where the staged
+  compiler will RUN, not the login node where this script is executed.
+  They are passed to conda/micromamba as CONDA_OVERRIDE_GLIBC during
+  target compiler solves. They do not install or upgrade glibc.
 
 Bootstrap:
   If micromamba is not available, it is downloaded into
@@ -879,13 +940,16 @@ main() {
     done
 
     # If --isa was specified, restrict installation to those targets.
-    # Otherwise retain the historical behavior of installing all targets.
+    # Otherwise install only for the login-node ISA. Explicit --isa options
+    # can still select any combination of supported native targets.
     if [[ "${#requested_targets[@]}" -gt 0 ]]; then
         TARGETS=()
 
         for target in "${requested_targets[@]}"; do
             append_unique_target "${target}"
         done
+    else
+        TARGETS=("$(host_arch)")
     fi
 
     if [[ "${do_gcc}" -eq 0 && "${do_clang}" -eq 0 ]]; then

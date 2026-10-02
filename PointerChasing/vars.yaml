@@ -9,3 +9,5 @@ fused_linear_chase_max_stride:  [128]
 
 random_chase_max_size:          [67108864] # 1024 * 1024 * 64 --> 64MB
 fused_random_chase_max_size:    [16777216] # 1024 * 1024 * 16 --> 16MB
+
+ncpus: [1]
