@@ -11,7 +11,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
     """
     Parse STREAM benchmark stdout into structured metrics.
     """
-    if not job.tag.startswith('stream_') or job.status != sbm.Status.COMPLETED.value:
+    if job.category == 'compile' or job.status != sbm.Status.COMPLETED.value:
         return None
 
     data = {k:v for k,v in (job.variables or {}).items()}

@@ -10,9 +10,5 @@ compiler_extra_flags_name:
   map:
     default: ['none']
 
-# FIXME set this as per_cluster (only gcc works)
+# (only gcc works consistently on all systems)
 compiler: ['gcc']
-
-compiler_opt:
-  map:
-    default: ['-O3']

@@ -31,26 +31,7 @@ for file_name, lock_name in lock_files.items():
         print(f"WARNING: File {file_path} does not exist, skipping.")
         continue
     with open(file_path) as f:
-        for line in f:
-            line = line.strip()
-            if line == "":
-                continue
-            parts = line.split()
-            if len(parts) < 6:
-                continue
-            try:
-                row = {
-                    "threads": int(parts[0]),
-                    "duration": int(parts[1]),
-                    "total_entries": int(parts[2]),
-                    "avg_entries": float(parts[3]),
-                    "std_dev": float(parts[4]),
-                    "relative_std": float(parts[5].replace('%','')),
-                    "lock": lock_name
-                }
-                all_rows.append(row)
-            except ValueError:
-                print(f"Skipping invalid line in {file_path}: {line}")
+        
 
 # -----------------------
 # Write combined CSV

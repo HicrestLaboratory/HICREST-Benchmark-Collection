@@ -20,7 +20,7 @@ preprocess: |
 
 command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="$VARS" stream_c_custom'
 check: '[[ -f "../bin/{isa}/$BIN_NAME" ]]'
-postprocess: 'mv stream_c_custom "../bin/{isa}/$BIN_NAME" && {compiler_disass[compiler]} "../bin/{isa}/$BIN_NAME" > "$SBATCHMAN_JOB_DIR/$BIN_NAME".asm'
+postprocess: 'mv stream_c_custom "../bin/{isa}/$BIN_NAME" && mkdir -p "$SBATCHMAN_JOB_DIR/{isa}"; {compiler_disass[compiler]} "../bin/{isa}/$BIN_NAME" > "$SBATCHMAN_JOB_DIR/{isa}/$BIN_NAME".asm'
 
 
 jobs:

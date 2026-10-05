@@ -215,7 +215,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
     """
     Parse OpenMPbench benchmark stdout into structured metrics.
     """
-    if job.tag.startswith('compile_') or job.status != sbm.Status.COMPLETED.value:
+    if job.category == 'compile' or job.status != sbm.Status.COMPLETED.value:
         return None
 
     meta = {k:v for k,v in (job.variables or {}).items()}
