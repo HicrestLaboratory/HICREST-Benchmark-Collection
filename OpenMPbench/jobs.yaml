@@ -1,23 +1,24 @@
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+
 variables:
-  system: ["leonardo-dcgp-llvm"]
-  # system: ["leonardo-dcgp"]
-
-  ncpus: [1, 2, 4, 8, 16, 32, 64]
-
-  array_bench_sizes: [1, 243, 2187, 19683, 59049]
-
   benchmark:
     - "syncbench"
     - "schedbench"
     - "taskbench"
+    - "arraybench_1"
+    - "arraybench_243"
+    - "arraybench_2187"
+    # - "arraybench_19683"
+    - "arraybench_59049"
 
-
-command: "./{benchmark}"
 
 jobs:
-  - config: "{system}_{ncpus}cpus"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
     config_jobs:
-      - tag: "{benchmark}_{ncpus}cpus"
-
-      - tag: "arraybench_{array_bench_sizes}_{ncpus}cpus"
-        command: "./arraybench_{array_bench_sizes}"
+      - tag: "{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{benchmark}_C{ncpus}"
+        category: "{benchmark}"
+        preprocess: "{energy_measure_start}"
+        command: "./bin/{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}/{benchmark}"
+        postprocess: '{energy_measure_stop}'

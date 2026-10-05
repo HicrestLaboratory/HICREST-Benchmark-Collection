@@ -1,13 +1,14 @@
-from typing import List, Optional
-from pathlib import Path
+import pprint
 import re
-import pandas as pd
+import sys
+from pathlib import Path
+from copy import copy
 import sbatchman as sbm
+from typing import List, Optional, Dict
 
+sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
+from ncm_parser import parse_ncm_tot_energy_print #, parse_ncm_energy_log
 
-# ------------------------------------------------------------
-# Regex patterns
-# ------------------------------------------------------------
 
 _RE_COMPUTING = re.compile(r"^Computing (.+?) time using (\d+) reps")
 
@@ -44,16 +45,8 @@ _RE_TEST_MEDOVHD = re.compile(
 _RE_THREADS = re.compile(r"^\s*(\d+)\s+thread\(s\)")
 _RE_OUTERREPS = re.compile(r"^\s*(\d+)\s+outer repetitions")
 
-# schedbench_4cpus
-# arraybench_243_4cpus
-_RE_TAG = re.compile(r"^(\w+)(?:_(\d+))?_(\d+)cpus$")
 
-
-# ------------------------------------------------------------
-# Core stdout parser
-# ------------------------------------------------------------
-
-def _parse_stdout(text, benchmark, device, cores, size):
+def parse_stdout(text, benchmark, system, cores, size):
 
     lines = text.splitlines()
 
@@ -88,7 +81,7 @@ def _parse_stdout(text, benchmark, device, cores, size):
 
         records.append({
 
-            "device": device,
+            "system": system,
             "benchmark": benchmark,
             "array_size": size,
 
@@ -218,77 +211,35 @@ def _parse_stdout(text, benchmark, device, cores, size):
     return records
 
 
-# ------------------------------------------------------------
-# Main parser
-# ------------------------------------------------------------
+def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
+    """
+    Parse OpenMPbench benchmark stdout into structured metrics.
+    """
+    if job.tag.startswith('compile_') or job.status != sbm.Status.COMPLETED.value:
+        return None
 
-def parse_openmp_bench_outputs(jobs):
+    meta = {k:v for k,v in (job.variables or {}).items()}
+    meta['system'] = job.cluster_name
+    meta['tot_runtime'] = job.get_run_time()
+    benchmark = meta['benchmark']
+    size = None
+    if benchmark.startswith('arraybench'):
+        benchmark, size = benchmark.split('_')
+    stdout = job.get_stdout()
 
-    all_records = []
+    if not stdout:
+        return None
 
-    for job in jobs:
-
-        m = _RE_TAG.match(job.tag)
-
-        if not m:
-            print("[WARN] skipping", job.tag)
-            continue
-
-        benchmark = m.group(1)
-
-        size = m.group(2)
-        size = int(size) if size else None
-
-        cores = int(m.group(3))
-
-        device = job.config_name.split("_")[0]
-
-        output = job.get_stdout()
-
-        if output is None:
-            continue
-
-        records = _parse_stdout(output, benchmark, device, cores, size)
-
-        print("Parsed", len(records), "blocks ←", job.tag)
-
-        all_records.extend(records)
-
-    return pd.DataFrame(all_records)
-
-
-# ------------------------------------------------------------
-# MAIN
-# ------------------------------------------------------------
-
-if __name__ == "__main__":
-
-    jobs = sbm.jobs_list(status=[sbm.Status.COMPLETED])
-
-    df = parse_openmp_bench_outputs(jobs)
-
-    if df.empty:
-        print("No results found")
-        exit()
-
-    df.sort_values(
-        ["benchmark", "device", "array_size", "cores", "block"],
-        inplace=True
-    )
-
-    # --------------------------------------------------------
-    # Save ONE CSV PER BENCHMARK
-    # --------------------------------------------------------
-
-    output_dir = Path("benchmark_csv")
-    output_dir.mkdir(exist_ok=True)
-
-    for benchmark, subdf in df.groupby("benchmark"):
-
-        outfile = output_dir / f"{benchmark}_results.csv"
-
-        subdf.to_csv(outfile, index=False)
-
-        print("Saved:", outfile)
-
-    print("\nAll benchmark CSV files generated.")
+    records = parse_stdout(stdout, benchmark, meta['system'], meta['ncpus'], size)
+        
+    tot_energy = parse_ncm_tot_energy_print(stdout)
+    if tot_energy:
+        meta['tot_energy_J'] = tot_energy
+        
+    res = []
+    for r in records:
+        meta_copy = copy(meta)
+        meta_copy.update(r)
+        res.append(meta_copy)
+        
+    return { benchmark: res }

@@ -1,48 +1,59 @@
-include Makefile.defs.aocc
+include Makefile.defs
 
-.c.o:
-	${CC} ${CFLAGS} -c $*.c
+# Default directory for outputs if BIN_DIR is not specified
+BIN_DIR ?= .
 
-SYNCOBJS =  syncbench.o common.o
-SCHEDOBJS = schedbench.o common.o
-ARRAYOBJS = arraybench_$(IDA).o common.o
-TASKOBJS =  taskbench.o common.o
+SYNCOBJS  = $(BIN_DIR)/syncbench.o $(BIN_DIR)/common.o
+SCHEDOBJS = $(BIN_DIR)/schedbench.o $(BIN_DIR)/common.o
+ARRAYOBJS = $(BIN_DIR)/arraybench_$(IDA).o $(BIN_DIR)/common.o
+TASKOBJS  = $(BIN_DIR)/taskbench.o $(BIN_DIR)/common.o
 
-all: syncbench schedbench taskbench
-	$(MAKE) IDA=1 prog
-	$(MAKE) IDA=3 prog
-	$(MAKE) IDA=9 prog
-	$(MAKE) IDA=27 prog
-	$(MAKE) IDA=81 prog
-	$(MAKE) IDA=243 prog
-	$(MAKE) IDA=729 prog
-	$(MAKE) IDA=2187 prog
-	$(MAKE) IDA=6561 prog
-	$(MAKE) IDA=19683 prog
-	$(MAKE) IDA=59049 prog
+.PHONY: all prog clean
 
-prog: arraybench_$(IDA)
+all: $(BIN_DIR)/syncbench $(BIN_DIR)/schedbench $(BIN_DIR)/taskbench
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=1 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=3 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=9 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=27 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=81 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=243 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=729 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=2187 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=6561 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=19683 prog
+	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=59049 prog
 
-# Multiple header files due to multiple array sizes, makes header file arraybench_*.h
-arraybench_$(IDA).h: arraybench.h
-	$(CC) -DIDA=$(IDA) $(CPPFLAGS) arraybench.h -o $@
+prog: $(BIN_DIR)/arraybench_$(IDA)
 
-# Multiple object files due to multiple array sizes, makes object file arraybench_*.o
-arraybench_$(IDA).o: arraybench_$(IDA).h arraybench.c
-	$(CC) $(CFLAGS) -DIDA=$(IDA) arraybench.c -c -o $@
+# Create the output directory if it doesn't exist
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
 
-# Multiple executables due to multiple array sizes, makes exe file arraybench_*
-arraybench_$(IDA): $(ARRAYOBJS) arraybench.c
+# Pattern rule for object files (adds -I. to find common.h in current dir)
+$(BIN_DIR)/%.o: %.c | $(BIN_DIR)
+	$(CC) $(CFLAGS) -I. -I$(BIN_DIR) -c $< -o $@
+
+# Multiple header files due to multiple array sizes
+$(BIN_DIR)/arraybench_$(IDA).h: arraybench.h | $(BIN_DIR)
+	$(CC) -DIDA=$(IDA) $(CPPFLAGS) -I. arraybench.h -o $@
+
+# Multiple object files due to multiple array sizes
+$(BIN_DIR)/arraybench_$(IDA).o: $(BIN_DIR)/arraybench_$(IDA).h arraybench.c | $(BIN_DIR)
+	$(CC) $(CFLAGS) -I. -I$(BIN_DIR) -DIDA=$(IDA) arraybench.c -c -o $@
+
+# Executables
+$(BIN_DIR)/arraybench_$(IDA): $(ARRAYOBJS) | $(BIN_DIR)
 	$(CC) $(LDFLAGS) $(ARRAYOBJS) $(LIBS) -o $@
 
-syncbench: $(SYNCOBJS)
-	$(CC) -o $@ $(LDFLAGS) $(SYNCOBJS) $(LIBS) 
+$(BIN_DIR)/syncbench: $(SYNCOBJS) | $(BIN_DIR)
+	$(CC) $(LDFLAGS) $(SYNCOBJS) $(LIBS) -o $@
 
-schedbench: $(SCHEDOBJS)
-	$(CC) -o $@ $(LDFLAGS) $(SCHEDOBJS) $(LIBS) 
+$(BIN_DIR)/schedbench: $(SCHEDOBJS) | $(BIN_DIR)
+	$(CC) $(LDFLAGS) $(SCHEDOBJS) $(LIBS) -o $@
 
-taskbench: $(TASKOBJS)
-	$(CC) -o $@ $(LDFLAGS) $(TASKOBJS) $(LIBS) 
+$(BIN_DIR)/taskbench: $(TASKOBJS) | $(BIN_DIR)
+	$(CC) $(LDFLAGS) $(TASKOBJS) $(LIBS) -o $@
 
 clean:
-	-rm  syncbench schedbench taskbench arraybench_* syncbench.o schedbench.o taskbench.o common.o 
+	-rm -f $(BIN_DIR)/syncbench $(BIN_DIR)/schedbench $(BIN_DIR)/taskbench \
+	       $(BIN_DIR)/arraybench_* $(BIN_DIR)/*.o $(BIN_DIR)/*.h

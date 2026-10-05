@@ -15,7 +15,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
         return None
 
     data = {k:v for k,v in (job.variables or {}).items()}
-    data['cluster'] = job.cluster_name
+    data['system'] = job.cluster_name
     data['tot_runtime'] = job.get_run_time()
     stdout = job.get_stdout()
 

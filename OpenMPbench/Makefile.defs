@@ -1,4 +1,3 @@
-
 CC=cc
 CFLAGS = -fopenmp 
 LDFLAGS = -fopenmp  

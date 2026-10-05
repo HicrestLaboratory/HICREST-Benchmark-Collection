@@ -21,6 +21,10 @@ ncpus:
     dalek-minix:        [1, 2, 4, 8, 16]
     dalek-mono-rpi-5b:  [1, 2, 4]
 
+    # MonteCimone
+    mc-SG2042:          [1, 2, 4, 8, 16, 32, 56, 64, 128]
+    mc-SG2044:          [1, 2, 4, 8, 16, 32, 56, 64]
+
 isa:
   per_cluster:
     debug:              ['x86']
@@ -50,11 +54,15 @@ compiler:
   per_cluster:
     # BSC HCA
     bsc-hca-pioneer:    ["clang_epi_rvv071", "gcc", "clang"]
-    bsc-hca-bananaf3:   ["clang_epi_rvv1", "gcc", "clang"]
+    bsc-hca-bananaf3:   ["clang_epi_rvv1",   "gcc", "clang"]
 
     # Delek
     dalek-mono-bpi-f3:  ["clang_epi_rvv1", "gcc", "clang"] 
     dalek-mono-sip-k3:  ["clang_epi_rvv1", "gcc", "clang"]
+
+    # MonteCimone
+    mc-SG2042:          ["clang_epi_rvv071", "gcc", "clang"]
+    mc-SG2044:          ["clang_epi_rvv1",   "gcc", "clang"]
 
 # Actual C compiler paths mappings
 compiler_c:
@@ -108,20 +116,20 @@ compiler_cxx:
 ld_library_path_compiler:
   map:
     gcc:
-      default: ['$HOME/software_env/gcc/riscv64/16.1.0/lib']
+      default: ['$HOME/software_env/gcc/riscv64/16.1.0/lib:$HOME/software_env/gcc/riscv64/16.1.0/lib/gcc/riscv64-conda-linux-gnu/16.1.0']
       per_cluster:
-        dalek-mono-jts-onx: ['$HOME/software_env/gcc/aarch64/16.1.0/lib']
-        dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/lib']
-        dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/lib']
-        dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/lib']
+        dalek-mono-jts-onx: ['$HOME/software_env/gcc/aarch64/16.1.0/lib:$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0']
+        dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/lib:$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0']
+        dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
+        dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/lib']
       per_cluster:
         dalek-mono-jts-onx: ['$HOME/software_env/clang/aarch64/23.1.0/lib']
         dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/lib']
-        dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/lib']
-        dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/lib']
+        dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
+        dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
 
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/lib']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/lib']
@@ -161,6 +169,8 @@ compiler_march:
     dalek-mono-sip-k3:  ['-march=rv64gc']
     bsc-hca-bananaf3:   ['-march=rv64gc']
     bsc-hca-pioneer:    ['-march=rv64gc']
+    mc-SG2042:          ['-march=rv64gc']
+    mc-SG2044:          ['-march=rv64gc']
 
 compiler_extra_flags_name:
   map:
@@ -194,20 +204,21 @@ compiler_disass:
 # Modules & Libraries #
 #######################
 
-compiler_module:
-  map:
-    gcc:
-      per_cluster:
-        default: ['']
-    clang:
-      per_cluster:
-        default: ['']
+# Manually managed in software_env
+# compiler_module:
+#   map:
+#     gcc:
+#       per_cluster:
+#         default: ['']
+#     clang:
+#       per_cluster:
+#         default: ['']
 
-    clang_epi:
-      per_cluster:
-        bsc-hca-pioneer:    ['llvm/EPI-0.7-development']
-        bsc-hca-bananaf3:   ['llvm/EPI-development']
-        bsc-hca-arriesgado: ['llvm/EPI-0.7-development']
+#     clang_epi:
+#       per_cluster:
+#         bsc-hca-pioneer:    ['llvm/EPI-0.7-development']
+#         bsc-hca-bananaf3:   ['llvm/EPI-development']
+#         bsc-hca-arriesgado: ['llvm/EPI-0.7-development']
 
 blas_lib: ['', 'openblas', 'blis']
 
@@ -228,6 +239,8 @@ energy_measure_start:
     dalek-mono-oh5:     ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-minix:        ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
+    mc-SG2042:          ["export EXAMON_START_TS=$(date +%s%3N)"]
+    mc-SG2044:          ["export EXAMON_START_TS=$(date +%s%3N)"]
 
 energy_measure_stop:
   per_cluster:
@@ -241,3 +254,5 @@ energy_measure_stop:
     dalek-mono-oh5:     ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-minix:        ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
+    mc-SG2042:          ["export EXAMON_END_TS=$(date +%s%3N) && python3 examon_query.py $START_TS $END_TS --output ./examon_out.csv --summary_output ./examon_summary_out.csv"]
+    mc-SG2044:          ["export EXAMON_END_TS=$(date +%s%3N) && python3 examon_query.py $START_TS $END_TS --output ./examon_out.csv --summary_output ./examon_summary_out.csv"]

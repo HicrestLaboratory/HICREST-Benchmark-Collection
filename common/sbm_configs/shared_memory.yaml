@@ -26,7 +26,6 @@ debug:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-        - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
 
 
@@ -51,7 +50,6 @@ dalek-mono-bpi-f3:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-        - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
@@ -79,7 +77,6 @@ dalek-minix:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-        - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
@@ -106,7 +103,6 @@ dalek-mono-oh5:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-        - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
@@ -134,7 +130,6 @@ dalek-mono-oh5:
 #         - "CC={compiler_c[compiler]}"
 #         - "CXX={compiler_cxx[compiler]}"
 #         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-#         - "CLINK="
 #         - "OMP_NUM_THREADS={ncpus}"
 #       custom_headers:
 #         - "#SBATCH --cpus-per-task={ncpus}"
@@ -162,7 +157,6 @@ dalek-mono-rpi-5b:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-        - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
@@ -192,7 +186,6 @@ dalek-mono-sip-k3:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-        - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
@@ -222,7 +215,6 @@ bsc-hca-pioneer:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-        - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
         - "LANG=LANG=C.UTF-8"
         - "LC_ALL=C.UTF-8"
@@ -233,8 +225,8 @@ bsc-hca-pioneer:
         - "export NCM_PATH=/apps/ncm/1.2.0/bin/ncm-control"
 
 
-# Sophgo SG2044 @ MCv3
-mcv3-SG2044: 
+# Sophgo SG2044 @ MC
+mc-SG2044:
   scheduler: slurm
 
   default_conf:
@@ -242,219 +234,46 @@ mcv3-SG2044:
     nodes: 1
     ntasks: 1
     exclusive: true
-    time: "02:00:00"
+    time: "03:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
-    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-        - "CLINK="
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
-        - "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{ld_library_path_compiler[compiler]}"
-      modules:
-        - "{compiler_module[compiler]}"
+        - "source /etc/profile.d/modules.sh"
+        - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
 
 
-# bsc-hca-pioneer:
+# Sophgo SG2042 - E4 dual socket @ MC
+# mc-SG2042: 
 #   scheduler: slurm
 
 #   default_conf:
-#     partition: "pioneer"
+#     partition: "blade"
 #     nodes: 1
 #     ntasks: 1
 #     exclusive: true
-#     time: "02:00:00"
-#     env: 
-#       - "OMP_PROC_BIND=close"
-#       - "OMP_PLACES=cores"
-#     custom_headers:
-#       - "source /etc/profile.d/modules.sh"
-
-#   configs:
-#     - name: "compile__gcc__"
-#       cpus_per_task: 64
-
-#     - name: "compile__clang__"
-#       cpus_per_task: 64
-#       env:
-#         - "PATH=$PATH:/apps/riscv/llvm/EPI-0.7/development/bin" # WORKAROUND modules do not work in sbatch scripts
-#         - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/llvm/EPI-0.7/development/lib"
-
-    # - name: "pioneer__gcc__openblas__{ncpus}"
-    #   partition: "pioneer"
-    #   cpus_per_task: "{ncpus}"
-    #   # THESE DO NOT LOAD IN SBATCH SCRIPTS....
-    #   # modules:
-    #   #   - "openBLAS/ubuntu/0.3.20_gcc10.3.0"
-    #   env:
-    #     - "OPENBLAS_NUM_THREADS={ncpus}"
-    #     - "GOTO_NUM_THREADS={ncpus}"
-    #     - "OMP_NUM_THREADS={ncpus}"
-    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
-
-    # - name: "pioneer__clang__openblas__{ncpus}"
-    #   partition: "pioneer"
-    #   cpus_per_task: "{ncpus}"
-    #   # THESE DO NOT LOAD IN SBATCH SCRIPTS....
-    #   # modules:
-    #   #   - "openBLAS/ubuntu/0.3.29_llvmEPI1.0"
-    #     # - "llvm/EPI-development" 
-    #   env:
-    #     - "OPENBLAS_NUM_THREADS={ncpus}"
-    #     - "GOTO_NUM_THREADS={ncpus}"
-    #     - "OMP_NUM_THREADS={ncpus}"
-    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
-
-
-    # - name: "arriesgado__gcc__openblas__{ncpus}"
-    #   partition: "arriesgado-jammy"
-    #   cpus_per_task: "{ncpus}"
-    #   env:
-    #     - "OPENBLAS_NUM_THREADS={ncpus}"
-    #     - "GOTO_NUM_THREADS={ncpus}"
-    #     - "OMP_NUM_THREADS={ncpus}"
-    #     - "KMP_AFFINITY=disabled"
-    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
-
-
-    # - name: "arriesgado__clang__openblas__{ncpus}"
-    #   partition: "arriesgado-jammy"
-    #   cpus_per_task: "{ncpus}"
-    #   env:
-    #     - "OPENBLAS_NUM_THREADS={ncpus}"
-    #     - "GOTO_NUM_THREADS={ncpus}"
-    #     - "OMP_NUM_THREADS={ncpus}"
-    #     - "KMP_AFFINITY=disabled"
-    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/llvm/EPI/development/lib:/apps/riscv/ubuntu/openBLAS/0.3.29_llvmEPI1.0/lib" # WORKAROUND
-
-
-    # - name: "bananaf3__gcc__openblas__{ncpus}"
-    #   partition: "bananaf3"
-    #   cpus_per_task: "{ncpus}"
-    #   env:
-    #     - "OPENBLAS_NUM_THREADS={ncpus}"
-    #     - "GOTO_NUM_THREADS={ncpus}"
-    #     - "OMP_NUM_THREADS={ncpus}"
-    #     - "LD_LIBRARY_PATH=/apps/riscv/ubuntu/openBLAS/0.3.20_gcc10.3.0/lib" # WORKAROUND
-
-
-    # - name: "bananaf3__clang__openblas__{ncpus}"
-    #   partition: "bananaf3"
-    #   cpus_per_task: "{ncpus}"
-    #   env:
-    #     - "OPENBLAS_NUM_THREADS={ncpus}"
-    #     - "GOTO_NUM_THREADS={ncpus}"
-    #     - "OMP_NUM_THREADS={ncpus}"
-    #     - "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/riscv/ubuntu/openBLAS/0.3.30_vlen256_llvmEPI1.0/lib:/apps/riscv/llvm/EPI/development/lib" # WORKAROUND
-
-
-# thea:
-#   scheduler: slurm
-
-#   default_conf:
-#     time: "01:00:00"
-#     partition: "gg"
-#     nodes: 1
-#     ntasks: 1
-#     exclusive: true
+#     time: "03:00:00"
 #     env: 
 #       - "OMP_PROC_BIND=close"
 #       - "OMP_PLACES=cores"
 
 #   configs:
-#     - name: "gg__gcc__nvpl__{ncpus}"
-#       cpus_per_task: "{ncpus}"
-#       modules:
-#         - "gcc/14.3.0"
-#         - "nvpl/25.5"
-#       env: 
-#         - "OMP_NUM_THREADS={ncpus}"
-#         - "OPENBLAS_NUM_THREADS={ncpus}"
-#         - "GOTO_NUM_THREADS={ncpus}"
-
-    # TODO openblas
-
-    # - name: "gg__clang__{ncpus}"
-    #   cpus_per_task: "{ncpus}"
-    #   modules:
-    #     - "WIP!!!"
-    #   env: 
-    #     - "OMP_NUM_THREADS={ncpus}"
-    #     - "OPENBLAS_NUM_THREADS={ncpus}"
-    #     - "GOTO_NUM_THREADS={ncpus}"
-
-
-# leonardo:
-#   scheduler: slurm
-
-#   default_conf:
-#     account: "IscrC_OMG-25_0"
-#     time: "00:30:00"
-#     partition: "dcgp_usr_prod"
-#     qos: "normal"
-#     exclusive: true
-#     nodes: 1
-#     ntasks: 1
-#     custom_headers:
-#       - "#SBATCH --gres=gres/tmpfs:10g"
-#     env: 
-#       - "OMP_PROC_BIND=close"
-#       - "OMP_PLACES=cores"
-
-#   configs:
-
-#     - name: "dcgp__gcc____{ncpus}"
-#       cpus_per_task: "{ncpus}"
-#       modules: 
-#         - "gcc/12.2.0"
+#     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
 #       env:
+#         - "CC={compiler_c[compiler]}"
+#         - "CXX={compiler_cxx[compiler]}"
+#         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
 #         - "OMP_NUM_THREADS={ncpus}"
-
-#     - name: "dcgp__gcc__openblas__{ncpus}"
-#       cpus_per_task: "{ncpus}"
-#       modules: 
-#         - "gcc/12.2.0"
-#         - "openblas/0.3.26--gcc--12.2.0"
-#       env:
-#         - "OMP_NUM_THREADS={ncpus}"
-#         - "OPENBLAS_NUM_THREADS={ncpus}"
-#         - "GOTO_NUM_THREADS={ncpus}"
-
-
-#     - name: "dcgp__clang____{ncpus}"
-#       cpus_per_task: "{ncpus}"
-#       modules: 
-#         - "llvm/14.0.6--gcc--12.2.0-cuda-12.2"
-#       env:
-#         - "OMP_NUM_THREADS={ncpus}"
-#         - "OPENBLAS_NUM_THREADS={ncpus}"
-#         - "GOTO_NUM_THREADS={ncpus}"
-
-#     # No OpenBLAS-clang available
-
-
-#     - name: "dcgp__icx____{ncpus}"
-#       cpus_per_task: "{ncpus}"
-#       modules: 
-#         - "intel-oneapi-compilers/2024.1.0"
-#       env:
-#         - "OMP_NUM_THREADS={ncpus}"
-#         - "MKL_NUM_THREADS={ncpus}"
-
-#     - name: "dcgp__icx__mkl__{ncpus}"
-#       cpus_per_task: "{ncpus}"
-#       modules: 
-#         - "intel-oneapi-compilers/2024.1.0"
-#         - "intel-oneapi-mkl/2024.0.0"
-#       env:
-#         - "OMP_NUM_THREADS={ncpus}"
-#         - "MKL_NUM_THREADS={ncpus}"
-
-        
+#       custom_headers:
+#         - "#SBATCH --cpus-per-task={ncpus}"
+#         - "source /etc/profile.d/modules.sh"
+#         - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
