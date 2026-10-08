@@ -71,11 +71,12 @@ preprocess: |
   
   
 command: 'make {benchmark} CLASS={class[benchmark]}'
-postprocess: 'mv "bin/${NPB_BENCH,,}.{class[benchmark]}" "../bin/$BIN_NAME" && {compiler_disass[compiler]} "../bin/$BIN_NAME" > "$SBATCHMAN_JOB_DIR/$BIN_NAME".asm'
+postprocess: 'mv "bin/${NPB_BENCH,,}.{class[benchmark]}" "../bin/{isa}/$BIN_NAME" && mkdir -p "$SBATCHMAN_JOB_DIR/{isa}"; {compiler_disass[compiler]} "../bin/{isa}/$BIN_NAME" > "$SBATCHMAN_JOB_DIR/{isa}/$BIN_NAME".asm'
 check: '[[ -f "../bin/$BIN_NAME" ]]'
 
 
 jobs:
   - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____1"
     config_jobs:
-      - tag: "compile_NPB-OMP_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{benchmark}_{class[benchmark]}"
+      - tag: "compile_NPB-OMP_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{benchmark}_{class[benchmark]}"
+        category: "compile"
