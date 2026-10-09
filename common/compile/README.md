@@ -24,4 +24,7 @@ chmod +x install_compilers.sh
 
 # Installs {GCC, CLANG} x {riscv64}
 ./install_compilers.sh --all --isa riscv64
+
+# On MonteCimone
+TARGET_GLIBC_RISCV64=2.39 ./install_compilers.sh --all --isa riscv64
 ```

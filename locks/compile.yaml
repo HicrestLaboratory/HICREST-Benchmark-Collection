@@ -3,6 +3,7 @@ sequential: true
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "../common/shared_memory_all_compiler_flags.yaml"
   - "vars.yaml"
 
 preprocess: |

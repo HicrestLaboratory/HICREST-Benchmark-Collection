@@ -1,7 +1,7 @@
 compiler_extra_flags_name:
   map:
-    default: ['none']
-    gcc: ['autovec_gcc']
-    clang: ['autovec_clang']
-    clang_epi_rvv1: ['autovec_clang_epi_rvv1']
-    clang_epi_rvv071: ['autovec_clang_epi_rvv071']
+    default:            ['none']
+    gcc:                ['autovec_gcc']
+    clang:              ['autovec_clang']
+    clang_epi_rvv1:     ['autovec_clang_epi_rvv1']
+    clang_epi_rvv071:   ['autovec_clang_epi_rvv071']

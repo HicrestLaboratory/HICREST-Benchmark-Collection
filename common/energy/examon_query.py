@@ -24,15 +24,15 @@ import sys
 ip = "192.168.1.201"
 port_ = "6667"
 
-username_ = "[username]" #ask emanuele.venieri2@unibo.it
-password_ = "[password]"
+username_ = "mcquery" #ask emanuele.venieri2@unibo.it
+password_ = "mcimone2165"
 
 parser = argparse.ArgumentParser(description="Query Examon metrics and export CSV data")
 parser.add_argument("timestamp_start_ms", type=int, help="Start timestamp in milliseconds")
 parser.add_argument("timestamp_end_ms", type=int, help="End timestamp in milliseconds")
 parser.add_argument(
     "--output",
-    default="output.csv",
+    default=None,
     help="Path to the raw CSV output file",
 )
 parser.add_argument(
@@ -59,7 +59,7 @@ for query in querys:
     result = session.execute_query_statement(f"show child paths {query}")
     result = [x[0].replace(f"{query}.", "") for x in result.todf().values.tolist()]
 
-    print(f"\n available metrics for {query}: {result}")
+    # print(f"\n available metrics for {query}: {result}")
 
 BMC_SELECTED = ["1", "2"]
 selected_metrics = ["Efuse_Power"]
@@ -70,7 +70,7 @@ duration_seconds = (timestamp_end - timestamp_start) / 1000.0
 for bmc in BMC_SELECTED:
     for metric in range(len(selected_metrics)):
         metric_name = selected_metrics[metric]
-        print(f"Retrieving bmc_{bmc} metric: {metric_name}")
+        # print(f"Retrieving bmc_{bmc} metric: {metric_name}")
         query = f"SELECT {metric_name} \
                 FROM root.mcimone.plugin.ipmi_pub.id.bmc_peak{bmc}.value \
                 WHERE time > {timestamp_start} \
@@ -123,17 +123,26 @@ for bmc in BMC_SELECTED:
         
 session.close()
 
-df.to_csv(output_path)
+if output_path is not None:
+    df.to_csv(output_path)
 
 summary_df = pd.DataFrame(summary_rows)
-if summary_output_path is None:
-    if output_path.lower().endswith(".csv"):
-        summary_output_path = output_path[:-4] + "_summary.csv"
-    else:
-        summary_output_path = output_path + "_summary.csv"
+# if summary_output_path is None:
+#     if output_path.lower().endswith(".csv"):
+#         summary_output_path = output_path[:-4] + "_summary.csv"
+#     else:
+#         summary_output_path = output_path + "_summary.csv"
 
-summary_df.to_csv(summary_output_path, index=False)
+if summary_output_path is not None:
+    summary_df.to_csv(summary_output_path, index=False)
 
-print(df.columns)
+# print(df.columns)
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 2000)
+
+
+print("START ENERGY MEASUREMENTS")
 print(summary_df)
+print("END ENERGY MEASUREMENTS")
 

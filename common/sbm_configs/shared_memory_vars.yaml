@@ -44,6 +44,11 @@ isa:
     dalek-mono-oh5:     ['x86']
     dalek-minix:        ['x86']
 
+    # MonteCimone
+    mc-SG2042:          ['riscv']
+    mc-SG2044:          ['riscv']
+
+
 ########################
 # Compiler definitions #
 ########################
@@ -154,9 +159,19 @@ blas_lib_basepath:
 compiler_common:
   map:
     default: ['-fopenmp -ffast-math']
-    clang_epi_rvv1: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -fopenmp -ffast-math'] # These are in LD_LIBRARY_PATH from config
-    clang_epi_rvv071: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -fopenmp -ffast-math'] # -L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib
- 
+    
+    clang_epi_rvv1:
+      default: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -fopenmp -ffast-math'] # These are in LD_LIBRARY_PATH from config
+      per_cluster:
+        mc-SG2042: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
+        mc-SG2044: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
+    
+    clang_epi_rvv071:
+      default: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -fopenmp -ffast-math'] # -L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib
+      per_cluster:
+        mc-SG2042: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
+        mc-SG2044: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
+    
 compiler_opt:
   map:
     default: ['-O3']
@@ -174,11 +189,11 @@ compiler_march:
 
 compiler_extra_flags_name:
   map:
-    default: ['none']
-    gcc: ['none', 'autovec_gcc', 'novec_gcc']
-    clang: ['none', 'autovec_clang', 'novec_clang']
-    clang_epi_rvv1: ['none', 'autovec_clang_epi_rvv1', 'novec_clang_epi_rvv1']
-    clang_epi_rvv071: ['none', 'autovec_clang_epi_rvv071', 'novec_clang_epi_rvv071']
+    default:            ['none']
+    gcc:                ['autovec_gcc', 'novec_gcc']
+    clang:              ['autovec_clang', 'novec_clang']
+    clang_epi_rvv1:     ['autovec_clang_epi_rvv1', 'novec_clang_epi_rvv1']
+    clang_epi_rvv071:   ['autovec_clang_epi_rvv071', 'novec_clang_epi_rvv071']
 
 compiler_extra_flags:
   map:
@@ -220,7 +235,8 @@ compiler_disass:
 #         bsc-hca-bananaf3:   ['llvm/EPI-development']
 #         bsc-hca-arriesgado: ['llvm/EPI-0.7-development']
 
-blas_lib: ['', 'openblas', 'blis']
+# FIXME uncomment
+blas_lib: [''] #, 'openblas', 'blis']
 
 
 #######################
@@ -254,5 +270,5 @@ energy_measure_stop:
     dalek-mono-oh5:     ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-minix:        ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
-    mc-SG2042:          ["export EXAMON_END_TS=$(date +%s%3N) && python3 examon_query.py $START_TS $END_TS --output ./examon_out.csv --summary_output ./examon_summary_out.csv"]
-    mc-SG2044:          ["export EXAMON_END_TS=$(date +%s%3N) && python3 examon_query.py $START_TS $END_TS --output ./examon_out.csv --summary_output ./examon_summary_out.csv"]
+    mc-SG2042:          ['python3.11 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
+    mc-SG2044:          ['python3.10 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']

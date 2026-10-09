@@ -234,7 +234,7 @@ mc-SG2044:
     nodes: 1
     ntasks: 1
     exclusive: true
-    time: "03:00:00"
+    time: "06:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
@@ -250,30 +250,33 @@ mc-SG2044:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
         - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
+        - "source ~/.peak-venv/bin/activate"
 
 
 # Sophgo SG2042 - E4 dual socket @ MC
-# mc-SG2042: 
-#   scheduler: slurm
+mc-SG2042:
+  scheduler: slurm
 
-#   default_conf:
-#     partition: "blade"
-#     nodes: 1
-#     ntasks: 1
-#     exclusive: true
-#     time: "03:00:00"
-#     env: 
-#       - "OMP_PROC_BIND=close"
-#       - "OMP_PLACES=cores"
+  default_conf:
+    partition: "blade"
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    time: "06:00:00"
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
 
-#   configs:
-#     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
-#       env:
-#         - "CC={compiler_c[compiler]}"
-#         - "CXX={compiler_cxx[compiler]}"
-#         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-#         - "OMP_NUM_THREADS={ncpus}"
-#       custom_headers:
-#         - "#SBATCH --cpus-per-task={ncpus}"
-#         - "source /etc/profile.d/modules.sh"
-#         - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
+  configs:
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      env:
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - "OMP_NUM_THREADS={ncpus}"
+      custom_headers:
+        - "#SBATCH --cpus-per-task={ncpus}"
+        - "source /etc/profile.d/modules.sh"
+        - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
+        - "source ~/.blade-venv/bin/activate"
+
