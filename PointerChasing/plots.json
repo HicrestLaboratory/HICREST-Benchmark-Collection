@@ -1,0 +1,228 @@
+{
+  "version": 3,
+  "activeTabIndex": 1,
+  "tabs": [
+    {
+      "version": 3,
+      "label": "Linear and Random",
+      "mode": "grid",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "SELECT * FROM linear_chase",
+        "plotType": "line",
+        "columns": [
+          "x",
+          "y",
+          "program",
+          "compiler",
+          "compiler_extra_flags_name",
+          "compiler_opt",
+          "isa",
+          "linear_chase_max_stride",
+          "ncpus",
+          "cluster",
+          "tot_runtime"
+        ],
+        "x": "x",
+        "y": [
+          "y"
+        ],
+        "group": [
+          "cluster",
+          "compiler",
+          "compiler_extra_flags_name",
+          "compiler_opt"
+        ],
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 2,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM linear_chase\nWHERE ncpus = 1\nORDER BY x",
+            "plotType": "line",
+            "columns": [
+              "x",
+              "y",
+              "program",
+              "compiler",
+              "compiler_extra_flags_name",
+              "compiler_opt",
+              "isa",
+              "linear_chase_max_stride",
+              "ncpus",
+              "cluster",
+              "tot_runtime"
+            ],
+            "chartTitle": "Linear Chase",
+            "x": "x",
+            "y": [
+              "y"
+            ],
+            "group": [
+              "cluster"
+            ],
+            "xLabel": "Stride (B)",
+            "yLabel": "Latency (ns)",
+            "showLegend": true,
+            "transformScript": "data['result']['cluster'] = data['result']['cluster'].map({\n    'baldo': 'AMD EPYC 7742',\n    'bsc-hca-pioneer': 'Milk-V Pioneer',\n    'dalek-mono-bpi-f3': 'Banana Pi F3',\n    'dalek-mono-sip-k3': 'SpacemiT K3 Pico',\n    'dalek-minix': 'Minix',\n    'dalek-mono-oh5': 'Hardkernel Odroid H5',\n}).fillna(data['result']['cluster'])",
+            "errorStyle": "bars"
+          },
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM random_chase\nWHERE ncpus = 1\nORDER BY x",
+            "plotType": "line",
+            "columns": [
+              "x",
+              "y",
+              "program",
+              "compiler",
+              "compiler_extra_flags_name",
+              "compiler_opt",
+              "ncpus",
+              "random_chase_max_size",
+              "cluster",
+              "tot_runtime",
+              "isa"
+            ],
+            "chartTitle": "Random Chase",
+            "x": "x",
+            "y": [
+              "y"
+            ],
+            "group": [
+              "cluster"
+            ],
+            "xLabel": "Array Size (B)",
+            "yLabel": "Latency (ns)",
+            "tickFormatter": "def format_bytes(size_bytes, binary=False, precision=2, space_between_size_and_unit=False):\n    \"\"\"\n    Convert a size in bytes into a human-readable string.\n\n    Args:\n        size_bytes (int or float): Size in bytes\n        binary (bool): If True, use binary units (KiB, MiB, GiB).\n                        If False, use SI units (KB, MB, GB)\n        precision (int): Number of decimal places\n\n    Returns:\n        str: Human-readable string\n    \"\"\"\n    if size_bytes < 0:\n        # raise ValueError(f\"size_bytes must be non-negative: got {size_bytes}\")\n        return size_bytes\n\n    if binary:\n        # Binary prefixes: 1024\n        units = [\"B\", \"KiB\", \"MiB\", \"GiB\", \"TiB\", \"PiB\"]\n        factor = 1024.0\n    else:\n        # SI prefixes: 1000\n        units = [\"B\", \"KB\", \"MB\", \"GB\", \"TB\", \"PB\"]\n        factor = 1000.0\n\n    size = float(size_bytes)\n    for unit in units:\n        if size < factor:\n            return f\"{size:.{precision}f}{' ' if space_between_size_and_unit else ''}{unit}\"\n        size /= factor\n\n    return f\"{size:.{precision}f}{' ' if space_between_size_and_unit else ''}{units[-1]}\"\n\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "showLegend": true,
+            "transformScript": "data['result']['cluster'] = data['result']['cluster'].map({\n    'baldo': 'AMD EPYC 7742',\n    'bsc-hca-pioneer': 'Milk-V Pioneer',\n    'dalek-mono-bpi-f3': 'Banana Pi F3',\n    'dalek-mono-sip-k3': 'SpacemiT K3 Pico',\n    'dalek-minix': 'Minix',\n    'dalek-mono-oh5': 'Hardkernel Odroid H5',\n}).fillna(data['result']['cluster'])",
+            "errorStyle": "bars"
+          }
+        ],
+        "shareX": false,
+        "shareY": false,
+        "xgap": "0.08",
+        "ygap": "0",
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [],
+        "facetAxis": "cols",
+        "facetCount": 2,
+        "groupBy": [],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": "12",
+        "subplotHeight": "5",
+        "facetLabelFormat": "{column}={value}"
+      }
+    },
+    {
+      "version": 3,
+      "label": "Plot 2",
+      "mode": "grid",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "columns": [
+          "x",
+          "y",
+          "program",
+          "compiler",
+          "compiler_extra_flags_name",
+          "compiler_opt",
+          "linear_chase_max_stride",
+          "ncpus",
+          "cluster",
+          "tot_runtime"
+        ],
+        "x": "x",
+        "y": [
+          "y"
+        ],
+        "group": [
+          "cluster",
+          "compiler",
+          "compiler_extra_flags_name",
+          "compiler_opt"
+        ],
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM fused_random_chase \nWHERE ncpus = 1\nORDER BY fuse, x",
+            "plotType": "line",
+            "columns": [
+              "x",
+              "y",
+              "fuse",
+              "compiler",
+              "compiler_extra_flags_name",
+              "compiler_opt",
+              "fused_random_chase_max_size",
+              "isa",
+              "ncpus",
+              "cluster",
+              "tot_runtime"
+            ],
+            "x": "x",
+            "y": [
+              "y"
+            ],
+            "group": [
+              "cluster"
+            ],
+            "dashBy": "fuse",
+            "showLegend": true,
+            "errorStyle": "bars"
+          }
+        ],
+        "shareX": false,
+        "shareY": false,
+        "xgap": 0.2,
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "right",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [],
+        "facetAxis": "cols",
+        "facetCount": 2,
+        "groupBy": [],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{column}={value}"
+      }
+    }
+  ],
+  "style": {
+    "width_in": 0,
+    "height_in": 0,
+    "label_size": 9,
+    "tick_size": 8,
+    "legend_size": 8,
+    "title_size": 10
+  }
+}
