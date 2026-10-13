@@ -280,3 +280,65 @@ mc-SG2042:
         - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
         - "source ~/.blade-venv/bin/activate"
 
+
+# Intel Xeon P. 8480+ - BSC's General Purpose @ MN5
+MN5-GPP:
+  scheduler: slurm
+
+  default_conf:
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    account: bsc10
+    qos: gp_debug
+    constraint: perfparanoid
+    time: "02:00:00"
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+
+  configs:
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      env:
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - "OMP_NUM_THREADS={ncpus}"
+      modules:
+        - "ear"
+      custom_headers:
+        - "#SBATCH --cpus-per-task={ncpus}"
+        - "#SBATCH --ear=on"
+        - "#SBATCH --ear-user-db=metrics_mare5_sbatch"
+        - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
+
+# Grace - BSC's Grace - General Purpose @ MN5
+MN5-GRACE:
+  scheduler: slurm
+
+  default_conf:
+    nodes: 1
+    ntasks: 1
+    exclusive: true
+    account: bsc10
+    qos: ngp_debug
+    constraint: perfparanoid
+    time: "02:00:00"
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
+
+  configs:
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      env:
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - "OMP_NUM_THREADS={ncpus}"
+      custom_headers:
+        - "#SBATCH --cpus-per-task={ncpus}"
+        - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
+        - "export EAR_ROOT=/apps/EAR/ear6.0.grace"
+        - "module use ${EAR_ROOT}/etc/module/"
+        - "module load ear ear-lite"
+        - "export HACK_ENERGY_PLUGIN=hwmon.so"

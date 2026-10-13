@@ -25,6 +25,10 @@ ncpus:
     mc-SG2042:          [1, 2, 4, 8, 16, 32, 56, 64, 128]
     mc-SG2044:          [1, 2, 4, 8, 16, 32, 56, 64]
 
+    # Mare5
+    MN5-GPP:            [1, 2, 4, 8, 16, 32, 56, 64, 112]
+    MN5-GRACE:          [1, 2, 4, 8, 16, 32, 56, 64, 72, 144]
+
 isa:
   per_cluster:
     debug:              ['x86']
@@ -47,6 +51,10 @@ isa:
     # MonteCimone
     mc-SG2042:          ['riscv']
     mc-SG2044:          ['riscv']
+
+    # Mare5
+    MN5-GPP:            ['x86']
+    MN5-GRACE:          ['arm']
 
 
 ########################
@@ -79,6 +87,8 @@ compiler_c:
         dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/bin/gcc']
         dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/bin/gcc']
         dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/bin/gcc']
+        MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/bin/gcc']
+        MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/bin/gcc']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/bin/clang']
@@ -87,6 +97,8 @@ compiler_c:
         dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang']
         dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang']
         dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang']
+        MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang']
+        MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang']
 
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/bin/clang']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/bin/clang']
@@ -101,6 +113,8 @@ compiler_cxx:
         dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/bin/g++']
         dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/bin/g++']
         dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/bin/g++']
+        MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/bin/g++']
+        MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/bin/g++']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/bin/clang++']
@@ -109,6 +123,8 @@ compiler_cxx:
         dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang++']
         dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang++']
         dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang++']
+        MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang++']
+        MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang++']
         
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/bin/clang++']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/bin/clang++']
@@ -127,6 +143,8 @@ ld_library_path_compiler:
         dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/lib:$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0']
         dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
         dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
+        MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
+        MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/lib:$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/lib']
@@ -135,6 +153,8 @@ ld_library_path_compiler:
         dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/lib']
         dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
         dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
+        MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
+        MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/lib']
 
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/lib']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/lib']
@@ -216,7 +236,7 @@ compiler_disass:
 
 
 #######################
-# Modules & Libraries #
+# Libraries           #
 #######################
 
 # Manually managed in software_env
@@ -245,7 +265,7 @@ blas_lib: [''] #, 'openblas', 'blis']
 
 energy_measure_start:
   per_cluster:
-    default: ['']
+    default: [""]
     bsc-hca-pioneer:    ['mkdir -p $HOME/tmp && python3 ../common/energy/ncm.py start --output "$HOME/tmp/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "$HOME/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-bpi-f3:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-sip-k3:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
@@ -257,10 +277,12 @@ energy_measure_start:
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     mc-SG2042:          ["export EXAMON_START_TS=$(date +%s%3N)"]
     mc-SG2044:          ["export EXAMON_START_TS=$(date +%s%3N)"]
+    MN5-GPP:            [""]
+    MN5-GRACE:          [""]
 
 energy_measure_stop:
   per_cluster:
-    default: ['']
+    default: [""]
     bsc-hca-pioneer:    ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "$HOME/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-bpi-f3:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-sip-k3:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
@@ -272,3 +294,11 @@ energy_measure_stop:
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     mc-SG2042:          ['python3.11 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     mc-SG2044:          ['python3.10 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
+    MN5-GPP:            ['[ -f "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" ] && mv "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
+    MN5-GRACE:          ['[ -f "./metrics_grace_sbatch.${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch.${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
+
+energy_measure_before_exec:
+  per_cluster:
+    default:           [""]
+    MN5-GPP:           ["srun --ear=on --ear-verbose=1 --force --ear-user-db=metrics_gpp_sbatch --ear-tag=threads --program="] # Are these needed? -n 1 -c $threads
+    MN5-GRACE:         ["srun --cpu-bind=cores ${EAR_ROOT}/bin/erun --ear=on --ear-user-db=metrics_grace_sbatch --program="]   # Are these needed? -n 1 -c $threads

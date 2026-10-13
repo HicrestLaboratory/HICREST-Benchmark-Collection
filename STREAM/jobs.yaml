@@ -11,5 +11,5 @@ jobs:
       - tag: "stream_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_C{ncpus}_R{runs}_O{offset}"
         category: "stream"
         preprocess: "{energy_measure_start}"
-        command: "./bin/{isa}/stream_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
+        command: "{energy_measure_before_exec}./bin/{isa}/stream_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}_M{array_mem_mb}_R{runs}_O{offset}"
         postprocess: '{energy_measure_stop}'

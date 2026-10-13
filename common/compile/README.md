@@ -21,6 +21,7 @@ chmod +x install_compilers.sh
 
 # Installs {GCC, CLANG} x {x86, arm, riscv64}
 ./install_compilers.sh --all
+./install_compilers.sh --all --isa x86_64 --gcc 16.1.0 --clang 23.1.0
 
 # Installs {GCC, CLANG} x {riscv64}
 ./install_compilers.sh --all --isa riscv64
