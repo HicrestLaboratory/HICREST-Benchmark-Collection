@@ -1,5 +1,6 @@
 {
   "version": 3,
+  "activeTabIndex": 2,
   "tabs": [
     {
       "version": 3,
@@ -9,6 +10,16 @@
       "database": "data",
       "sql": "SELECT system, array_mem_mb, compiler, compiler_extra_flags_name AS flags, compiler_opt, data_type, ncpus, copy_rate_mb_s\nFROM stream\nWHERE system=\"dalek-mono-rpi-5b\"\nORDER BY data_type, ncpus",
       "plotType": "line",
+      "columns": [
+        "system",
+        "array_mem_mb",
+        "compiler",
+        "flags",
+        "compiler_opt",
+        "data_type",
+        "ncpus",
+        "copy_rate_mb_s"
+      ],
       "chartTitle": "Copy GCC",
       "x": "ncpus",
       "y": [
@@ -27,14 +38,32 @@
       "label": "AllKernels",
       "mode": "grid",
       "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
       "grid": {
         "rows": 1,
         "cols": 1,
+        "activePanelIndex": 0,
         "panels": [
           {
             "database": "data",
             "sql": "SELECT system, array_mem_mb, compiler, compiler_extra_flags_name AS flags, compiler_opt, data_type, ncpus, copy_rate_mb_s\nFROM stream\nORDER BY data_type, ncpus",
             "plotType": "line",
+            "columns": [
+              "system",
+              "array_mem_mb",
+              "compiler",
+              "flags",
+              "compiler_opt",
+              "data_type",
+              "ncpus",
+              "copy_rate_mb_s"
+            ],
             "x": "ncpus",
             "y": [
               "copy_rate_mb_s"
@@ -63,6 +92,7 @@
         "facetGroupCols": [],
         "facetAxis": "cols",
         "facetCount": 2,
+        "groupBy": [],
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 4,
@@ -75,14 +105,35 @@
       "label": "CopyOneSystem",
       "mode": "facet",
       "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
       "grid": {
         "rows": 1,
         "cols": 1,
+        "activePanelIndex": 0,
         "panels": [
           {
             "database": "data",
             "sql": "SELECT system, array_mem_mb, compiler, compiler_extra_flags_name AS flags, compiler_opt, data_type, ncpus, copy_rate_mb_s, add_rate_mb_s, scale_rate_mb_s, triad_rate_mb_s\nFROM stream\nWHERE system=\"dalek-mono-rpi-5b\"\nORDER BY data_type, ncpus",
             "plotType": "line",
+            "columns": [
+              "system",
+              "array_mem_mb",
+              "compiler",
+              "flags",
+              "compiler_opt",
+              "data_type",
+              "ncpus",
+              "copy_rate_mb_s",
+              "add_rate_mb_s",
+              "scale_rate_mb_s",
+              "triad_rate_mb_s"
+            ],
             "x": "ncpus",
             "y": [
               "copy_rate_mb_s",
@@ -98,18 +149,18 @@
             "yLabel": "MB/s",
             "xScale": "log2",
             "xTickFmt": ".0f",
-            "legendOrientation": "vertical",
+            "legendOrientation": "horizontal",
             "showLegend": true,
             "errorStyle": "bars"
           }
         ],
-        "shareX": true,
+        "shareX": false,
         "shareY": true,
-        "xgap": 0.2,
+        "xgap": "0",
         "ygap": 0.24,
         "panelLabels": false,
         "facetByGroup": true,
-        "legendPosition": "right",
+        "legendPosition": "top",
         "legendTitle": "",
         "showLegend": true,
         "shareLegend": true,
@@ -118,7 +169,11 @@
           "data_type"
         ],
         "facetAxis": "cols",
-        "facetCount": 4,
+        "facetCount": 2,
+        "groupBy": [
+          "flags",
+          "data_type"
+        ],
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 6,

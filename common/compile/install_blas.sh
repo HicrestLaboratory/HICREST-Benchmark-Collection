@@ -252,13 +252,12 @@ echo "Building OpenBLAS"
 echo "================================================================"
 echo "Install prefix: ${OPENBLAS_PREFIX}"
 
-# FIXME uncomment
-# rm -rf "${OPENBLAS_SRC}"
+rm -rf "${OPENBLAS_SRC}"
 
-# git clone https://github.com/OpenMathLib/OpenBLAS.git "${OPENBLAS_SRC}"
+git clone https://github.com/OpenMathLib/OpenBLAS.git "${OPENBLAS_SRC}"
 
 cd "${OPENBLAS_SRC}"
-# git checkout "${OPENBLAS_VERSION}"
+git checkout "${OPENBLAS_VERSION}"
 
 OPENBLAS_MAKE_OPTS=(
     "CC=${CC}"

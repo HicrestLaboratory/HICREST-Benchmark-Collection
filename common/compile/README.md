@@ -29,3 +29,12 @@ chmod +x install_compilers.sh
 # On MonteCimone
 TARGET_GLIBC_RISCV64=2.39 ./install_compilers.sh --all --isa riscv64
 ```
+
+## Setting up BLAS libraries
+
+```bash
+./install_blas.sh sg2044 # RVV1.0
+./install_blas.sh sg2042 # RVV0.7.1
+./install_blas.sh grace  # ARM - Grace
+./install_blas.sh sapphirerapids # x86 - Intel
+```

@@ -33,6 +33,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ "$backend" == "openblas" ]]; then
+    backend="blas"
+fi
+if [[ "$backend" == "none" ]]; then
+    backend="cpu"
+fi
+
 if [[ ! -d llamacpp ]]; then
     echo "error: llamacpp/ not found here — run 'git submodule update --init -- llamacpp' first" >&2
     exit 1
