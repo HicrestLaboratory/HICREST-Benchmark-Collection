@@ -16,6 +16,6 @@ jobs:
           rm -rf build
           export CFLAGS="${CFLAGS/-ffast-math/-fno-finite-math-only}"
         command: './compile_llama.sh --backend {blas_lib} --blas-lib {blas_lib_file_path[blas_lib]} --blas-include {blas_include_path[blas_lib]} -- -DOpenMP_C_FLAGS="-fopenmp=libomp" -DOpenMP_CXX_FLAGS="-fopenmp=libomp" -DOpenMP_C_LIB_NAMES=omp -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY={openmp_library_path[compiler]} -DOpenMP_C_INCLUDE_DIR={openmp_include_path[compiler]} -DOpenMP_CXX_INCLUDE_DIR={openmp_include_path[compiler]}'
-        postprocess: 'mv -r build/ "build_{compiler}_{isa}_{blas_lib}"'
+        postprocess: 'mv build/ "build_{compiler}_{isa}_{blas_lib}"'
         check: '[[ -f "build_{compiler}_{isa}_{blas_lib}/llama-bench" ]]'
         category: "compile"
