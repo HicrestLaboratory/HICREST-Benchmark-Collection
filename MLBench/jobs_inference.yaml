@@ -1,0 +1,38 @@
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
+  - "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
+
+variables:
+  repetitions: [10]
+  model: "inference/models/"
+
+preprocess: "{energy_measure_start}"
+postprocess: '{energy_measure_stop}'
+
+jobs:
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+    config_jobs:
+
+      - tag: "inference-prefill_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_p{prompt_length}_n{n_tokens}_r{repetitions}_m{model_filename}"
+        variables:
+          prompt_length: [512]
+          n_tokens: [0]
+        category: "inference-prefill"
+        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/bin/llama-bench -p {prompt_length} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"
+
+      - tag: "inference-decode_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_p{prompt_length}_n{n_tokens}_r{repetitions}_m{model_filename}"
+        variables:
+          prompt_length: [0]
+          n_tokens: [128]
+        category: "inference-decode"
+        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/bin/llama-bench -p {prompt_length} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"
+
+      - tag: "inference-full_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_p{prompt_length}_pg{prompt_and_generation}_n{n_tokens}_r{repetitions}_m{model_filename}"
+        variables:
+          prompt_length: [0]
+          n_tokens: [0]
+          prompt_and_generation: ["512,128"]
+        category: "inference-full"
+        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/bin/llama-bench -p {prompt_length} -pg {prompt_and_generation} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"

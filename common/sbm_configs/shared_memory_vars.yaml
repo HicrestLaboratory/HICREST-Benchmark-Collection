@@ -159,22 +159,55 @@ ld_library_path_compiler:
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/lib']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/lib']
 
-
-blas_lib_basepath:
-  default: ['']
+openmp_library_path:
   map:
-    opennblas:
-      # TODO make this path more intuitive and structured
-      default: ['$HOME/software_env/OpenBLAS-sg2044']
+    gcc:
+      default: ['$HOME/software_env/gcc/riscv64/16.1.0/lib/gcc/riscv64-conda-linux-gnu/16.1.0/libgomp.so']
       per_cluster:
-        other: ['otherclusterlib']
+        dalek-mono-jts-onx: ['$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0/libgomp.so']
+        dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0/libgomp.so']
+        dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/libgomp.so']
+        dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/libgomp.so']
+        MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/libgomp.so']
+        MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0/libgomp.so']
 
-    blis:
-      # TODO make this path more intuitive and structured
-      default: ['$HOME/software_env/blis-sg2044']
+    clang:
+      default: ['$HOME/software_env/clang/riscv64/23.1.0/lib/libomp.so']
       per_cluster:
-        other: ['otherclusterlib']
+        dalek-mono-jts-onx: ['$HOME/software_env/clang/aarch64/23.1.0/lib/libomp.so']
+        dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/lib/libomp.so']
+        dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu/libomp.so']
+        dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu/libomp.so']
+        MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu/libomp.so']
+        MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/lib/libomp.so']
 
+    clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/lib/libomp.so']
+    clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/lib/libomp.so']
+
+openmp_include_path:
+  map:
+    gcc:
+      default: ['$HOME/software_env/gcc/riscv64/16.1.0/include']
+      per_cluster:
+        dalek-mono-jts-onx: ['$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0/include']
+        dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0/include']
+        dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/include']
+        dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/include']
+        MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/include']
+        MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0/include']
+
+    clang:
+      default: ['$HOME/software_env/clang/riscv64/23.1.0/include']
+      per_cluster:
+        dalek-mono-jts-onx: ['$HOME/software_env/clang/aarch64/23.1.0/include']
+        dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/include']
+        dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/include']
+        dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/include']
+        MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/include']
+        MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/include']
+
+    clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/include']
+    clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/include']
 
 compiler_common:
   map:
@@ -239,24 +272,54 @@ compiler_disass:
 # Libraries           #
 #######################
 
-# Manually managed in software_env
-# compiler_module:
-#   map:
-#     gcc:
-#       per_cluster:
-#         default: ['']
-#     clang:
-#       per_cluster:
-#         default: ['']
-
-#     clang_epi:
-#       per_cluster:
-#         bsc-hca-pioneer:    ['llvm/EPI-0.7-development']
-#         bsc-hca-bananaf3:   ['llvm/EPI-development']
-#         bsc-hca-arriesgado: ['llvm/EPI-0.7-development']
-
 # FIXME uncomment
-blas_lib: [''] #, 'openblas', 'blis']
+blas_lib: ['openblas', 'none', '',] # 'openblas', 'blis']
+
+# TODO set correct paths
+# OPENBLAS_PREFIX="${SOFTWARE_ENV}/OpenBLAS/${OPENBLAS_ISA}/${OPENBLAS_VERSION}"
+# BLIS_PREFIX="${SOFTWARE_ENV}/blis/${BLIS_ISA}/${BLIS_VERSION}"
+blas_lib_path:
+  map:
+    none: ['']
+    openblas:
+      default:              ['$HOME/software_env/OpenBLAS-sg2044/lib']
+      per_cluster:
+        mc-SG2042:          ['$HOME/software_env/OpenBLAS-sg2042/lib']
+        # dalek-mono-jts-onx: ['$HOME/software_env/OpenBLAS-sg2044/lib']
+        # dalek-mono-rpi-5b:  ['$HOME/software_env/OpenBLAS-sg2044/lib']
+        # dalek-mono-oh5:     ['$HOME/software_env/OpenBLAS-sg2044/lib']
+        # dalek-minix:        ['$HOME/software_env/OpenBLAS-sg2044/lib']
+        MN5-GPP:            ['$HOME/software_env/OpenBLAS-sg2044/lib']
+        MN5-GRACE:          ['$HOME/software_env/OpenBLAS-grace/lib']
+    # TODO
+    # blis:
+
+# TODO update accordingly
+blas_lib_basepath:
+  default: ['']
+  map:
+    opennblas:
+      default: ['$HOME/software_env/OpenBLAS-sg2044']
+      per_cluster:
+        other: ['otherclusterlib']
+
+    blis:
+      default: ['$HOME/software_env/blis-sg2044']
+      per_cluster:
+        other: ['otherclusterlib']  
+
+blas_lib_file_path: 
+  map:
+    none: ['']
+    openblas: ['$HOME/software_env/OpenBLAS-sg2044/lib/libopenblas.so']
+    blis: ['']
+    
+blas_include_path:
+  map:
+    none: ['']
+    openblas: ['$HOME/software_env/OpenBLAS-sg2044/include']
+    blis: ['']
+
 
 
 #######################
