@@ -272,12 +272,12 @@ compiler_disass:
 # Libraries           #
 #######################
 
-# FIXME uncomment
-blas_lib: ['openblas', 'none', '',] # 'openblas', 'blis']
+blas_lib: ['']
 
 # TODO set correct paths
 # OPENBLAS_PREFIX="${SOFTWARE_ENV}/OpenBLAS/${OPENBLAS_ISA}/${OPENBLAS_VERSION}"
 # BLIS_PREFIX="${SOFTWARE_ENV}/blis/${BLIS_ISA}/${BLIS_VERSION}"
+# software_env/OpenBLAS/RISCV64_ZVL128B/v0.3.34
 blas_lib_path:
   map:
     none: ['']

@@ -227,6 +227,8 @@ command -v "${CXX}" >/dev/null 2>&1 || {
     exit 1
 }
 
+export LD_LIBRARY_PATH="${EXTRA_LIB}"
+
 # ---------------------------------------------------------------------------
 # Structured installation directories
 #
@@ -252,12 +254,30 @@ echo "Building OpenBLAS"
 echo "================================================================"
 echo "Install prefix: ${OPENBLAS_PREFIX}"
 
-rm -rf "${OPENBLAS_SRC}"
+FRESH_DOWNLOAD=0
 
-git clone https://github.com/OpenMathLib/OpenBLAS.git "${OPENBLAS_SRC}"
+if [ -d "${OPENBLAS_SRC}" ]; then
+    read -rp "Directory '${OPENBLAS_SRC}' already exists. [R]esume or [F]resh copy? (r/f) [default: r]: " CHOICE
+    case "${CHOICE}" in
+        [Ff]*)
+            echo "Removing existing directory and cloning fresh repository..."
+            rm -rf "${OPENBLAS_SRC}"
+            FRESH_DOWNLOAD=1
+            ;;
+        *)
+            echo "Resuming using existing directory..."
+            ;;
+    esac
+else
+    FRESH_DOWNLOAD=1
+fi
+
+if [ "${FRESH_DOWNLOAD}" -eq 1 ]; then
+    git clone https://github.com/OpenMathLib/OpenBLAS.git "${OPENBLAS_SRC}"
+    git checkout "${OPENBLAS_VERSION}"
+fi
 
 cd "${OPENBLAS_SRC}"
-git checkout "${OPENBLAS_VERSION}"
 
 OPENBLAS_MAKE_OPTS=(
     "CC=${CC}"
@@ -289,12 +309,30 @@ echo "Building BLIS"
 echo "================================================================"
 echo "Install prefix: ${BLIS_PREFIX}"
 
-rm -rf "${BLIS_SRC}"
+FRESH_DOWNLOAD=0
 
-git clone https://github.com/flame/blis.git "${BLIS_SRC}"
+if [ -d "${BLIS_SRC}" ]; then
+    read -rp "Directory '${BLIS_SRC}' already exists. [R]esume or [F]resh copy? (r/f) [default: r]: " CHOICE
+    case "${CHOICE}" in
+        [Ff]*)
+            echo "Removing existing directory and cloning fresh repository..."
+            rm -rf "${BLIS_SRC}"
+            FRESH_DOWNLOAD=1
+            ;;
+        *)
+            echo "Resuming using existing directory..."
+            ;;
+    esac
+else
+    FRESH_DOWNLOAD=1
+fi
+
+if [ "${FRESH_DOWNLOAD}" -eq 1 ]; then
+    git clone https://github.com/flame/blis.git "${BLIS_SRC}"
+    git checkout "${BLIS_VERSION}"
+fi
 
 cd "${BLIS_SRC}"
-git checkout "${BLIS_VERSION}"
 
 BLIS_CONFIG_OPTS=(
     "--prefix=${BLIS_PREFIX}"

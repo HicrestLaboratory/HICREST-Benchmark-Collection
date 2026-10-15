@@ -33,6 +33,7 @@ TARGET_GLIBC_RISCV64=2.39 ./install_compilers.sh --all --isa riscv64
 ## Setting up BLAS libraries
 
 ```bash
+# From a compute node (or same-ISA login node)
 ./install_blas.sh sg2044 # RVV1.0
 ./install_blas.sh sg2042 # RVV0.7.1
 ./install_blas.sh grace  # ARM - Grace

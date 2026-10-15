@@ -3,12 +3,17 @@ include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
   - "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
   - "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
+  - "../common/sbm_configs/shared_memory_all_blas_libs.yaml"
 
 variables:
-  repetitions: [10]
-  model: "inference/models/"
+  blas_lib: ['openblas'] # TODO deleteme
+  repetitions: [5]
+  # model: "inference/models/"
+  model: ["inference/models/google_gemma-4-E2B-it-Q4_K_M.gguf"]
 
-preprocess: "{energy_measure_start}"
+preprocess: |
+  export LD_LIBRARY_PATH="$(pwd)/build_{compiler}_{isa}_{blas_lib}/bin:${LD_LIBRARY_PATH}"
+  {energy_measure_start}
 postprocess: '{energy_measure_stop}'
 
 jobs:
