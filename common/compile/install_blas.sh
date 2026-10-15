@@ -72,8 +72,8 @@ case "${ARCH}" in
         EXTRA_INC="${COMPILER_INC}"
         EXTRA_LIB="${COMPILER_LIB}:${GCC_LIB}"
 
-        CFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize -lprovector-vecclonevp-atrevido_vec"
-        CXXFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize -lprovector-vecclonevp-atrevido_vec"
+        CFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize" # -lprovector-vecclonevp-atrevido_vec" TODO check if it is important
+        CXXFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize" # -lprovector-vecclonevp-atrevido_vec" TODO check if it is important
         LDFLAGS="-L${COMPILER_LIB} -L${GCC_LIB} -B${GCC_LIB}"
 
         ;;
@@ -266,6 +266,7 @@ if [ -d "${OPENBLAS_SRC}" ]; then
             ;;
         *)
             echo "Resuming using existing directory..."
+            cd "${OPENBLAS_SRC}"
             ;;
     esac
 else
@@ -274,10 +275,9 @@ fi
 
 if [ "${FRESH_DOWNLOAD}" -eq 1 ]; then
     git clone https://github.com/OpenMathLib/OpenBLAS.git "${OPENBLAS_SRC}"
+    cd "${OPENBLAS_SRC}"
     git checkout "${OPENBLAS_VERSION}"
 fi
-
-cd "${OPENBLAS_SRC}"
 
 OPENBLAS_MAKE_OPTS=(
     "CC=${CC}"
@@ -321,6 +321,7 @@ if [ -d "${BLIS_SRC}" ]; then
             ;;
         *)
             echo "Resuming using existing directory..."
+            cd "${BLIS_SRC}"
             ;;
     esac
 else
@@ -329,10 +330,9 @@ fi
 
 if [ "${FRESH_DOWNLOAD}" -eq 1 ]; then
     git clone https://github.com/flame/blis.git "${BLIS_SRC}"
+    cd "${BLIS_SRC}"
     git checkout "${BLIS_VERSION}"
 fi
-
-cd "${BLIS_SRC}"
 
 BLIS_CONFIG_OPTS=(
     "--prefix=${BLIS_PREFIX}"
