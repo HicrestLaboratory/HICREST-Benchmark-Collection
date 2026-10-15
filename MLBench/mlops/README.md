@@ -55,26 +55,26 @@ Binaries: `build/mlops/{gemm,gemv,gelu,softmax}`.
 
 | Flag      | Values               | Default |
 |-----------|----------------------|---------|
-| `--rows`  | any positive integer | `1`     |
-| `--cols`  | any positive integer | `14336` |
+| `--m`  | any positive integer | `1`     |
+| `--k`  | any positive integer | `14336` |
 | `--dtype` | `f32`, `f16` only    | `f32`   |
 
 Any other dtype **crashes**.
 
 ```bash
-./build/mlops/gelu --rows 1 --cols 14336 --dtype f32 --threads 8 --iters 50
+./build/mlops/gelu --m 1 --k 14336 --dtype f32 --threads 8 --iters 50
 ```
 
 ## softmax
 
 | Flag      | Values            | Default |
 |-----------|-------------------|---------|
-| `--rows`  | any positive integer | `32`  |
-| `--cols`  | any positive integer | `4096` |
+| `--m`  | any positive integer | `32`  |
+| `--k`  | any positive integer | `4096` |
 | `--dtype` | `f32` only        | `f32`   |
 
 Only `f32` works; any other value **crashes**. Leave `--dtype` unset.
 
 ```bash
-./build/mlops/softmax --rows 32 --cols 4096 --threads 8 --iters 50
+./build/mlops/softmax --m 32 --k 4096 --threads 8 --iters 50
 ```

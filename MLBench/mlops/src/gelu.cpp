@@ -11,10 +11,10 @@
 // tensor coming out of an MLP up-projection).
 //
 // Usage:
-//   ./gelu --rows 1 --cols 14336 --dtype f32 --threads 0 --iters 50 --warmup 10
+//   ./gelu --m 1 --k 14336 --dtype f32 --threads 0 --iters 50 --warmup 10
 //
-//   --rows     number of rows                                       default 1
-//   --cols     number of columns (elements per row)                default 14336
+//   --m     number of rows                                       default 1
+//   --k     number of columns (elements per row)                default 14336
 //  --dtype    f32 | f16
 //   --threads  0 = use all cores                                  default 0
 //   --iters    timed iterations                                    default 50
@@ -29,8 +29,8 @@
 int main(int argc, char ** argv) {
     bench::Args args(argc, argv);
 
-    const int64_t rows    = args.get_int("rows", 1);
-    const int64_t cols    = args.get_int("cols", 14336);
+    const int64_t rows    = args.get_int("m", 1);
+    const int64_t cols    = args.get_int("k", 14336);
     const std::string dt  = args.get_str("dtype", "f32");
     const int n_threads   = (int) args.get_int("threads", 0);
     const int n_iters     = (int) args.get_int("iters", 50);
