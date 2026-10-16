@@ -19,6 +19,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 backend="cpu"
+vendor_name=""
 blas_lib=""
 blas_include=""
 extra_args=()
@@ -35,9 +36,15 @@ done
 
 if [[ "$backend" == "openblas" ]]; then
     backend="blas"
+    vendor_name="OpenBLAS"
 fi
 if [[ "$backend" == "none" ]]; then
     backend="cpu"
+    vendor_name=""
+fi
+if [[ "$backend" == "blis" ]]; then
+    backend="blis"
+    vendor_name="FLAME"
 fi
 
 if [[ ! -d llamacpp ]]; then
@@ -46,8 +53,12 @@ if [[ ! -d llamacpp ]]; then
 fi
 
 cmake_args=(-DCMAKE_BUILD_TYPE=Release -DBACKEND="$backend")
-[[ -n "$blas_lib"     ]] && cmake_args+=(-DBLAS_LIBRARIES="$blas_lib")
-[[ -n "$blas_include" ]] && cmake_args+=(-DBLAS_INCLUDE_DIRS="$blas_include")
+[[ -n "$blas_lib"     ]] && cmake_args+=(-DGGML_BLAS=ON -DGGML_BLAS_VENDOR="$vendor_name" -DBLAS_LIBRARIES="$blas_lib" -DCMAKE_INSTALL_RPATH="$(dirname $blas_lib)" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
+[[ -n "$blas_include" ]] && cmake_args+=(-DGGML_BLAS=ON -DGGML_BLAS_VENDOR="$vendor_name" -DBLAS_INCLUDE_DIRS="$blas_include"  -DCMAKE_INSTALL_RPATH="$(dirname $blas_lib)" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
+  
+echo "Running:"
+echo "cmake -B build -S . ${cmake_args[@]} ${extra_args[@]}"
+echo "cmake --build build --target llama-bench gemm gemv gelu softmax -j$(nproc)"
 
 cmake -B build -S . "${cmake_args[@]}" "${extra_args[@]}"
 cmake --build build --target llama-bench gemm gemv gelu softmax -j"$(nproc)"

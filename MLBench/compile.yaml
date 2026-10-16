@@ -7,15 +7,25 @@ include_variables:
   - "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
   - "../common/sbm_configs/shared_memory_all_blas_libs.yaml"
 
+preprocess: |
+  rm -rf build
+  export CFLAGS="${CFLAGS/-ffast-math/-fno-finite-math-only}"
+postprocess: |
+  rm -rf "build_{compiler}_{isa}_{blas_lib}"
+  mv build/ "build_{compiler}_{isa}_{blas_lib}"
+check: '[[ -f "build_{compiler}_{isa}_{blas_lib}/bin/llama-bench" ]]'
 
 jobs:
   - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__4"
     config_jobs:
       - tag: "compile_stream_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{blas_lib}"
-        preprocess: |
-          rm -rf build
-          export CFLAGS="${CFLAGS/-ffast-math/-fno-finite-math-only}"
-        command: './compile_llama.sh --backend {blas_lib} --blas-lib {blas_lib_file_path[blas_lib]} --blas-include {blas_include_path[blas_lib]} -- -DOpenMP_C_FLAGS="-fopenmp=libomp" -DOpenMP_CXX_FLAGS="-fopenmp=libomp" -DOpenMP_C_LIB_NAMES=omp -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY={openmp_library_path[compiler]} -DOpenMP_C_INCLUDE_DIR={openmp_include_path[compiler]} -DOpenMP_CXX_INCLUDE_DIR={openmp_include_path[compiler]}'
-        postprocess: 'mv build/ "build_{compiler}_{isa}_{blas_lib}"'
-        check: '[[ -f "build_{compiler}_{isa}_{blas_lib}/llama-bench" ]]'
+        variables:
+          blas_lib: ['openblas', 'blis']
+        command: './compile_llama.sh --backend {blas_lib} --blas-lib {blaslib_path[blas_lib]}{blaslib_dir[blas_lib]}{blaslib_filename[blas_lib]} --blas-include {blaslib_path[blas_lib]}{blaslib_include_dir[blas_lib]} -- -DOpenMP_C_FLAGS="-fopenmp=libomp" -DOpenMP_CXX_FLAGS="-fopenmp=libomp" -DOpenMP_C_LIB_NAMES=omp -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY={openmp_library_path[compiler]} -DOpenMP_C_INCLUDE_DIR={openmp_include_path[compiler]} -DOpenMP_CXX_INCLUDE_DIR={openmp_include_path[compiler]}'
+        category: "compile"
+
+      - tag: "compile_stream_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{blas_lib}"
+        variables:
+          blas_lib: ['none']
+        command: './compile_llama.sh --backend {blas_lib} -- -DOpenMP_C_FLAGS="-fopenmp=libomp" -DOpenMP_CXX_FLAGS="-fopenmp=libomp" -DOpenMP_C_LIB_NAMES=omp -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY={openmp_library_path[compiler]} -DOpenMP_C_INCLUDE_DIR={openmp_include_path[compiler]} -DOpenMP_CXX_INCLUDE_DIR={openmp_include_path[compiler]}'
         category: "compile"

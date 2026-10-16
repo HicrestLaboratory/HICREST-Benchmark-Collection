@@ -275,52 +275,41 @@ compiler_disass:
 blas_lib: ['']
 
 # TODO set correct paths
-# OPENBLAS_PREFIX="${SOFTWARE_ENV}/OpenBLAS/${OPENBLAS_ISA}/${OPENBLAS_VERSION}"
-# BLIS_PREFIX="${SOFTWARE_ENV}/blis/${BLIS_ISA}/${BLIS_VERSION}"
-# software_env/OpenBLAS/RISCV64_ZVL128B/v0.3.34
-blas_lib_path:
+blaslib_path:
   map:
-    none: ['']
+    default: ['']
     openblas:
-      default:              ['$HOME/software_env/OpenBLAS-sg2044/lib']
+      default:              ['$HOME/software_env/OpenBLAS/RISCV64_ZVL128B/v0.3.34'] # RVV1.0
       per_cluster:
-        mc-SG2042:          ['$HOME/software_env/OpenBLAS-sg2042/lib']
+        mc-SG2042:          ['TODO']
         # dalek-mono-jts-onx: ['$HOME/software_env/OpenBLAS-sg2044/lib']
         # dalek-mono-rpi-5b:  ['$HOME/software_env/OpenBLAS-sg2044/lib']
         # dalek-mono-oh5:     ['$HOME/software_env/OpenBLAS-sg2044/lib']
         # dalek-minix:        ['$HOME/software_env/OpenBLAS-sg2044/lib']
-        MN5-GPP:            ['$HOME/software_env/OpenBLAS-sg2044/lib']
-        MN5-GRACE:          ['$HOME/software_env/OpenBLAS-grace/lib']
-    # TODO
-    # blis:
-
-# TODO update accordingly
-blas_lib_basepath:
-  default: ['']
-  map:
-    opennblas:
-      default: ['$HOME/software_env/OpenBLAS-sg2044']
-      per_cluster:
-        other: ['otherclusterlib']
-
+        # MN5-GPP:            ['$HOME/software_env/OpenBLAS-sg2044/lib']
+        # MN5-GRACE:          ['$HOME/software_env/OpenBLAS-grace/lib']
     blis:
-      default: ['$HOME/software_env/blis-sg2044']
+      default:              ['$HOME/software_env/blis/rv64iv/2.1'] # RVV1.0
       per_cluster:
-        other: ['otherclusterlib']  
+        mc-SG2042:          ['TODO']
 
-blas_lib_file_path: 
+blaslib_filename:
   map:
-    none: ['']
-    openblas: ['$HOME/software_env/OpenBLAS-sg2044/lib/libopenblas.so']
-    blis: ['']
+    default: ['']
+    openblas: ['libopenblas.so']
+    blis: ['libblis.so']
+
+blaslib_dir:
+  map:
+    default: ['']
+    openblas: ['/lib/']
+    blis: ['/lib/']
     
-blas_include_path:
+blaslib_include_dir:
   map:
-    none: ['']
-    openblas: ['$HOME/software_env/OpenBLAS-sg2044/include']
-    blis: ['']
-
-
+    default: ['']
+    openblas: ['/include']
+    blis: ['/include']
 
 #######################
 # Energy Measurements #
@@ -338,7 +327,7 @@ energy_measure_start:
     dalek-mono-oh5:     ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-minix:        ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
-    mc-SG2042:          ["export EXAMON_START_TS=$(date +%s%3N)"]
+    mc-SG2042:          [''] # TODO check ["export EXAMON_START_TS=$(date +%s%3N)"]
     mc-SG2044:          ["export EXAMON_START_TS=$(date +%s%3N)"]
     MN5-GPP:            [""]
     MN5-GRACE:          [""]
@@ -355,7 +344,7 @@ energy_measure_stop:
     dalek-mono-oh5:     ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-minix:        ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
-    mc-SG2042:          ['python3.11 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
+    mc-SG2042:          [''] # TODO check ['python3.11 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     mc-SG2044:          ['python3.10 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     MN5-GPP:            ['[ -f "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" ] && mv "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
     MN5-GRACE:          ['[ -f "./metrics_grace_sbatch.${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch.${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']

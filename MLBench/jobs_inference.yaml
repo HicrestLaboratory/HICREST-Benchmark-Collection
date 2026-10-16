@@ -6,7 +6,6 @@ include_variables:
   - "../common/sbm_configs/shared_memory_all_blas_libs.yaml"
 
 variables:
-  blas_lib: ['openblas'] # TODO deleteme
   repetitions: [5]
   # model: "inference/models/"
   model: ["inference/models/google_gemma-4-E2B-it-Q4_K_M.gguf"]

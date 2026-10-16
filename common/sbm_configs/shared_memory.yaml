@@ -1,4 +1,6 @@
-include_variables: "shared_memory_vars.yaml"
+include_variables:
+  - "shared_memory_vars.yaml"
+  - "shared_memory_all_blas_libs.yaml"
 
 # == Environment variables ==
 # Each configuration sets:
@@ -234,6 +236,7 @@ mc-SG2044:
     nodes: 1
     ntasks: 1
     exclusive: true
+    nodelist: "mc-peak-2"
     time: "06:00:00"
     env: 
       - "OMP_PROC_BIND=close"
@@ -262,6 +265,7 @@ mc-SG2042:
     nodes: 1
     ntasks: 1
     exclusive: true
+    nodelist: "mc-blade-4"
     time: "06:00:00"
     env: 
       - "OMP_PROC_BIND=close"
