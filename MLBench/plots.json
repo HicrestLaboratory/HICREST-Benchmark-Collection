@@ -1,0 +1,175 @@
+{
+  "version": 3,
+  "activeTabIndex": 1,
+  "tabs": [
+    {
+      "version": 3,
+      "label": "Operators-GEMM-GEMV",
+      "mode": "grid",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 2,
+        "activePanelIndex": 1,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT * \nFROM mlops\nWHERE op=\"gemv\"",
+            "plotType": "line",
+            "chartTitle": "GEMV",
+            "x": "ncpus",
+            "y": [
+              "gflops"
+            ],
+            "group": [
+              "blas_lib"
+            ],
+            "dashBy": "cluster",
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "showLegend": true,
+            "transformScript": "df = agg.summarize(df, 'job_id', 'gflops')",
+            "errorY": "gflops_err",
+            "errorStyle": "band"
+          },
+          {
+            "database": "data",
+            "sql": "SELECT * \nFROM mlops\nWHERE op=\"gemm\"",
+            "plotType": "line",
+            "chartTitle": "GEMM",
+            "x": "ncpus",
+            "y": [
+              "gflops"
+            ],
+            "group": [
+              "blas_lib"
+            ],
+            "dashBy": "cluster",
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "showLegend": true,
+            "transformScript": "df = agg.summarize(df, 'job_id', 'gflops')",
+            "errorY": "gflops_err",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": false,
+        "shareY": false,
+        "shareXMode": "none",
+        "shareYMode": "none",
+        "xgap": 0.2,
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "right",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [],
+        "facetAxis": "cols",
+        "facetCount": 2,
+        "groupBy": [],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3,
+        "facetLabelFormat": "{column}={value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 9,
+        "tick_size": 8,
+        "legend_size": 8,
+        "title_size": 10
+      }
+    },
+    {
+      "version": 3,
+      "label": "Operators-GELU-Softmax",
+      "mode": "grid",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT * \nFROM mlops\nWHERE op=\"gelu\"",
+            "plotType": "line",
+            "chartTitle": "GELU",
+            "x": "ncpus",
+            "y": [
+              "throughput"
+            ],
+            "group": [
+              "blas_lib",
+              "dtype"
+            ],
+            "markerBy": "dtype",
+            "dashBy": "cluster",
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "showLegend": true,
+            "transformScript": "df = agg.summarize(df, 'job_id', 'gbps')",
+            "errorY": "gbps_err",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": false,
+        "shareY": false,
+        "shareXMode": "none",
+        "shareYMode": "none",
+        "xgap": 0.2,
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "right",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [],
+        "facetAxis": "cols",
+        "facetCount": 2,
+        "groupBy": [],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3,
+        "facetLabelFormat": "{column}={value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 9,
+        "tick_size": 8,
+        "legend_size": 8,
+        "title_size": 10
+      }
+    }
+  ],
+  "style": {
+    "width_in": 0,
+    "height_in": 0,
+    "label_size": 9,
+    "tick_size": 8,
+    "legend_size": 8,
+    "title_size": 10
+  },
+  "script_paths": []
+}

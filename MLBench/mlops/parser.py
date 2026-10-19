@@ -54,22 +54,12 @@ def _parse_mlops_csv(stdout: str) -> List[Dict[str, Any]]:
     return rows
 
 
-def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
+def parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, Any]]:
     """Parse one mlops benchmark job for `sbatchman visualize`.
 
     Returns ``{"mlops": [row, ...]}`` (one row per timed iteration, enriched
     with job metadata) or ``None`` when the job has no parsable mlops CSV.
     """
-    if job.status != sbm.Status.COMPLETED:
-        return None
-
-    try:
-        stdout = job.get_stdout()
-    except Exception:
-        return None
-    if not stdout:
-        return None
-
     iter_rows = _parse_mlops_csv(stdout)
     if not iter_rows:
         return None
@@ -89,7 +79,10 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
     for r in iter_rows:
         merged = dict(base)
         merged.update(r)
+        for k in ['n', 'k', 'm']:
+            if k in merged:
+                del merged[k]
         enriched.append(merged)
-
+    
     return {TABLE_NAME: enriched}
 

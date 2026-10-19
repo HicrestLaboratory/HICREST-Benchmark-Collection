@@ -6,9 +6,11 @@ include_variables:
   - "../common/sbm_configs/shared_memory_all_blas_libs.yaml"
 
 variables:
-  repetitions: [5]
+  repetitions: [4]
   # model: "inference/models/"
+  # FIXME delete
   model: ["inference/models/google_gemma-4-E2B-it-Q4_K_M.gguf"]
+  model_filename: ["google_gemma-4-E2B-it-Q4_K_M"]
 
 preprocess: |
   export LD_LIBRARY_PATH="$(pwd)/build_{compiler}_{isa}_{blas_lib}/bin:${LD_LIBRARY_PATH}"
