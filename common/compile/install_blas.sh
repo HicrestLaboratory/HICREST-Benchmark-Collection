@@ -10,6 +10,8 @@ if [[ -z "${ARCH}" ]]; then
     echo "  sg2044"
     echo "  sg2042"
     echo "  grace"
+    echo "  rspi5"
+    echo "  orin"
     echo "  sapphirerapids"
     echo "  <generic>"
     exit 1
@@ -177,7 +179,44 @@ case "${ARCH}" in
         LDFLAGS="-L${MKL_PREFIX}/mkl/latest/lib/intel64 -L${COMPILER_LIB}"
 
         ;;
+    rspi5)
 
+        OPENBLAS_TARGET="CORTEXA76"
+        BLIS_TARGET="auto"
+
+        CC="${CC:-gcc}"
+        CXX="${CXX:-g++}"
+
+        COMPILER_INC="/usr/include"
+        COMPILER_LIB="/usr/lib"
+
+        EXTRA_INC="${COMPILER_INC}"
+        EXTRA_LIB="${COMPILER_LIB}"
+
+        CFLAGS="-I${COMPILER_INC}"
+        CXXFLAGS="-I${COMPILER_INC}"
+        LDFLAGS="-L${COMPILER_LIB}"
+
+        ;;
+    orin)
+
+        OPENBLAS_TARGET=""
+        BLIS_TARGET="auto"
+
+        CC="${CC:-gcc}"
+        CXX="${CXX:-g++}"
+
+        COMPILER_INC="/usr/include"
+        COMPILER_LIB="/usr/lib"
+
+        EXTRA_INC="${COMPILER_INC}"
+        EXTRA_LIB="${COMPILER_LIB}"
+
+        CFLAGS="-I${COMPILER_INC}"
+        CXXFLAGS="-I${COMPILER_INC}"
+        LDFLAGS="-L${COMPILER_LIB}"
+
+        ;;
     *)
         echo "No special toolchain configuration for '${ARCH}'."
         echo "Using the system compiler."
