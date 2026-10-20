@@ -34,12 +34,12 @@ except ImportError:  # allow --self-test to run without apache-iotdb installed
 #   python3 examon_query.py --self-test
 
 # Create a session
-ip = "137.204.45.25"
-port_ = "16667"
+#ip = "137.204.45.25"
+#port_ = "16667"
 
 #local IP
-#ip = "192.168.1.201"
-#port_ = "6667"
+ip = "192.168.1.201"
+port_ = "6667"
 
 username_ = "mcquery" #ask emanuele.venieri2@unibo.it
 password_ = "mcimone2165"
