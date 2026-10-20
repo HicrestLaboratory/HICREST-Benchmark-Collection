@@ -16,7 +16,7 @@ check: '[[ -f "bin/{isa}/$BIN_NAME" ]]'
 
 
 jobs:
-  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____1"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__4"
     config_jobs:
       - tag: "compile_lock_{lock}_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}"
         category: "compile"

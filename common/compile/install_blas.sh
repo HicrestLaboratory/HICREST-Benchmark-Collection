@@ -275,8 +275,8 @@ export LD_LIBRARY_PATH="${EXTRA_LIB}"
 #
 # ---------------------------------------------------------------------------
 
-OPENBLAS_ISA="${OPENBLAS_TARGET:-generic}"
-BLIS_ISA="${BLIS_TARGET:-generic}"
+OPENBLAS_ISA="$(arch)/${OPENBLAS_TARGET:-generic}"
+BLIS_ISA="$(arch)/${BLIS_TARGET:-generic}"
 
 OPENBLAS_PREFIX="${SOFTWARE_ENV}/OpenBLAS/${OPENBLAS_ISA}/${OPENBLAS_VERSION}"
 BLIS_PREFIX="${SOFTWARE_ENV}/blis/${BLIS_ISA}/${BLIS_VERSION}"
@@ -377,8 +377,8 @@ BLIS_CONFIG_OPTS=(
     "--prefix=${BLIS_PREFIX}"
     "CXX=${CXX}"
     "CC=${CC}"
-    "CFLAGS=${CFLAGS}"
-    "LDFLAGS=${LDFLAGS}"
+    "CFLAGS=\"${CFLAGS}\""
+    "LDFLAGS=\"${LDFLAGS}\""
     "--enable-multithreading=openmp"
     "--enable-cblas"
 )

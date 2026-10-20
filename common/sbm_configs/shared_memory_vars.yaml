@@ -272,14 +272,14 @@ compiler_disass:
 # Libraries           #
 #######################
 
-blas_lib: ['']
+blas_lib: ['none']
 
 # TODO set correct paths
 blaslib_path:
   map:
     default: ['']
     openblas:
-      default:              ['$HOME/software_env/OpenBLAS/RISCV64_ZVL128B/v0.3.34'] # RVV1.0
+      default:              ['$HOME/software_env/OpenBLAS/riscv64/RISCV64_ZVL128B/v0.3.34'] # RVV1.0
       per_cluster:
         mc-SG2042:          ['TODO']
         # dalek-mono-jts-onx: ['$HOME/software_env/OpenBLAS-sg2044/lib']
@@ -289,7 +289,7 @@ blaslib_path:
         # MN5-GPP:            ['$HOME/software_env/OpenBLAS-sg2044/lib']
         # MN5-GRACE:          ['$HOME/software_env/OpenBLAS-grace/lib']
     blis:
-      default:              ['$HOME/software_env/blis/rv64iv/2.1'] # RVV1.0
+      default:              ['$HOME/software_env/blis/riscv64/rv64iv/2.1'] # RVV1.0
       per_cluster:
         mc-SG2042:          ['TODO']
 
@@ -347,7 +347,7 @@ energy_measure_stop:
     mc-SG2042:          [''] # TODO check ['python3.11 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     mc-SG2044:          ['python3.10 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     MN5-GPP:            ['[ -f "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" ] && mv "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
-    MN5-GRACE:          ['[ -f "./metrics_grace_sbatch.${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch.${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
+    MN5-GRACE:          ['[ -f "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
 
 energy_measure_before_exec:
   per_cluster:

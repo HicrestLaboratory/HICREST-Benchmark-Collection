@@ -15,7 +15,7 @@ variables:
 
 
 jobs:
-  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____{ncpus}"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
     config_jobs:
       - tag: "{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{benchmark}_C{ncpus}"
         category: "{benchmark}"
