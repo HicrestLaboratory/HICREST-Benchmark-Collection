@@ -313,7 +313,7 @@ MN5-GPP:
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "#SBATCH --ear=on"
-        - "#SBATCH --ear-user-db=metrics_mare5_sbatch"
+        - "#SBATCH --ear-user-db=metric_gpp_sbatch"
         - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
 
 # Grace - BSC's Grace - General Purpose @ MN5

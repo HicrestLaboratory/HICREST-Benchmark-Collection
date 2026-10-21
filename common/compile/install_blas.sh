@@ -330,6 +330,8 @@ if [[ -n "${OPENBLAS_TARGET}" ]]; then
     OPENBLAS_MAKE_OPTS+=("TARGET=${OPENBLAS_TARGET}")
 fi
 
+echo "${OPENBLAS_MAKE_OPTS[@]}"
+
 make "${OPENBLAS_MAKE_OPTS[@]}" -j"$(nproc)"
 
 make install \
@@ -382,6 +384,8 @@ BLIS_CONFIG_OPTS=(
     "--enable-multithreading=openmp"
     "--enable-cblas"
 )
+
+echo "${BLIS_CONFIG_OPTS[@]} auto"
 
 if [[ "${BLIS_TARGET}" == "auto" ]]; then
     ./configure "${BLIS_CONFIG_OPTS[@]}" auto
