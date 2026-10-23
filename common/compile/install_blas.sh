@@ -184,11 +184,11 @@ case "${ARCH}" in
         OPENBLAS_TARGET="CORTEXA76"
         BLIS_TARGET="auto"
 
-        CC="${CC:-gcc}"
-        CXX="${CXX:-g++}"
+        CC="${HOME}/software_env/gcc/aarch64/16.1.0/bin/gcc"
+        CXX="${HOME}/software_env/gcc/aarch64/16.1.0/bin/g++"
 
-        COMPILER_INC="/usr/include"
-        COMPILER_LIB="/usr/lib"
+        COMPILER_INC="${HOME}/software_env/gcc/aarch64/16.1.0/include"
+        COMPILER_LIB="${HOME}/software_env/gcc/aarch64/16.1.0/lib"
 
         EXTRA_INC="${COMPILER_INC}"
         EXTRA_LIB="${COMPILER_LIB}"
@@ -198,16 +198,16 @@ case "${ARCH}" in
         LDFLAGS="-L${COMPILER_LIB}"
 
         ;;
-    orin)
+    jtsonx)
 
-        OPENBLAS_TARGET=""
+        OPENBLAS_TARGET="ARMV8"
         BLIS_TARGET="auto"
 
-        CC="${CC:-gcc}"
-        CXX="${CXX:-g++}"
+        CC="${HOME}/software_env/gcc/aarch64/16.1.0/bin/gcc"
+        CXX="${HOME}/software_env/gcc/aarch64/16.1.0/bin/g++"
 
-        COMPILER_INC="/usr/include"
-        COMPILER_LIB="/usr/lib"
+        COMPILER_INC="${HOME}/software_env/gcc/aarch64/16.1.0/include"
+        COMPILER_LIB="${HOME}/software_env/gcc/aarch64/16.1.0/lib"
 
         EXTRA_INC="${COMPILER_INC}"
         EXTRA_LIB="${COMPILER_LIB}"
@@ -215,6 +215,44 @@ case "${ARCH}" in
         CFLAGS="-I${COMPILER_INC}"
         CXXFLAGS="-I${COMPILER_INC}"
         LDFLAGS="-L${COMPILER_LIB}"
+
+        ;;
+    oh5)
+
+        OPENBLAS_TARGET="ALDERLAKE"
+        BLIS_TARGET="auto"
+
+        CC="${HOME}/software_env/gcc/x86_64/16.1.0/bin/gcc"
+        CXX="${HOME}/software_env/gcc/x86_64/16.1.0/bin/g++"
+
+        COMPILER_INC="${HOME}/software_env/gcc/x86_64/16.1.0/include"
+        COMPILER_LIB="${HOME}/software_env/gcc/x86_64/16.1.0/lib"
+
+        # Intel oneAPI / MKL
+        MKL_VERSION="2026.1.0"
+        MKL_PREFIX="${SOFTWARE_ENV}/intel-mkl"
+
+        MKL_INSTALLER="intel-oneapi-toolkit-2026.1.0.192_offline.sh"
+        MKL_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/33cb2a22-ddf1-4aa9-8d68-1f5a118acaf2/${MKL_INSTALLER}"
+
+        if [[ ! -d "${MKL_PREFIX}" ]]; then
+            wget -O "${MKL_INSTALLER}" "${MKL_URL}"
+
+            sh "./${MKL_INSTALLER}" \
+                -a \
+                --silent \
+                --eula accept \
+                --install-dir "${MKL_PREFIX}"
+
+            rm -f "${MKL_INSTALLER}"
+        fi
+
+        EXTRA_INC="${MKL_PREFIX}/mkl/latest/include:${COMPILER_INC}"
+        EXTRA_LIB="${MKL_PREFIX}/mkl/latest/lib/intel64:${COMPILER_LIB}"
+
+        CFLAGS="-I${MKL_PREFIX}/mkl/latest/include"
+        CXXFLAGS="-I${MKL_PREFIX}/mkl/latest/include"
+        LDFLAGS="-L${MKL_PREFIX}/mkl/latest/lib/intel64 -L${COMPILER_LIB}"
 
         ;;
     *)

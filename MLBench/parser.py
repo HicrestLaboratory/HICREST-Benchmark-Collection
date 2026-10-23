@@ -8,7 +8,7 @@ import mlops.parser as mlops_parser
 import inference.parser as inference_parser
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
-from energy.ncm_parser import parse_ncm_tot_energy_print
+from energy_parsers import _parse_ncm_tot_energy_print
 from utils.utils import remove_ncm_logs, remove_useless_job_meta
 
 def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:

@@ -6,7 +6,7 @@ import sbatchman as sbm
 from typing import Optional, Dict
 
 sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from ncm_parser import parse_ncm_tot_energy_print #, parse_ncm_energy_log
+from energy_parsers import _parse_ncm_tot_energy_print #, parse_ncm_energy_log
 
 # ---------------------------
 # Regex for NPB output
@@ -51,7 +51,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
             if m:
                 res['verify'] = m.group(1)
 
-    tot_energy = parse_ncm_tot_energy_print(stdout)
+    tot_energy = _parse_ncm_tot_energy_print(stdout)
     if tot_energy:
         res['tot_energy_J'] = tot_energy
 

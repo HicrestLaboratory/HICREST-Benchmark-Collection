@@ -296,8 +296,6 @@ blaslib_path:
         MN5-GRACE:          ['$HOME/software_env/blis/aarch64/auto/2.1']
 
 
-        
-
 blaslib_filename:
   map:
     default: ['']
@@ -316,6 +314,7 @@ blaslib_include_dir:
     openblas: ['/include']
     blis: ['/include']
 
+
 #######################
 # Energy Measurements #
 #######################
@@ -332,7 +331,7 @@ energy_measure_start:
     dalek-mono-oh5:     ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-minix:        ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py start --output "/scratch/$(whoami)/energy_${SBATCHMAN_JOB_TAG}.log" --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
-    mc-SG2042:          [''] # TODO check ["export EXAMON_START_TS=$(date +%s%3N)"]
+    mc-SG2042:          ["export EXAMON_START_TS=$(date +%s%3N)"]
     mc-SG2044:          ["export EXAMON_START_TS=$(date +%s%3N)"]
     MN5-GPP:            [""]
     MN5-GRACE:          [""]
@@ -349,7 +348,7 @@ energy_measure_stop:
     dalek-mono-oh5:     ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-minix:        ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
     dalek-mono-rpi-5b:  ['python3 ../common/energy/ncm.py stop --print-tot-energy --pidfile "/tmp/energy_${SBATCHMAN_JOB_TAG}.pid"']
-    mc-SG2042:          [''] # TODO check ['python3.11 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
+    mc-SG2042:          ['python3.11 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     mc-SG2044:          ['python3.10 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     MN5-GPP:            ['[ -f "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" ] && mv "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
     MN5-GRACE:          ['[ -f "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
