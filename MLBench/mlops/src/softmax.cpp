@@ -12,10 +12,10 @@
 // attention-score matrix; softmax is computed independently per row.
 //
 // Usage:
-//   ./softmax --m 32 --k 4096 --threads 0 --iters 50 --warmup 10
+//   ./softmax --m 32 --n 4096 --threads 0 --iters 50 --warmup 10
 //
 //   --m     number of independent rows (softmax is per-row)   default 32
-//   --k     row length (the softmax reduction dimension)      default 4096
+//   --n     row length (the softmax reduction dimension)      default 4096
 //   --threads  0 = use all cores                                  default 0
 //   --dtype    f32 | f16 | bf16 | q8_0 | q4_0 (weight dtype)      default bf16
 //   --iters    timed iterations                                    default 50
@@ -31,7 +31,7 @@ int main(int argc, char ** argv) {
     bench::Args args(argc, argv);
 
     const int64_t rows  = args.get_int("m", 32);
-    const int64_t cols  = args.get_int("k", 4096);
+    const int64_t cols  = args.get_int("n", 4096);
     const int n_threads = (int) args.get_int("threads", 0);
     const int n_iters   = (int) args.get_int("iters", 50);
     const int n_warmup  = (int) args.get_int("warmup", 10);
