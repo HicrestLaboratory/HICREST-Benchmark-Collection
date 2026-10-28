@@ -1,59 +1,80 @@
-include Makefile.defs
+ifeq ($(strip $(CC)),)
+    CC = cc
+endif
 
-# Default directory for outputs if BIN_DIR is not specified
+CFLAGS   ?= -fopenmp 
+LDFLAGS  ?= -fopenmp  
+CPPFLAGS ?=
+LIBS     ?= -lm 
+
 BIN_DIR ?= .
+
+IDAS                = 1 3 9 27 81 243 729 2187 6561 19683 59049
+ARRAY_BINS          = $(patsubst %,$(BIN_DIR)/arraybench_%,$(IDAS))
+ARRAY_ALIASES       = $(patsubst %,arraybench_%,$(IDAS))
+CLEAN_ARRAY_ALIASES = $(patsubst %,clean-arraybench_%,$(IDAS))
 
 SYNCOBJS  = $(BIN_DIR)/syncbench.o $(BIN_DIR)/common.o
 SCHEDOBJS = $(BIN_DIR)/schedbench.o $(BIN_DIR)/common.o
-ARRAYOBJS = $(BIN_DIR)/arraybench_$(IDA).o $(BIN_DIR)/common.o
 TASKOBJS  = $(BIN_DIR)/taskbench.o $(BIN_DIR)/common.o
 
-.PHONY: all prog clean
+.PHONY: all clean clean-syncbench clean-schedbench clean-taskbench clean-arraybench \
+        syncbench schedbench taskbench arraybench $(ARRAY_ALIASES) $(CLEAN_ARRAY_ALIASES)
 
-all: $(BIN_DIR)/syncbench $(BIN_DIR)/schedbench $(BIN_DIR)/taskbench
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=1 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=3 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=9 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=27 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=81 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=243 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=729 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=2187 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=6561 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=19683 prog
-	$(MAKE) BIN_DIR=$(BIN_DIR) IDA=59049 prog
+all: $(BIN_DIR)/syncbench $(BIN_DIR)/schedbench $(BIN_DIR)/taskbench $(ARRAY_BINS)
 
-prog: $(BIN_DIR)/arraybench_$(IDA)
+# Build aliases
+syncbench: $(BIN_DIR)/syncbench
+schedbench: $(BIN_DIR)/schedbench
+taskbench: $(BIN_DIR)/taskbench
+arraybench: $(ARRAY_BINS)
 
-# Create the output directory if it doesn't exist
+# Static pattern rule for arraybench IDA aliases (e.g., `make arraybench_81`)
+$(ARRAY_ALIASES): arraybench_%: $(BIN_DIR)/arraybench_%
+
+# Output directory creation
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
-# Pattern rule for object files (adds -I. to find common.h in current dir)
+# Pattern rule for general object files
 $(BIN_DIR)/%.o: %.c | $(BIN_DIR)
-	$(CC) $(CFLAGS) -I. -I$(BIN_DIR) -c $< -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) -I. -I$(BIN_DIR) -c $< -o $@
 
-# Multiple header files due to multiple array sizes
-$(BIN_DIR)/arraybench_$(IDA).h: arraybench.h | $(BIN_DIR)
-	$(CC) -DIDA=$(IDA) $(CPPFLAGS) -I. arraybench.h -o $@
+# Pattern rule for arraybench objects using Make stem ($*) to define IDA
+$(BIN_DIR)/arraybench_%.o: arraybench.c arraybench.h | $(BIN_DIR)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -I. -I$(BIN_DIR) -DIDA=$* -c $< -o $@
 
-# Multiple object files due to multiple array sizes
-$(BIN_DIR)/arraybench_$(IDA).o: $(BIN_DIR)/arraybench_$(IDA).h arraybench.c | $(BIN_DIR)
-	$(CC) $(CFLAGS) -I. -I$(BIN_DIR) -DIDA=$(IDA) arraybench.c -c -o $@
-
-# Executables
-$(BIN_DIR)/arraybench_$(IDA): $(ARRAYOBJS) | $(BIN_DIR)
-	$(CC) $(LDFLAGS) $(ARRAYOBJS) $(LIBS) -o $@
+# Executable targets
+$(BIN_DIR)/arraybench_%: $(BIN_DIR)/arraybench_%.o $(BIN_DIR)/common.o | $(BIN_DIR)
+	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
 $(BIN_DIR)/syncbench: $(SYNCOBJS) | $(BIN_DIR)
-	$(CC) $(LDFLAGS) $(SYNCOBJS) $(LIBS) -o $@
+	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
 $(BIN_DIR)/schedbench: $(SCHEDOBJS) | $(BIN_DIR)
-	$(CC) $(LDFLAGS) $(SCHEDOBJS) $(LIBS) -o $@
+	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
 $(BIN_DIR)/taskbench: $(TASKOBJS) | $(BIN_DIR)
-	$(CC) $(LDFLAGS) $(TASKOBJS) $(LIBS) -o $@
+	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
 
+# Granular clean targets
+clean-syncbench:
+	rm -f $(BIN_DIR)/syncbench $(BIN_DIR)/syncbench.o $(BIN_DIR)/common.o
+
+clean-schedbench:
+	rm -f $(BIN_DIR)/schedbench $(BIN_DIR)/schedbench.o $(BIN_DIR)/common.o
+
+clean-taskbench:
+	rm -f $(BIN_DIR)/taskbench $(BIN_DIR)/taskbench.o $(BIN_DIR)/common.o
+
+clean-arraybench:
+	rm -f $(ARRAY_BINS) $(BIN_DIR)/arraybench_*.o $(BIN_DIR)/common.o
+
+# Clean specific IDA target (e.g., `make clean-arraybench_81`)
+$(CLEAN_ARRAY_ALIASES): clean-arraybench_%:
+	rm -f $(BIN_DIR)/arraybench_$* $(BIN_DIR)/arraybench_$*.o $(BIN_DIR)/common.o
+
+# Full clean
 clean:
-	-rm -f $(BIN_DIR)/syncbench $(BIN_DIR)/schedbench $(BIN_DIR)/taskbench \
-	       $(BIN_DIR)/arraybench_* $(BIN_DIR)/*.o $(BIN_DIR)/*.h
+	rm -f $(BIN_DIR)/syncbench $(BIN_DIR)/schedbench $(BIN_DIR)/taskbench \
+	      $(BIN_DIR)/arraybench_* $(BIN_DIR)/*.o

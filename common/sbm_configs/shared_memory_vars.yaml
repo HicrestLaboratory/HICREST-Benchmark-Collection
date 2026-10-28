@@ -356,5 +356,5 @@ energy_measure_stop:
 energy_measure_before_exec:
   per_cluster:
     default:           [""]
-    MN5-GPP:           ["srun erun --ear=on --ear-verbose=1 --force --ear-user-db=metrics_gpp_sbatch --ear-tag=threads --program="] # Are these needed? -n 1 -c $threads
-    MN5-GRACE:         ["srun --cpu-bind=cores ${EAR_ROOT}/bin/erun --ear=on --ear-user-db=metrics_grace_sbatch --program="]   # Are these needed? -n 1 -c $threads
+    MN5-GPP:           ["srun erun --ear=on --ear-verbose=1 --force --ear-user-db=metrics_gpp_sbatch --ear-tag=threads --program="]
+    MN5-GRACE:         ["srun --cpu-bind=cores ${EAR_ROOT}/bin/erun --ear=on --ear-user-db=metrics_grace_sbatch --program="]
