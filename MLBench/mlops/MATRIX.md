@@ -17,6 +17,8 @@
 | M, 3072, 3072 | Phi-4-mini | [Phi-4-Mini Technical Report](https://arxiv.org/abs/2503.01743) |
 | M, 5120, 5120 | Llama 4 Scout | [Model source](https://www.llama.com/models/llama-4/) |
 | M, 2880, 2880 | GPT-OSS-120B | [GPT-OSS Model Card](https://arxiv.org/abs/2508.10925) |
+ M, 4096, 4096 | Llama 3.1 8B | [Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), [config](https://huggingface.co/unsloth/Llama-3.1-8B-Instruct/blob/main/config.json) |
+ | M, 8192, 8192 | Llama 3.1 70B | [Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), [config](https://huggingface.co/unsloth/Meta-Llama-3.1-70B-Instruct/blob/main/config.json) |
 
 ### 🟩 Short and wide (`N > K`)
 
