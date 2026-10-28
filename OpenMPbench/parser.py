@@ -7,7 +7,7 @@ import sbatchman as sbm
 from typing import List, Optional, Dict
 
 sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from ncm_parser import parse_ncm_tot_energy_print #, parse_ncm_energy_log
+from energy_parsers import _parse_ncm_tot_energy_print #, parse_ncm_energy_log
 
 
 _RE_COMPUTING = re.compile(r"^Computing (.+?) time using (\d+) reps")
@@ -232,7 +232,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
 
     records = parse_stdout(stdout, benchmark, meta['system'], meta['ncpus'], size)
         
-    tot_energy = parse_ncm_tot_energy_print(stdout)
+    tot_energy = _parse_ncm_tot_energy_print(stdout)
     if tot_energy:
         meta['tot_energy_J'] = tot_energy
         

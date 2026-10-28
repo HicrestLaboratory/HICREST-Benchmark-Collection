@@ -10,6 +10,8 @@ if [[ -z "${ARCH}" ]]; then
     echo "  sg2044"
     echo "  sg2042"
     echo "  grace"
+    echo "  rspi5"
+    echo "  orin"
     echo "  sapphirerapids"
     echo "  <generic>"
     exit 1
@@ -72,8 +74,8 @@ case "${ARCH}" in
         EXTRA_INC="${COMPILER_INC}"
         EXTRA_LIB="${COMPILER_LIB}:${GCC_LIB}"
 
-        CFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize -lprovector-vecclonevp-atrevido_vec"
-        CXXFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize -lprovector-vecclonevp-atrevido_vec"
+        CFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize" # -lprovector-vecclonevp-atrevido_vec" TODO check if it is important
+        CXXFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize" # -lprovector-vecclonevp-atrevido_vec" TODO check if it is important
         LDFLAGS="-L${COMPILER_LIB} -L${GCC_LIB} -B${GCC_LIB}"
 
         ;;
@@ -177,7 +179,82 @@ case "${ARCH}" in
         LDFLAGS="-L${MKL_PREFIX}/mkl/latest/lib/intel64 -L${COMPILER_LIB}"
 
         ;;
+    rspi5)
 
+        OPENBLAS_TARGET="CORTEXA76"
+        BLIS_TARGET="auto"
+
+        CC="${HOME}/software_env/gcc/aarch64/16.1.0/bin/gcc"
+        CXX="${HOME}/software_env/gcc/aarch64/16.1.0/bin/g++"
+
+        COMPILER_INC="${HOME}/software_env/gcc/aarch64/16.1.0/include"
+        COMPILER_LIB="${HOME}/software_env/gcc/aarch64/16.1.0/lib"
+
+        EXTRA_INC="${COMPILER_INC}"
+        EXTRA_LIB="${COMPILER_LIB}"
+
+        CFLAGS="-I${COMPILER_INC}"
+        CXXFLAGS="-I${COMPILER_INC}"
+        LDFLAGS="-L${COMPILER_LIB}"
+
+        ;;
+    jtsonx)
+
+        OPENBLAS_TARGET="ARMV8"
+        BLIS_TARGET="auto"
+
+        CC="${HOME}/software_env/gcc/aarch64/16.1.0/bin/gcc"
+        CXX="${HOME}/software_env/gcc/aarch64/16.1.0/bin/g++"
+
+        COMPILER_INC="${HOME}/software_env/gcc/aarch64/16.1.0/include"
+        COMPILER_LIB="${HOME}/software_env/gcc/aarch64/16.1.0/lib"
+
+        EXTRA_INC="${COMPILER_INC}"
+        EXTRA_LIB="${COMPILER_LIB}"
+
+        CFLAGS="-I${COMPILER_INC}"
+        CXXFLAGS="-I${COMPILER_INC}"
+        LDFLAGS="-L${COMPILER_LIB}"
+
+        ;;
+    oh5)
+
+        OPENBLAS_TARGET="ALDERLAKE"
+        BLIS_TARGET="auto"
+
+        CC="${HOME}/software_env/gcc/x86_64/16.1.0/bin/gcc"
+        CXX="${HOME}/software_env/gcc/x86_64/16.1.0/bin/g++"
+
+        COMPILER_INC="${HOME}/software_env/gcc/x86_64/16.1.0/include"
+        COMPILER_LIB="${HOME}/software_env/gcc/x86_64/16.1.0/lib"
+
+        # Intel oneAPI / MKL
+        MKL_VERSION="2026.1.0"
+        MKL_PREFIX="${SOFTWARE_ENV}/intel-mkl"
+
+        MKL_INSTALLER="intel-oneapi-toolkit-2026.1.0.192_offline.sh"
+        MKL_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/33cb2a22-ddf1-4aa9-8d68-1f5a118acaf2/${MKL_INSTALLER}"
+
+        if [[ ! -d "${MKL_PREFIX}" ]]; then
+            wget -O "${MKL_INSTALLER}" "${MKL_URL}"
+
+            sh "./${MKL_INSTALLER}" \
+                -a \
+                --silent \
+                --eula accept \
+                --install-dir "${MKL_PREFIX}"
+
+            rm -f "${MKL_INSTALLER}"
+        fi
+
+        EXTRA_INC="${MKL_PREFIX}/mkl/latest/include:${COMPILER_INC}"
+        EXTRA_LIB="${MKL_PREFIX}/mkl/latest/lib/intel64:${COMPILER_LIB}"
+
+        CFLAGS="-I${MKL_PREFIX}/mkl/latest/include"
+        CXXFLAGS="-I${MKL_PREFIX}/mkl/latest/include"
+        LDFLAGS="-L${MKL_PREFIX}/mkl/latest/lib/intel64 -L${COMPILER_LIB}"
+
+        ;;
     *)
         echo "No special toolchain configuration for '${ARCH}'."
         echo "Using the system compiler."
@@ -227,6 +304,8 @@ command -v "${CXX}" >/dev/null 2>&1 || {
     exit 1
 }
 
+export LD_LIBRARY_PATH="${EXTRA_LIB}"
+
 # ---------------------------------------------------------------------------
 # Structured installation directories
 #
@@ -234,8 +313,8 @@ command -v "${CXX}" >/dev/null 2>&1 || {
 #
 # ---------------------------------------------------------------------------
 
-OPENBLAS_ISA="${OPENBLAS_TARGET:-generic}"
-BLIS_ISA="${BLIS_TARGET:-generic}"
+OPENBLAS_ISA="$(arch)/${OPENBLAS_TARGET:-generic}"
+BLIS_ISA="$(arch)/${BLIS_TARGET:-generic}"
 
 OPENBLAS_PREFIX="${SOFTWARE_ENV}/OpenBLAS/${OPENBLAS_ISA}/${OPENBLAS_VERSION}"
 BLIS_PREFIX="${SOFTWARE_ENV}/blis/${BLIS_ISA}/${BLIS_VERSION}"
@@ -252,12 +331,30 @@ echo "Building OpenBLAS"
 echo "================================================================"
 echo "Install prefix: ${OPENBLAS_PREFIX}"
 
-rm -rf "${OPENBLAS_SRC}"
+FRESH_DOWNLOAD=0
 
-git clone https://github.com/OpenMathLib/OpenBLAS.git "${OPENBLAS_SRC}"
+if [ -d "${OPENBLAS_SRC}" ]; then
+    read -rp "Directory '${OPENBLAS_SRC}' already exists. [R]esume or [F]resh copy? (r/f) [default: r]: " CHOICE
+    case "${CHOICE}" in
+        [Ff]*)
+            echo "Removing existing directory and cloning fresh repository..."
+            rm -rf "${OPENBLAS_SRC}"
+            FRESH_DOWNLOAD=1
+            ;;
+        *)
+            echo "Resuming using existing directory..."
+            cd "${OPENBLAS_SRC}"
+            ;;
+    esac
+else
+    FRESH_DOWNLOAD=1
+fi
 
-cd "${OPENBLAS_SRC}"
-git checkout "${OPENBLAS_VERSION}"
+if [ "${FRESH_DOWNLOAD}" -eq 1 ]; then
+    git clone https://github.com/OpenMathLib/OpenBLAS.git "${OPENBLAS_SRC}"
+    cd "${OPENBLAS_SRC}"
+    git checkout "${OPENBLAS_VERSION}"
+fi
 
 OPENBLAS_MAKE_OPTS=(
     "CC=${CC}"
@@ -270,6 +367,8 @@ OPENBLAS_MAKE_OPTS=(
 if [[ -n "${OPENBLAS_TARGET}" ]]; then
     OPENBLAS_MAKE_OPTS+=("TARGET=${OPENBLAS_TARGET}")
 fi
+
+echo "${OPENBLAS_MAKE_OPTS[@]}"
 
 make "${OPENBLAS_MAKE_OPTS[@]}" -j"$(nproc)"
 
@@ -289,22 +388,42 @@ echo "Building BLIS"
 echo "================================================================"
 echo "Install prefix: ${BLIS_PREFIX}"
 
-rm -rf "${BLIS_SRC}"
+FRESH_DOWNLOAD=0
 
-git clone https://github.com/flame/blis.git "${BLIS_SRC}"
+if [ -d "${BLIS_SRC}" ]; then
+    read -rp "Directory '${BLIS_SRC}' already exists. [R]esume or [F]resh copy? (r/f) [default: r]: " CHOICE
+    case "${CHOICE}" in
+        [Ff]*)
+            echo "Removing existing directory and cloning fresh repository..."
+            rm -rf "${BLIS_SRC}"
+            FRESH_DOWNLOAD=1
+            ;;
+        *)
+            echo "Resuming using existing directory..."
+            cd "${BLIS_SRC}"
+            ;;
+    esac
+else
+    FRESH_DOWNLOAD=1
+fi
 
-cd "${BLIS_SRC}"
-git checkout "${BLIS_VERSION}"
+if [ "${FRESH_DOWNLOAD}" -eq 1 ]; then
+    git clone https://github.com/flame/blis.git "${BLIS_SRC}"
+    cd "${BLIS_SRC}"
+    git checkout "${BLIS_VERSION}"
+fi
 
 BLIS_CONFIG_OPTS=(
     "--prefix=${BLIS_PREFIX}"
     "CXX=${CXX}"
     "CC=${CC}"
-    "CFLAGS=${CFLAGS}"
-    "LDFLAGS=${LDFLAGS}"
+    "CFLAGS=\"${CFLAGS}\""
+    "LDFLAGS=\"${LDFLAGS}\""
     "--enable-multithreading=openmp"
     "--enable-cblas"
 )
+
+echo "${BLIS_CONFIG_OPTS[@]} auto"
 
 if [[ "${BLIS_TARGET}" == "auto" ]]; then
     ./configure "${BLIS_CONFIG_OPTS[@]}" auto

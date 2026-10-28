@@ -272,54 +272,47 @@ compiler_disass:
 # Libraries           #
 #######################
 
-# FIXME uncomment
-blas_lib: ['openblas', 'none', '',] # 'openblas', 'blis']
+blas_lib: ['none']
 
 # TODO set correct paths
-# OPENBLAS_PREFIX="${SOFTWARE_ENV}/OpenBLAS/${OPENBLAS_ISA}/${OPENBLAS_VERSION}"
-# BLIS_PREFIX="${SOFTWARE_ENV}/blis/${BLIS_ISA}/${BLIS_VERSION}"
-blas_lib_path:
+blaslib_path:
   map:
-    none: ['']
+    default: ['']
     openblas:
-      default:              ['$HOME/software_env/OpenBLAS-sg2044/lib']
+      default:              ['$HOME/software_env/OpenBLAS/riscv64/RISCV64_ZVL128B/v0.3.34'] # RVV1.0
       per_cluster:
-        mc-SG2042:          ['$HOME/software_env/OpenBLAS-sg2042/lib']
+        mc-SG2042:          ['TODO']
         # dalek-mono-jts-onx: ['$HOME/software_env/OpenBLAS-sg2044/lib']
         # dalek-mono-rpi-5b:  ['$HOME/software_env/OpenBLAS-sg2044/lib']
         # dalek-mono-oh5:     ['$HOME/software_env/OpenBLAS-sg2044/lib']
         # dalek-minix:        ['$HOME/software_env/OpenBLAS-sg2044/lib']
-        MN5-GPP:            ['$HOME/software_env/OpenBLAS-sg2044/lib']
-        MN5-GRACE:          ['$HOME/software_env/OpenBLAS-grace/lib']
-    # TODO
-    # blis:
-
-# TODO update accordingly
-blas_lib_basepath:
-  default: ['']
-  map:
-    opennblas:
-      default: ['$HOME/software_env/OpenBLAS-sg2044']
-      per_cluster:
-        other: ['otherclusterlib']
-
+        MN5-GPP:            ['$HOME/software_env/OpenBLAS/x86_64/SAPPHIRERAPIDS/v0.3.34']
+        MN5-GRACE:          ['$HOME/software_env/OpenBLAS/aarch64/NEOVERSEV2/v0.3.34']
     blis:
-      default: ['$HOME/software_env/blis-sg2044']
+      default:              ['$HOME/software_env/blis/riscv64/rv64iv/2.1'] # RVV1.0
       per_cluster:
-        other: ['otherclusterlib']  
+        mc-SG2042:          ['TODO']
+        MN5-GPP:            ['$HOME/software_env/blis/x86_64/auto/2.1']
+        MN5-GRACE:          ['$HOME/software_env/blis/aarch64/auto/2.1']
 
-blas_lib_file_path: 
+
+blaslib_filename:
   map:
-    none: ['']
-    openblas: ['$HOME/software_env/OpenBLAS-sg2044/lib/libopenblas.so']
-    blis: ['']
+    default: ['']
+    openblas: ['libopenblas.so']
+    blis: ['libblis.so']
+
+blaslib_dir:
+  map:
+    default: ['']
+    openblas: ['/lib/']
+    blis: ['/lib/']
     
-blas_include_path:
+blaslib_include_dir:
   map:
-    none: ['']
-    openblas: ['$HOME/software_env/OpenBLAS-sg2044/include']
-    blis: ['']
-
+    default: ['']
+    openblas: ['/include']
+    blis: ['/include']
 
 
 #######################
@@ -358,10 +351,10 @@ energy_measure_stop:
     mc-SG2042:          ['python3.11 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     mc-SG2044:          ['python3.10 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     MN5-GPP:            ['[ -f "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" ] && mv "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
-    MN5-GRACE:          ['[ -f "./metrics_grace_sbatch.${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch.${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
+    MN5-GRACE:          ['[ -f "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file fount!"']
 
 energy_measure_before_exec:
   per_cluster:
     default:           [""]
-    MN5-GPP:           ["srun --ear=on --ear-verbose=1 --force --ear-user-db=metrics_gpp_sbatch --ear-tag=threads --program="] # Are these needed? -n 1 -c $threads
+    MN5-GPP:           ["srun erun --ear=on --ear-verbose=1 --force --ear-user-db=metrics_gpp_sbatch --ear-tag=threads --program="] # Are these needed? -n 1 -c $threads
     MN5-GRACE:         ["srun --cpu-bind=cores ${EAR_ROOT}/bin/erun --ear=on --ear-user-db=metrics_grace_sbatch --program="]   # Are these needed? -n 1 -c $threads

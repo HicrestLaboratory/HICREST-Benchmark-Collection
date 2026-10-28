@@ -11,7 +11,7 @@ include_variables:
 check: '[[ -f "../bin/{isa}/$BIN_NAME" ]]'
 
 jobs:
-  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____1"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__4"
     config_jobs:
 
       # linear-chase

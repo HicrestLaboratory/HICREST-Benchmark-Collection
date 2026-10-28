@@ -1,4 +1,9 @@
-include_variables: "shared_memory_vars.yaml"
+include_variables:
+  - "shared_memory_vars.yaml"
+  # FIXME uncomment when needed- "shared_memory_all_blas_libs.yaml"
+
+variables:
+  walltime: ['00:10:00']
 
 # == Environment variables ==
 # Each configuration sets:
@@ -37,7 +42,6 @@ dalek-mono-bpi-f3:
     exclusive: true
     partition: "mono"
     nodelist: "mono-bpi-f3"
-    time: "05:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
@@ -46,6 +50,7 @@ dalek-mono-bpi-f3:
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -66,13 +71,13 @@ dalek-minix:
     exclusive: true
     partition: "special"
     nodelist: "minix"
-    time: "05:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -92,13 +97,13 @@ dalek-mono-oh5:
     exclusive: true
     partition: "mono"
     nodelist: "mono-oh5"
-    time: "05:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -112,30 +117,30 @@ dalek-mono-oh5:
 
 
 # Jetson Orin NX @ Dalek
-# dalek-mono-jts-onx:
-#   scheduler: slurm
+dalek-mono-jts-onx:
+  scheduler: slurm
 
-#   default_conf:
-#     exclusive: true
-#     partition: "mono"
-#     nodelist: "mono-jts-onx"
-#     time: "05:00:00"
-#     env: 
-#       - "OMP_PROC_BIND=close"
-#       - "OMP_PLACES=cores"
+  default_conf:
+    exclusive: true
+    partition: "mono"
+    nodelist: "mono-jts-onx"
+    env: 
+      - "OMP_PROC_BIND=close"
+      - "OMP_PLACES=cores"
 
-#   configs:
-#     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
-#       env:
-#         - "CC={compiler_c[compiler]}"
-#         - "CXX={compiler_cxx[compiler]}"
-#         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
-#         - "OMP_NUM_THREADS={ncpus}"
-#       custom_headers:
-#         - "#SBATCH --cpus-per-task={ncpus}"
-#         - "source /etc/profile.d/modules.sh"
-#         - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
-#         - "export NCM_PATH=/mnt/nfs/software/ncm-1.1.2/bin/ncm-control"
+  configs:
+    - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
+      env:
+        - "CC={compiler_c[compiler]}"
+        - "CXX={compiler_cxx[compiler]}"
+        - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
+        - "OMP_NUM_THREADS={ncpus}"
+      custom_headers:
+        - "#SBATCH --cpus-per-task={ncpus}"
+        - "source /etc/profile.d/modules.sh"
+        - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
+        - "export NCM_PATH=/opt/software/ncm-1.2.0/bin/ncm-control"
 
 
 # RaspberryPi 5 @ Dalek
@@ -146,13 +151,13 @@ dalek-mono-rpi-5b:
     exclusive: true
     partition: "mono"
     nodelist: "mono-rpi-5b"
-    time: "05:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -173,7 +178,6 @@ dalek-mono-sip-k3:
     exclusive: true
     partition: "mono"
     nodelist: "mono-sip-k3"
-    time: "05:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
@@ -182,6 +186,7 @@ dalek-mono-sip-k3:
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -204,13 +209,13 @@ bsc-hca-pioneer:
     ntasks: 1
     exclusive: true
     nodelist: "pioneer-4"
-    time: "06:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -234,13 +239,14 @@ mc-SG2044:
     nodes: 1
     ntasks: 1
     exclusive: true
-    time: "06:00:00"
+    nodelist: "mc-peak-2"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -262,13 +268,14 @@ mc-SG2042:
     nodes: 1
     ntasks: 1
     exclusive: true
-    time: "06:00:00"
+    nodelist: "mc-blade-4"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -292,13 +299,13 @@ MN5-GPP:
     account: bsc10
     qos: gp_debug
     constraint: perfparanoid
-    time: "02:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"
@@ -309,7 +316,7 @@ MN5-GPP:
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "#SBATCH --ear=on"
-        - "#SBATCH --ear-user-db=metrics_mare5_sbatch"
+        - "#SBATCH --ear-user-db=metric_gpp_sbatch"
         - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
 
 # Grace - BSC's Grace - General Purpose @ MN5
@@ -323,13 +330,13 @@ MN5-GRACE:
     account: bsc10
     qos: ngp_debug
     constraint: perfparanoid
-    time: "02:00:00"
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+      time: "{walltime}"
       env:
         - "CC={compiler_c[compiler]}"
         - "CXX={compiler_cxx[compiler]}"

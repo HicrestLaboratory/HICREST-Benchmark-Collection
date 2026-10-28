@@ -20,7 +20,7 @@ command: 'make BIN_DIR="$BIN_DIR" CC="$CC" CPPFLAGS="-E" CFLAGS="$CFLAGS" LDFLAG
 postprocess: 'for bin in "${TARGETS[@]}"; do {compiler_disass[compiler]} "$BIN_DIR/$bin" > "$SBATCHMAN_JOB_DIR/$bin.asm"; done'
 
 jobs:
-  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}____1"
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__4"
     config_jobs:
       - tag: "compile_OpenMPbench_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}"
         category: "compile"

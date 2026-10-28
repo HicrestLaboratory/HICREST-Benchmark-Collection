@@ -17,4 +17,4 @@ array_mem_mb:
   # - 8
 
 offset: [0]
-runs: [15]
+runs: [50, 300]

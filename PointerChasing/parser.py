@@ -7,7 +7,7 @@ import warnings
 from typing import Optional, Dict
 
 sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from ncm_parser import parse_ncm_energy_log
+from energy_parsers import parse_ncm_energy_log
 
 
 def extract_numeric_matrix(path: Path, expected_cols: int) -> np.ndarray:

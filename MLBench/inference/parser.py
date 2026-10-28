@@ -1,18 +1,15 @@
-import csv
 import json
 from typing import Dict, Optional
 import sbatchman as sbm
 
-def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
-    if job.status != sbm.Status.COMPLETED.value:
-        return None
+TABLE_NAME = "inference"
 
+def parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, Dict]]:
     # i need to save only few info from the json file, cpu name, samples_ts, samples_ns, model_name, model_size
     data = {k:v for k,v in (job.variables or {}).items()}
     data['cluster'] = job.cluster_name
     data['tot_runtime'] = job.get_run_time()
 
-    stdout = job.get_stdout()
     try:
         json_data = json.loads(stdout)
     except json.JSONDecodeError as e:
@@ -31,4 +28,4 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
             data['model_filename'] = item.get('model_filename', '')
             data['model_size'] = item.get('model_size', 0)
 
-    return data
+    return {TABLE_NAME: data}
