@@ -299,6 +299,8 @@ MN5-GPP:
     account: bsc10
     qos: gp_debug
     constraint: perfparanoid
+    time: "02:00:00"
+    modules: ["cmake"]
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"

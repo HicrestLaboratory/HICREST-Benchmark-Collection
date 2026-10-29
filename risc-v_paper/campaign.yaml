@@ -1,0 +1,33 @@
+name: "RISC-V Paper"
+parallel_clusters: true
+
+apps:
+  - name: openmpbench
+    dir: ../OpenMPbench
+    cluster_whitelist: [dalek-mono-bpi-f3,dalek-mono-oh5]
+    configs: []
+    steps:
+      - name: compile
+        jobs: compile.yaml
+      - name: syncbench
+        jobs: jobs.yaml
+        jobs_args: ["-v", "benchmark=syncbench"]
+      - name: schedbench
+        jobs: jobs.yaml
+        jobs_args: ["-v", "benchmark=schedbench"]
+      - name: taskbench
+        jobs: jobs.yaml
+        jobs_args: ["-v", "benchmark=taskbench"]
+      - name: arraybench
+        jobs: jobs.yaml
+        jobs_args: ["-t", "*_arraybench_*"]
+
+  # - name: locks
+  #   dir: ../locks
+  #   steps:
+  #     - name: compile
+  #       jobs: compile.yaml
+  #       jobs_args: ["-v", "benchmark=syncbench"]
+  #     - name: test-runs
+  #       jobs: jobs.yaml
+  #       jobs_args: ["-v", "benchmark=syncbench", "-v", "ncpus=8"]
