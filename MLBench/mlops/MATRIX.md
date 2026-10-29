@@ -4,9 +4,9 @@
 - `(M × K) × (K × N) = (M × N)`
 - **GEMM / GEMV**: Matrix operations using shapes `M, N, K`.
 - **Softmax / GELU**: Applied to the resulting `M × N` dimensions.
-- **M values**:
+- **M values** (tokens per forward pass):
   - **GEMV**: `M = 1` (single-token decoding)
-  - **GEMM, Softmax, GELU**: `M ∈ {128, 512, 2048}`
+  - **GEMM, Softmax, GELU**: `M ∈ {64, 512, 2048}`
 
 ---
 
