@@ -1,17 +1,7 @@
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
-
-variables:
-  benchmark:
-    - "syncbench"
-    - "schedbench"
-    - "taskbench"
-    - "arraybench_1"
-    - "arraybench_243"
-    - "arraybench_2187"
-    # - "arraybench_19683"
-    - "arraybench_59049"
+  - "vars.yaml"
 
 
 jobs:
@@ -20,5 +10,5 @@ jobs:
       - tag: "{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{benchmark}_C{ncpus}"
         category: "{benchmark}"
         preprocess: "{energy_measure_start}"
-        command: "./bin/{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}/{benchmark}"
+        command: "{energy_measure_before_exec}./bin/{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}/{benchmark}"
         postprocess: '{energy_measure_stop}'
