@@ -27,6 +27,10 @@ def remove_ncm_logs(stdout: str) -> str:
     return '\n'.join(res)
 
 
+def remove_energy_logs(stdout: str) -> str:
+    return remove_ncm_logs(stdout)
+
+
 def remove_useless_job_meta(data: dict) -> dict:
     res = {}
     for k, v in data.items():

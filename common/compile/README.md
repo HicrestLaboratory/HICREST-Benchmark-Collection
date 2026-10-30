@@ -24,10 +24,10 @@ chmod +x install_compilers.sh
 ./install_compilers.sh --all --isa x86_64 --gcc 16.1.0 --clang 23.1.0
 
 # Installs {GCC, CLANG} x {riscv64}
-./install_compilers.sh --all --isa riscv64
+./install_compilers.sh --all --isa riscv64 --gcc 16.1.0 --clang 23.1.0
 
 # On MonteCimone
-TARGET_GLIBC_RISCV64=2.39 ./install_compilers.sh --all --isa riscv64
+TARGET_GLIBC_RISCV64=2.39 ./install_compilers.sh --all --isa riscv64 --gcc 16.1.0 --clang 23.1.0
 ```
 
 ## Setting up BLAS libraries
