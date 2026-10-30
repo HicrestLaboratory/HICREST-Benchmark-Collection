@@ -8,6 +8,11 @@
   - **GEMV**: `M = 1` (single-token decoding)
   - **GEMM, Softmax, GELU**: `M ∈ {64, 512, 2048}`
 
+### How to Benchmark:
+- **Softmax, GELU use MxN matrices**
+- **GeMV (M x K) x (K x N) = (M x N)**
+- **GeMV (1 x K) x (K x N) = (1 x N)**
+
 ---
 
 ### 🟨 Square (`N = K`)
