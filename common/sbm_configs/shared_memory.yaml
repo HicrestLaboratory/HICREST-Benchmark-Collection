@@ -1,9 +1,9 @@
 include_variables:
   - "shared_memory_vars.yaml"
-  # FIXME uncomment when needed- "shared_memory_all_blas_libs.yaml"
+  - "shared_memory_all_blas_libs.yaml"
 
 variables:
-  walltime: ['00:10:00']
+  walltime: ['00:20:00']
 
 # == Environment variables ==
 # Each configuration sets:
@@ -212,6 +212,8 @@ bsc-hca-pioneer:
     env: 
       - "OMP_PROC_BIND=close"
       - "OMP_PLACES=cores"
+    # modules:
+    #   - "glibc/ubuntu/2.38"
 
   configs:
     - name: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
@@ -225,7 +227,7 @@ bsc-hca-pioneer:
         - "LC_ALL=C.UTF-8"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
-        - "source /etc/profile.d/modules.sh"
+        # - "source /etc/profile.d/modules.sh"
         - "export LD_LIBRARY_PATH={ld_library_path_compiler[compiler]}"
         - "export NCM_PATH=/apps/ncm/1.2.0/bin/ncm-control"
 

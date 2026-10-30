@@ -10,10 +10,76 @@ variables:
   warmup: [2]
   seed: [42]
 
-  m: [512] #, 1024, 2048]
-  k: [512] #, 1024, 2048]
-  n: [512] #, 1024, 2048]
   dtype: ["f16", "bf16", "q8_0"]
+
+  shape: [
+    # square (N = K)
+    phi4mini_3072, llama4scout_5120, gptoss_2880, llama31_8b_4096, llama31_70b_8192,
+    # short and wide (N > K)
+    qwen27b_6144, qwen27b_17408, gemma31b_21504, llama4scout_8192, gemma31b_262144,
+    # tall and narrow (K > N)
+    qwen27b_1024, gemma31b_4096, gptoss_512, dsv41flash_2304, gemma31b_5376,
+  ]
+
+  m: [64, 2048] # 512? GEMM / GELU / Softmax (GEMV overrides to 1)
+
+  shape_n:
+    map:
+      phi4mini_3072:    [3072]
+      llama4scout_5120: [5120]
+      gptoss_2880:      [2880]
+      llama31_8b_4096:  [4096]
+      llama31_70b_8192: [8192]
+      qwen27b_6144:     [6144]
+      qwen27b_17408:    [17408]
+      gemma31b_21504:   [21504]
+      llama4scout_8192: [8192]
+      gemma31b_262144:  [262144]
+      qwen27b_1024:     [1024]
+      gemma31b_4096:    [4096]
+      gptoss_512:       [512]
+      dsv41flash_2304:  [2304]
+      gemma31b_5376:    [5376]
+
+  shape_k:
+    map:
+      phi4mini_3072:    [3072]
+      llama4scout_5120: [5120]
+      gptoss_2880:      [2880]
+      llama31_8b_4096:  [4096]
+      llama31_70b_8192: [8192]
+      qwen27b_6144:     [5120]
+      qwen27b_17408:    [5120]
+      gemma31b_21504:   [5376]
+      llama4scout_8192: [5120]
+      gemma31b_262144:  [5376]
+      qwen27b_1024:     [5120]
+      gemma31b_4096:    [5376]
+      gptoss_512:       [2880]
+      dsv41flash_2304:  [5120]
+      gemma31b_5376:    [21504]
+
+  shape_cat:
+    map:
+      phi4mini_3072:    [square]
+      llama4scout_5120: [square]
+      gptoss_2880:      [square]
+      llama31_8b_4096:  [square]
+      llama31_70b_8192: [square]
+      qwen27b_6144:     [wide]
+      qwen27b_17408:    [wide]
+      gemma31b_21504:   [wide]
+      llama4scout_8192: [wide]
+      gemma31b_262144:  [wide]
+      qwen27b_1024:     [tall]
+      gemma31b_4096:    [tall]
+      gptoss_512:       [tall]
+      dsv41flash_2304:  [tall]
+      gemma31b_5376:    [tall]
+
+  # GELU / Softmax only depend on M x N, so use the unique N values
+  # (8192 and 4096 each appear twice above) instead of running duplicates.
+  n_ew: [512, 1024, 2304, 2880, 3072, 4096, 5120, 5376, 6144, 8192, 17408, 21504, 262144]
 
 preprocess: |
   export LD_LIBRARY_PATH="$(pwd)/build_{compiler}_{isa}_{blas_lib}/bin:${LD_LIBRARY_PATH}"
@@ -24,24 +90,24 @@ jobs:
   - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
     config_jobs:
 
-      - tag: "gemm_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_k{k}_n{n}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
-        category: "gemm-square"
-        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/gemm --m {m} --k {k} --n {n} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"
+      - tag: "gemm_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{shape_n[shape]}_k{shape_k[shape]}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
+        category: "gemm-{shape_cat[shape]}"
+        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/gemm --m {m} --k {shape_k[shape]} --n {shape_n[shape]} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"
 
-      # TODO create "gemm-ml" category
+      - tag: "gemv_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{shape_n[shape]}_k{shape_k[shape]}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
+        category: "gemv-{shape_cat[shape]}"
+        variables:
+          m: [1]
+        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/gemv --m {m} --k {shape_k[shape]} --n {shape_n[shape]} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"
 
-      - tag: "gemv_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_k{k}_m{m}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
-        category: "gemv"
-        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/gemv --k {k} --m {m} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"
-
-      - tag: "gelu_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{n}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
+      - tag: "gelu_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{n_ew}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
         variables:
           dtype: ["f16", "f32"]
         category: "gelu"
-        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/gelu --m {m} --n {n} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"
+        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/gelu --m {m} --n {n_ew} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"
 
-      - tag: "softmax_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_n{n}_m{m}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
+      - tag: "softmax_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{n_ew}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
         variables:
           dtype: ["f32"]
         category: "softmax"
-        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/softmax --m {m} --n {n} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"
+        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/softmax --m {m} --n {n_ew} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"

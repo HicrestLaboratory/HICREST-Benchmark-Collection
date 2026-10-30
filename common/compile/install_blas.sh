@@ -187,7 +187,7 @@ case "${ARCH}" in
     rspi5)
 
         OPENBLAS_TARGET="CORTEXA76"
-        BLIS_TARGET="auto"
+        BLIS_TARGET="cortexa57"
 
         CC="${HOME}/software_env/gcc/aarch64/16.1.0/bin/gcc"
         CXX="${HOME}/software_env/gcc/aarch64/16.1.0/bin/g++"
@@ -222,10 +222,48 @@ case "${ARCH}" in
         LDFLAGS="-L${COMPILER_LIB}"
 
         ;;
+    minix)
+
+        OPENBLAS_TARGET="ZEN"
+        BLIS_TARGET="zen"
+
+        CC="${HOME}/software_env/gcc/x86_64/16.1.0/bin/gcc"
+        CXX="${HOME}/software_env/gcc/x86_64/16.1.0/bin/g++"
+
+        COMPILER_INC="${HOME}/software_env/gcc/x86_64/16.1.0/include"
+        COMPILER_LIB="${HOME}/software_env/gcc/x86_64/16.1.0/lib"
+
+        # Intel oneAPI / MKL
+        MKL_VERSION="2026.1.0"
+        MKL_PREFIX="${SOFTWARE_ENV}/intel-mkl"
+
+        MKL_INSTALLER="intel-oneapi-toolkit-2026.1.0.192_offline.sh"
+        MKL_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/33cb2a22-ddf1-4aa9-8d68-1f5a118acaf2/${MKL_INSTALLER}"
+
+        if [[ ! -d "${MKL_PREFIX}" ]]; then
+            wget -O "${MKL_INSTALLER}" "${MKL_URL}"
+
+            sh "./${MKL_INSTALLER}" \
+                -a \
+                --silent \
+                --eula accept \
+                --install-dir "${MKL_PREFIX}"
+
+            rm -f "${MKL_INSTALLER}"
+        fi
+
+        EXTRA_INC="${MKL_PREFIX}/mkl/latest/include:${COMPILER_INC}"
+        EXTRA_LIB="${MKL_PREFIX}/mkl/latest/lib/intel64:${COMPILER_LIB}"
+
+        CFLAGS="-I${MKL_PREFIX}/mkl/latest/include"
+        CXXFLAGS="-I${MKL_PREFIX}/mkl/latest/include"
+        LDFLAGS="-L${MKL_PREFIX}/mkl/latest/lib/intel64 -L${COMPILER_LIB}"
+
+        ;;
     oh5)
 
-        OPENBLAS_TARGET="ALDERLAKE"
-        BLIS_TARGET="auto"
+        OPENBLAS_TARGET="HASWELL"
+        BLIS_TARGET="haswell"
 
         CC="${HOME}/software_env/gcc/x86_64/16.1.0/bin/gcc"
         CXX="${HOME}/software_env/gcc/x86_64/16.1.0/bin/g++"
@@ -320,6 +358,9 @@ export LD_LIBRARY_PATH="${EXTRA_LIB}"
 
 OPENBLAS_ISA="$(arch)/${OPENBLAS_TARGET:-generic}"
 BLIS_ISA="$(arch)/${BLIS_TARGET:-generic}"
+if [[ "${BLIS_TARGET}" == "auto" ]]; then
+    BLIS_ISA+="/${ARCH}"
+fi
 
 OPENBLAS_PREFIX="${SOFTWARE_ENV}/OpenBLAS/${OPENBLAS_ISA}/${OPENBLAS_VERSION}"
 BLIS_PREFIX="${SOFTWARE_ENV}/blis/${BLIS_ISA}/${BLIS_VERSION}"
@@ -428,7 +469,7 @@ BLIS_CONFIG_OPTS=(
     "--enable-cblas"
 )
 
-echo "${BLIS_CONFIG_OPTS[@]} auto"
+echo "${BLIS_CONFIG_OPTS[@]} ${BLIS_TARGET}"
 
 if [[ "${BLIS_TARGET}" == "auto" ]]; then
     ./configure "${BLIS_CONFIG_OPTS[@]}" auto

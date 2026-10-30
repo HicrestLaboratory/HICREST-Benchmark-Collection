@@ -139,6 +139,7 @@ ld_library_path_compiler:
     gcc:
       default: ['$HOME/software_env/gcc/riscv64/16.1.0/lib:$HOME/software_env/gcc/riscv64/16.1.0/lib/gcc/riscv64-conda-linux-gnu/16.1.0']
       per_cluster:
+        bsc-hca-pioneer:    ['/apps/riscv/ubuntu/glibc/2.38/lib:$HOME/software_env/gcc/riscv64/16.1.0/lib:$HOME/software_env/gcc/riscv64/16.1.0/lib/gcc/riscv64-conda-linux-gnu/16.1.0']
         dalek-mono-jts-onx: ['$HOME/software_env/gcc/aarch64/16.1.0/lib:$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0']
         dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/lib:$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0']
         dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
@@ -149,6 +150,7 @@ ld_library_path_compiler:
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/lib']
       per_cluster:
+        bsc-hca-pioneer:    ['/apps/riscv/ubuntu/glibc/2.38/lib:$HOME/software_env/clang/riscv64/23.1.0/lib']
         dalek-mono-jts-onx: ['$HOME/software_env/clang/aarch64/23.1.0/lib']
         dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/lib']
         dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
@@ -281,17 +283,21 @@ blaslib_path:
     openblas:
       default:              ['$HOME/software_env/OpenBLAS/riscv64/RISCV64_ZVL128B/v0.3.34'] # RVV1.0
       per_cluster:
-        mc-SG2042:          ['TODO']
-        # dalek-mono-jts-onx: ['$HOME/software_env/OpenBLAS-sg2044/lib']
-        # dalek-mono-rpi-5b:  ['$HOME/software_env/OpenBLAS-sg2044/lib']
-        # dalek-mono-oh5:     ['$HOME/software_env/OpenBLAS-sg2044/lib']
-        # dalek-minix:        ['$HOME/software_env/OpenBLAS-sg2044/lib']
+        # mc-SG2042:          ['TODO']
+        dalek-mono-jts-onx: ['$HOME/software_env/OpenBLAS/aarch64/ARMV8/v0.3.34/lib']
+        dalek-mono-rpi-5b:  ['$HOME/software_env/OpenBLAS/aarch64/CORTEXA76/v0.3.34/lib']
+        dalek-mono-oh5:     ['$HOME/software_env/OpenBLAS/x86_64/HASWELL/v0.3.34/lib']
+        dalek-minix:        ['$HOME/software_env/OpenBLAS/x86_64/ZEN/v0.3.34/lib']
         MN5-GPP:            ['$HOME/software_env/OpenBLAS/x86_64/SAPPHIRERAPIDS/v0.3.34']
         MN5-GRACE:          ['$HOME/software_env/OpenBLAS/aarch64/NEOVERSEV2/v0.3.34']
     blis:
       default:              ['$HOME/software_env/blis/riscv64/rv64iv/2.1'] # RVV1.0
       per_cluster:
-        mc-SG2042:          ['TODO']
+        # mc-SG2042:          ['TODO']
+        dalek-mono-jts-onx: ['$HOME/software_env/blis/aarch64/auto/jtsonx/2.1/lib']
+        dalek-mono-rpi-5b:  ['$HOME/software_env/blis/aarch64/cortexa57/2.1/lib']
+        dalek-mono-oh5:     ['$HOME/software_env/blis/x86_64/haswell/2.1/lib']
+        dalek-minix:        ['$HOME/software_env/blis/x86_64/zen/2.1/lib']
         MN5-GPP:            ['$HOME/software_env/blis/x86_64/auto/2.1']
         MN5-GRACE:          ['$HOME/software_env/blis/aarch64/auto/2.1']
 
