@@ -27,6 +27,10 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
     
     res = None
 
+    # Small fix
+    if job.category.startswith('gelu') and job.tag.startswith('softmax'):
+        job.category = 'softmax'
+
     # TODO add energy
     if job.category.startswith(('gemv', 'gemm', 'gelu', 'softmax')):
         res = mlops_parser.parse(job, remove_ncm_logs(stdout))

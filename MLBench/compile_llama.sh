@@ -52,8 +52,8 @@ if [[ ! -d llamacpp ]]; then
     exit 1
 fi
 
-cmake_args=(-DCMAKE_BUILD_TYPE=Release -DBACKEND="$backend")
-[[ -n "$blas_lib"     ]] && cmake_args+=(-DGGML_BLAS=ON -DGGML_BLAS_VENDOR="$vendor_name" -DBLAS_LIBRARIES="$blas_lib" -DCMAKE_INSTALL_RPATH="$(dirname $blas_lib)" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
+cmake_args=(-DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_BUILD_TYPE=Release -DBACKEND="$backend")
+[[ -n "$blas_lib"     ]] && cmake_args+=(-DGGML_BLAS=ON -DGGML_BLAS_VENDOR="$vendor_name" -DBLAS_LIBRARIES="$blas_lib" -DCMAKE_INSTALL_RPATH="$(dirname $blas_lib)" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_EXE_LINKER_FLAGS="-L$(dirname $blas_lib) -Wl,-rpath=$(dirname $blas_lib) -Wl,-rpath-link=$(dirname $blas_lib)")
 [[ -n "$blas_include" ]] && cmake_args+=(-DGGML_BLAS=ON -DGGML_BLAS_VENDOR="$vendor_name" -DBLAS_INCLUDE_DIRS="$blas_include"  -DCMAKE_INSTALL_RPATH="$(dirname $blas_lib)" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
   
 echo "Running:"

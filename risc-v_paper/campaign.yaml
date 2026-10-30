@@ -1,0 +1,43 @@
+name: "RISC-V Paper"
+parallel_clusters: true
+
+apps:
+  - name: openmpbench
+    dir: ../OpenMPbench
+    # cluster_whitelist: [bsc-hca-pioneer]
+    cluster_whitelist: [dalek-mono-bpi-f3,dalek-mono-oh5] #,dalek-mono-rpi-5b,dalek-mono-sip-k3]
+    configs: []
+    steps:
+      - name: compile
+        jobs: compile.yaml
+      - name: syncbench
+        jobs: jobs.yaml
+        jobs_args: ["-v", "benchmark=syncbench"]
+      - name: schedbench
+        jobs: jobs.yaml
+        jobs_args: ["-v", "benchmark=schedbench"]
+      - name: taskbench
+        jobs: jobs.yaml
+        jobs_args: ["-v", "benchmark=taskbench"]
+      - name: arraybench
+        jobs: jobs.yaml
+        jobs_args: ["-t", "*_arraybench_*"]
+
+  - name: locks
+    dir: ../locks
+    # cluster_whitelist: [bsc-hca-pioneer]
+    cluster_whitelist: [dalek-mono-bpi-f3,dalek-mono-oh5]
+    steps:
+      - name: compile
+        jobs: compile.yaml
+      - name: mcs
+        jobs: jobs.yaml
+        jobs_args: ["-v", "lock=MCS"]
+      - name: SpinLock
+        jobs: jobs.yaml
+        jobs_args: ["-v", "lock=SpinLock"]
+
+# - HemLock
+# - PthreadLock
+# - Reciprocating
+# - FissileTicket
