@@ -4,7 +4,8 @@ parallel_clusters: true
 apps:
   - name: openmpbench
     dir: ../OpenMPbench
-    cluster_whitelist: [dalek-mono-bpi-f3,dalek-mono-oh5]
+    # cluster_whitelist: [bsc-hca-pioneer]
+    cluster_whitelist: [dalek-mono-bpi-f3,dalek-mono-oh5] #,dalek-mono-rpi-5b,dalek-mono-sip-k3]
     configs: []
     steps:
       - name: compile
@@ -22,12 +23,21 @@ apps:
         jobs: jobs.yaml
         jobs_args: ["-t", "*_arraybench_*"]
 
-  # - name: locks
-  #   dir: ../locks
-  #   steps:
-  #     - name: compile
-  #       jobs: compile.yaml
-  #       jobs_args: ["-v", "benchmark=syncbench"]
-  #     - name: test-runs
-  #       jobs: jobs.yaml
-  #       jobs_args: ["-v", "benchmark=syncbench", "-v", "ncpus=8"]
+  - name: locks
+    dir: ../locks
+    # cluster_whitelist: [bsc-hca-pioneer]
+    cluster_whitelist: [dalek-mono-bpi-f3,dalek-mono-oh5]
+    steps:
+      - name: compile
+        jobs: compile.yaml
+      - name: mcs
+        jobs: jobs.yaml
+        jobs_args: ["-v", "lock=MCS"]
+      - name: SpinLock
+        jobs: jobs.yaml
+        jobs_args: ["-v", "lock=SpinLock"]
+
+# - HemLock
+# - PthreadLock
+# - Reciprocating
+# - FissileTicket
