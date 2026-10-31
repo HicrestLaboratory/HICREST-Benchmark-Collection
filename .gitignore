@@ -15,6 +15,7 @@
 *.parquet
 *.gguf
 *.zip
+*.tar.gz
 
 leonardo/
 daint/
@@ -26,6 +27,7 @@ thea/
 parquets/
 e4/
 data/
+share/
 
 DLNetBench/experiments*/
 DLNetBench/topos*/

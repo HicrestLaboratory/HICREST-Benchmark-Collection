@@ -12,7 +12,8 @@ variables:
   # model_filename: ["google_gemma-4-E2B-it-Q4_K_M"]
 
 preprocess: |
-  export LD_LIBRARY_PATH="$(pwd)/build_{compiler}_{isa}_{blas_lib}/bin:${LD_LIBRARY_PATH}"
+  export BUILD_DIR="build_{compiler}_${SBATCHMAN_CLUSTER_NAME}_{blas_lib}"
+  export LD_LIBRARY_PATH="$(pwd)/${BUILD_DIR}/bin:${LD_LIBRARY_PATH}"
   {energy_measure_start}
 postprocess: '{energy_measure_stop}'
 
@@ -25,14 +26,14 @@ jobs:
           prompt_length: [512]
           n_tokens: [0]
         category: "inference-prefill"
-        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/bin/llama-bench -p {prompt_length} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"
+        command: "{energy_measure_before_exec}./${BUILD_DIR}/bin/llama-bench -p {prompt_length} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"
 
       - tag: "inference-decode_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_p{prompt_length}_n{n_tokens}_r{repetitions}_m{model_filename}"
         variables:
           prompt_length: [0]
           n_tokens: [128]
         category: "inference-decode"
-        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/bin/llama-bench -p {prompt_length} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"
+        command: "{energy_measure_before_exec}./${BUILD_DIR}/bin/llama-bench -p {prompt_length} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"
 
       - tag: "inference-full_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_p{prompt_length}_pg{prompt_and_generation}_n{n_tokens}_r{repetitions}_m{model_filename}"
         variables:
@@ -40,4 +41,4 @@ jobs:
           n_tokens: [0]
           prompt_and_generation: ["512,128"]
         category: "inference-full"
-        command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/bin/llama-bench -p {prompt_length} -pg {prompt_and_generation} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"
+        command: "{energy_measure_before_exec}./${BUILD_DIR}/bin/llama-bench -p {prompt_length} -pg {prompt_and_generation} -n {n_tokens} -t {ncpus} -r {repetitions} -m {model}"

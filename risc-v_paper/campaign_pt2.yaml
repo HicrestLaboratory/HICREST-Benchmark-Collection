@@ -35,17 +35,19 @@ apps:
     steps:
       - name: compile
         jobs: compile.yaml
-      # - name: inference
-      #   jobs: jobs_inference.yaml
+      - name: inference
+        jobs: jobs_inference.yaml
+        jobs_args: ["-v", "ncpus=4", "-v", "ncpus=8"]
+        
       # - name: mlops-gemm
       #   jobs: jobs_operators.yaml
-      #   jobs_args: ["-t", "gemm-*"]
+      #   jobs_args: ["-t", '"gemm-*"']
       # - name: mlops-gemv
       #   jobs: jobs_operators.yaml
-      #   jobs_args: ["-t", "gemv-*"]
+      #   jobs_args: ["-t", '"gemv-*"']
       # - name: mlops-gelu
       #   jobs: jobs_operators.yaml
-      #   jobs_args: ["-t", "gelu_*"]
+      #   jobs_args: ["-t", '"gelu_*"']
       # - name: mlops-softmax
       #   jobs: jobs_operators.yaml
-      #   jobs_args: ["-t", "softmax_*"]
+      #   jobs_args: ["-t", '"softmax_*"']

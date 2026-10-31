@@ -27,7 +27,7 @@ apps:
         jobs_args: ["-v", "benchmark=taskbench"]
       - name: arraybench
         jobs: jobs.yaml
-        jobs_args: ["-t", "*_arraybench_*"]
+        jobs_args: ["-t", '"*_arraybench_*"']
 
   - name: locks
     dir: ../locks

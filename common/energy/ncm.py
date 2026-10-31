@@ -37,6 +37,11 @@ Two modes are supported:
     written (alone) to --output, then the monitor process is killed and
     the --post commands are run.
 
+    Each sampling attempt is guarded by a watchdog (--stable-timeout), so
+    a stalled device or a blocked read can no longer hang `stop`. If an
+    attempt fails, a fresh `ncm-control -t 0` is launched, up to
+    --attempts times in total.
+
         ./ncm_monitor.py start --core 0 \
             --output /scratch/$(whoami)/energy.log
         ...
@@ -49,21 +54,27 @@ Two modes are supported:
 Options:
     --pidfile PATH        where the JSON state is stored
                            (default: /tmp/ncm_monitor.pid)
-    --timeout SEC         (stop only) seconds to wait after SIGINT before
-                           escalating to SIGTERM/SIGKILL (default: 10)
+    --timeout SEC         (stop only) seconds to wait after each signal
+                           (SIGINT, then SIGTERM, then SIGKILL) before
+                           escalating (default: 1)
     --pre CMD              (start only, repeatable) command run
                            synchronously, in order given, BEFORE the
-                           monitor is launched. Defaults to the four
-                           ncm-control -P/-M enable calls if not given.
+                           monitor is launched. Defaults to the ncm-control
+                           disable/enable sequence if not given.
     --post CMD             (stop only, repeatable) command run
                            synchronously, in order given, AFTER the
                            monitor has stopped. Defaults to the four
                            ncm-control -m/-p disable calls if not given.
     --detailed             (start only) use ACTIVE mode instead of the
                            default PASSIVE mode (see above).
-    --stable-timeout SEC   (stop only, passive mode) give up waiting for
-                           a jump/stable sample after this many seconds
-                           (default: 30).
+    --stable-timeout SEC   (stop only, passive mode) per-attempt limit for
+                           waiting for a jump/stable sample (default: 4).
+    --attempts N           (stop only, passive mode) number of sampling
+                           attempts before giving up (default: 2).
+    --strict               (stop only, passive mode) exit with status 2 if
+                           no stable sample could be obtained.
+    --step-timeout SEC     (start/stop) timeout for each --pre/--post
+                           command (default: 60).
     --print-tot-energy     (stop only, passive mode) keep the trailing
                            Joules field in the sample written to output.
 """
@@ -71,9 +82,11 @@ Options:
 import argparse
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -85,6 +98,15 @@ DEFAULT_COMMAND = ""
 NCM_BIN = os.environ.get("NCM_PATH") or "ncm-control"
 
 DEFAULT_COMMAND_DETAILED = f"{NCM_BIN} -t 0"
+
+# In passive mode the output goes through a pipe, where C programs switch to
+# full buffering. If stdbuf is available, force line buffering so samples
+# arrive as they are produced (harmless if the program ignores it).
+if shutil.which("stdbuf"):
+    PASSIVE_SAMPLE_COMMAND = f"stdbuf -oL {DEFAULT_COMMAND_DETAILED}"
+else:
+    PASSIVE_SAMPLE_COMMAND = DEFAULT_COMMAND_DETAILED
+
 DEFAULT_PRE = [
     # Make sure probes and measurements are off
     f"{NCM_BIN} -m 1",
@@ -107,6 +129,10 @@ DEFAULT_POST = [
 ]
 JUMP_THRESHOLD = 100  # a skip of more than this many timestamps counts as "the jump"
 DEFAULT_STABLE_TIMEOUT = 4.0
+DEFAULT_SIGNAL_TIMEOUT = 1.0
+DEFAULT_ATTEMPTS = 2
+DEFAULT_STEP_TIMEOUT = 5.0
+RETRY_DELAY = 1.0  # seconds between sampling attempts
 
 
 def default_core() -> int:
@@ -131,31 +157,41 @@ def pid_alive(pid: int) -> bool:
         return True
     except ProcessLookupError:
         return False
-
-
-def run_step(cmd: str) -> bool:
-    """Run a single shell command synchronously.
-    Failures are logged to stderr but do not raise exceptions."""
-    print(f"$ {cmd}")
-    try:
-        result = subprocess.run(
-            cmd,
-            shell=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            print(
-                f"WARNING: command failed (exit {result.returncode}): {cmd}",
-                file=sys.stderr,
-            )
-            return False
+    except PermissionError:
         return True
+
+
+def run_step(cmd: str, timeout: float = DEFAULT_STEP_TIMEOUT) -> bool:
+    """Run a single shell command synchronously, with a timeout.
+    Failures are logged to stderr but do not raise exceptions."""
+    print(f"$ {cmd}", flush=True)
+    try:
+        proc = subprocess.Popen(cmd, shell=True, start_new_session=True)
     except Exception as e:
-        print(
-            f"WARNING: failed to execute command '{cmd}': {e}",
-            file=sys.stderr,
-        )
+        print(f"WARNING: failed to execute command '{cmd}': {e}", file=sys.stderr)
         return False
+
+    try:
+        returncode = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(f"WARNING: command timed out after {timeout}s: {cmd}", file=sys.stderr)
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+        return False
+    except Exception as e:
+        print(f"WARNING: failed to execute command '{cmd}': {e}", file=sys.stderr)
+        return False
+
+    if returncode != 0:
+        print(f"WARNING: command failed (exit {returncode}): {cmd}", file=sys.stderr)
+        return False
+    return True
 
 
 def write_state(pidfile: Path, state: dict):
@@ -175,50 +211,67 @@ def read_state(pidfile: Path) -> dict:
         return {"mode": "active", "pid": int(text)}
 
 
-def terminate_process_group(pid: int, timeout: float) -> bool:
+def terminate_process_group(pid: int, timeout: float, proc=None) -> bool:
     """Send SIGINT to the process group of `pid`, escalating to SIGTERM
     then SIGKILL if it doesn't exit within `timeout` seconds at each
-    step. Returns True if the process exited cleanly (or was already
-    gone)."""
-    if not pid_alive(pid):
+    step. Returns True if the process exited (or was already gone).
+
+    If `proc` (the subprocess.Popen object of a child we started ourselves)
+    is given, liveness is checked with proc.poll(), which also reaps the
+    child. Without it, a dead-but-unreaped child (zombie) would still look
+    alive to os.kill(pid, 0) and force a needless escalation.
+    """
+    def alive() -> bool:
+        if proc is not None:
+            return proc.poll() is None
+        return pid_alive(pid)
+
+    if not alive():
         return True
 
+    # All processes we launch use start_new_session=True, so pgid == pid.
     try:
         pgid = os.getpgid(pid)
     except ProcessLookupError:
         return True
+    except PermissionError:
+        pgid = pid
 
-    print(f"Sending SIGINT to process group {pgid} (pid {pid})...")
-    os.killpg(pgid, signal.SIGINT)
+    steps = [
+        (signal.SIGINT, "SIGINT"),
+        (signal.SIGTERM, "SIGTERM"),
+        (signal.SIGKILL, "SIGKILL"),
+    ]
+    for i, (sig, name) in enumerate(steps):
+        if i == 0:
+            print(f"Sending {name} to process group {pgid} (pid {pid})...")
+        else:
+            print(f"Still alive after previous signal, escalating to {name}...")
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return True
+        except PermissionError as e:
+            print(f"WARNING: cannot signal process group {pgid}: {e}", file=sys.stderr)
+            return False
 
-    stopped_cleanly = False
-    for sig, name in [(None, None), (signal.SIGTERM, "SIGTERM"), (signal.SIGKILL, "SIGKILL")]:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if not pid_alive(pid):
-                if name:
-                    print(f"Monitor exited after {name}.")
-                else:
-                    print("Monitor exited cleanly after SIGINT.")
-                stopped_cleanly = True
-                break
-            time.sleep(0.2)
-        if stopped_cleanly:
-            break
-        if sig is not None:
-            print(f"Still alive after previous signal, escalating to {name}...")
-            os.killpg(pgid, sig)
+            if not alive():
+                print(f"Monitor exited after {name}.")
+                return True
+            time.sleep(0.05)
 
-    if not stopped_cleanly:
-        print(f"WARNING: process {pid} may still be alive.")
-
-    return stopped_cleanly
+    if not alive():
+        return True
+    print(f"WARNING: process {pid} may still be alive.", file=sys.stderr)
+    return False
 
 
 def cmd_start(args):
     pre_cmds = args.pre if args.pre is not None else DEFAULT_PRE
     for pre_cmd in pre_cmds:
-        run_step(pre_cmd)
+        run_step(pre_cmd, args.step_timeout)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -275,36 +328,73 @@ def _find_stable_sample(proc, stable_timeout: float):
     """Read lines from `proc.stdout` until the first-column counter jumps
     by more than JUMP_THRESHOLD. Returns the first line seen *after*
     that jump, or None if no jump was seen within `stable_timeout`
-    seconds / before the process's output ended."""
-    prev_ts = None
-    deadline = time.time() + stable_timeout
+    seconds / before the process's output ended.
 
-    while time.time() < deadline:
-        line = proc.stdout.readline()
-        # print(f'Line: {line}')
-        if not line:
-            if proc.poll() is not None:
-                break
-            time.sleep(0.05)
-            continue
-
-        line = line.rstrip("\n")
-        tokens = line.split()
-        if not tokens:
-            continue
+    A watchdog timer kills the process group at the deadline, so that a
+    readline() blocked on a silent/stalled device hits EOF instead of
+    hanging forever.
+    """
+    def _kill():
         try:
-            ts = int(tokens[0])
-        except ValueError:
-            continue
+            # start_new_session=True => pgid == pid
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
-        # print(f'Tokens: {tokens}')
-        if prev_ts is not None and (ts - prev_ts) > JUMP_THRESHOLD:
-            # print('JUMP!!')
-            return line
+    timer = threading.Timer(stable_timeout, _kill)
+    timer.daemon = True
+    timer.start()
+    try:
+        prev_ts = None
+        for line in proc.stdout:  # ends at EOF when killed or the process exits
+            tokens = line.split()
+            if not tokens:
+                continue
+            try:
+                ts = int(tokens[0])
+            except ValueError:
+                continue
 
-        prev_ts = ts
+            if prev_ts is not None and (ts - prev_ts) > JUMP_THRESHOLD:
+                return line.rstrip("\n")
 
-    return None
+            prev_ts = ts
+        return None
+    finally:
+        timer.cancel()
+
+
+def _sample_once(core: int, args):
+    """Launch ncm-control once and try to get a stable sample.
+    Returns the sample line, or None."""
+    try:
+        proc = subprocess.Popen(
+            PASSIVE_SAMPLE_COMMAND,
+            shell=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+            preexec_fn=pin_to_core(core),
+        )
+    except Exception as e:
+        print(f"Failed to start sampling command: {e}", file=sys.stderr)
+        return None
+
+    try:
+        return _find_stable_sample(proc, args.stable_timeout)
+    finally:
+        terminate_process_group(proc.pid, args.timeout, proc=proc)
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=1)  # make sure the child is reaped
+        except Exception:
+            pass
 
 
 def cmd_stop(args):
@@ -315,7 +405,6 @@ def cmd_stop(args):
 
     state = read_state(pidfile)
     mode = state.get("mode", "active")
-    # print(f'Stopping {state}')
 
     if mode == "passive":
         _stop_passive(args, pidfile, state)
@@ -327,7 +416,7 @@ def _stop_active(args, pidfile: Path, state: dict):
     pid = state.get("pid")
     if pid is None:
         print("State file did not contain a pid; nothing to stop.")
-        pidfile.unlink()
+        pidfile.unlink(missing_ok=True)
         return
 
     if not pid_alive(pid):
@@ -335,7 +424,7 @@ def _stop_active(args, pidfile: Path, state: dict):
     else:
         terminate_process_group(pid, args.timeout)
 
-    pidfile.unlink()
+    pidfile.unlink(missing_ok=True)
     _run_post(args)
 
 
@@ -343,39 +432,29 @@ def _stop_passive(args, pidfile: Path, state: dict):
     output_path = Path(state["output"])
     core = state.get("core", default_core())
 
-    command = DEFAULT_COMMAND_DETAILED
-    print(f"$ {command}   (sampling for a stable reading, core {core})")
-
-    try:
-        proc = subprocess.Popen(
-            command,
-            shell=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            bufsize=1,
-            start_new_session=True,
-            preexec_fn=pin_to_core(core),
+    stable_line = None
+    for attempt in range(1, args.attempts + 1):
+        print(
+            f"$ {PASSIVE_SAMPLE_COMMAND}   "
+            f"(sampling for a stable reading, core {core}, "
+            f"attempt {attempt}/{args.attempts})",
+            flush=True,
         )
-    except Exception as e:
-        print(f"Failed to start sampling command: {e}")
-        pidfile.unlink()
-        return
-
-    try:
-        stable_line = _find_stable_sample(proc, args.stable_timeout)
-    finally:
-        terminate_process_group(proc.pid, args.timeout)
-        try:
-            proc.stdout.close()
-        except Exception:
-            pass
+        stable_line = _sample_once(core, args)
+        if stable_line is not None:
+            break
+        print(
+            f"WARNING: attempt {attempt}/{args.attempts} saw no timestamp jump "
+            f"within {args.stable_timeout}s.",
+            file=sys.stderr,
+        )
+        if attempt < args.attempts:
+            time.sleep(RETRY_DELAY)
 
     if stable_line is None:
         print(
-            "WARNING: never observed a timestamp jump within "
-            f"{args.stable_timeout}s; no measurement written to {output_path}.",
+            f"WARNING: no stable sample after {args.attempts} attempt(s); "
+            f"no measurement written to {output_path}.",
             file=sys.stderr,
         )
     else:
@@ -390,15 +469,18 @@ def _stop_passive(args, pidfile: Path, state: dict):
 
         print(f"STABLE ENERGY MEASUREMENT: {result_line}")
 
-    pidfile.unlink()
+    pidfile.unlink(missing_ok=True)
     _run_post(args)
+
+    if stable_line is None and args.strict:
+        sys.exit(2)
 
 
 def _run_post(args):
     post_cmds = args.post if args.post is not None else DEFAULT_POST
     ok = True
     for post_cmd in post_cmds:
-        if not run_step(post_cmd):
+        if not run_step(post_cmd, args.step_timeout):
             ok = False
     if not ok:
         sys.exit(1)
@@ -415,7 +497,9 @@ def main():
     p_start.add_argument("--pre", action="append", metavar="CMD",
                           help="Command to run synchronously before starting the monitor "
                                "(repeatable, in order). If omitted entirely, defaults to "
-                               "the four ncm-control -P/-M enable calls.")
+                               "the ncm-control disable/enable sequence.")
+    p_start.add_argument("--step-timeout", type=float, default=DEFAULT_STEP_TIMEOUT,
+                          help=f"Timeout in seconds for each --pre command (default: {DEFAULT_STEP_TIMEOUT:g})")
     p_start.add_argument("--detailed", action="store_true",
                           help="Use ACTIVE mode: launch 'ncm-control -t 0' now and stream "
                                "its full continuous output to --output. Default is PASSIVE "
@@ -428,10 +512,19 @@ def main():
 
     p_stop = sub.add_parser("stop", help="Stop a previously started monitor")
     p_stop.add_argument("--pidfile", default=DEFAULT_PIDFILE, help=f"Where run state was stored (default: {DEFAULT_PIDFILE})")
-    p_stop.add_argument("--timeout", type=float, default=1.0, help="Seconds to wait per signal before escalating (default: 10)")
+    p_stop.add_argument("--timeout", type=float, default=DEFAULT_SIGNAL_TIMEOUT,
+                         help=f"Seconds to wait per signal before escalating (default: {DEFAULT_SIGNAL_TIMEOUT:g})")
     p_stop.add_argument("--stable-timeout", type=float, default=DEFAULT_STABLE_TIMEOUT,
-                         help="(passive mode only) give up waiting for a stable sample "
-                              f"after this many seconds (default: {DEFAULT_STABLE_TIMEOUT})")
+                         help="(passive mode only) per-attempt limit for waiting for a stable sample "
+                              f"(default: {DEFAULT_STABLE_TIMEOUT:g})")
+    p_stop.add_argument("--attempts", type=int, default=DEFAULT_ATTEMPTS,
+                         help="(passive mode only) number of sampling attempts before giving up "
+                              f"(default: {DEFAULT_ATTEMPTS})")
+    p_stop.add_argument("--strict", action="store_true",
+                         help="(passive mode only) exit with status 2 if no stable sample "
+                              "could be obtained")
+    p_stop.add_argument("--step-timeout", type=float, default=DEFAULT_STEP_TIMEOUT,
+                         help=f"Timeout in seconds for each --post command (default: {DEFAULT_STEP_TIMEOUT:g})")
     p_stop.add_argument("--print-tot-energy", action="store_true",
                          help="(passive mode only) keep the trailing Joules field in the "
                               "sample written to --output (dropped by default)")
@@ -442,6 +535,9 @@ def main():
     p_stop.set_defaults(func=cmd_stop)
 
     args = parser.parse_args()
+
+    if args.action == "stop" and args.attempts < 1:
+        parser.error("--attempts must be at least 1")
 
     # strip a leading "--" from REMAINDER if present
     if args.action == "start" and args.command and args.command[0] == "--":
