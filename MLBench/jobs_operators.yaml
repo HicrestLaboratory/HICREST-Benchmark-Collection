@@ -10,15 +10,20 @@ variables:
   warmup: [2]
   seed: [42]
 
-  dtype: ["f16", "bf16", "q8_0"]
+  dtype: ["bf16", "q8_0"] # "f16"
 
   shape: [
     # square (N = K)
-    phi4mini_3072, llama4scout_5120, gptoss_2880, llama31_8b_4096, llama31_70b_8192,
+    phi4mini_3072, llama31_8b_4096,
+    # llama4scout_5120, gptoss_2880, llama31_70b_8192,
+
     # short and wide (N > K)
-    qwen27b_6144, qwen27b_17408, gemma31b_21504, llama4scout_8192, gemma31b_262144,
+    qwen27b_6144,
+    # qwen27b_17408, gemma31b_21504, llama4scout_8192, gemma31b_262144,
+
     # tall and narrow (K > N)
-    qwen27b_1024, gemma31b_4096, gptoss_512, dsv41flash_2304, gemma31b_5376,
+    gemma31b_5376, 
+    # qwen27b_1024, gemma31b_4096, gptoss_512, dsv41flash_2304,
   ]
 
   m: [64] # 512,2048? GEMM / GELU / Softmax (GEMV overrides to 1)
@@ -79,7 +84,8 @@ variables:
 
   # GELU / Softmax only depend on M x N, so use the unique N values
   # (8192 and 4096 each appear twice above) instead of running duplicates.
-  n_ew: [512, 1024, 2304, 2880, 3072, 4096, 5120, 5376, 6144, 8192, 17408, 21504, 262144]
+  # 2880, 3072, 5120, 5376, 6144, 17408, 21504,
+  n_ew: [512, 1024, 2304, 4096, 8192, 262144]
 
 preprocess: |
   export BUILD_DIR="build_{compiler}_${SBATCHMAN_CLUSTER_NAME}_{blas_lib}"

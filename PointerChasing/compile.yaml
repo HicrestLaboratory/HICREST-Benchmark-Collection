@@ -20,9 +20,10 @@ jobs:
         preprocess: |
           mkdir -p bin/{isa}
           cd pointer-chasing
+          CXXFLAGS="$CFLAGS"
           make clean
           BIN_NAME="linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{linear_chase_max_stride}"
-        command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="-DLINEAR_CHASE_MAX_STRIDE={linear_chase_max_stride}" bin/linear-chase'
+        command: 'make CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" CUSTOM_PREPROCESSOR_VARS="-DLINEAR_CHASE_MAX_STRIDE={linear_chase_max_stride}" bin/linear-chase'
         postprocess: 'mv bin/linear-chase "../bin/{isa}/$BIN_NAME"'
         
 
@@ -32,9 +33,10 @@ jobs:
         preprocess: |
           mkdir -p bin/{isa}
           cd pointer-chasing
+          CXXFLAGS="$CFLAGS"
           make clean
           BIN_NAME="fused-linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_linear_chase_max_stride}"
-        command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="-DFUSED_LINEAR_CHASE_MAX_STRIDE={fused_linear_chase_max_stride}" bin/fused-linear-chase'
+        command: 'make CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" CUSTOM_PREPROCESSOR_VARS="-DFUSED_LINEAR_CHASE_MAX_STRIDE={fused_linear_chase_max_stride}" bin/fused-linear-chase'
         postprocess: 'mv bin/fused-linear-chase "../bin/{isa}/$BIN_NAME"'
 
       # random-chase
@@ -43,9 +45,10 @@ jobs:
         preprocess: |
           mkdir -p bin/{isa}
           cd pointer-chasing
+          CXXFLAGS="$CFLAGS"
           make clean
           BIN_NAME="random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{random_chase_max_size}"
-        command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="-DRANDOM_CHASE_MAX_SIZE={random_chase_max_size}" bin/random-chase'
+        command: 'make CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" CUSTOM_PREPROCESSOR_VARS="-DRANDOM_CHASE_MAX_SIZE={random_chase_max_size}" bin/random-chase'
         postprocess: 'mv bin/random-chase "../bin/{isa}/$BIN_NAME"'
 
       # fused-random-chase
@@ -54,7 +57,8 @@ jobs:
         preprocess: |
           mkdir -p bin/{isa}
           cd pointer-chasing
+          CXXFLAGS="$CFLAGS"
           make clean
           BIN_NAME="fused-random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_random_chase_max_size}"
-        command: 'make CFLAGS="$CFLAGS" CUSTOM_PREPROCESSOR_VARS="-DFUSED_RANDOM_CHASE_MAX_SIZE={fused_random_chase_max_size}" bin/fused-random-chase'
+        command: 'make CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" CUSTOM_PREPROCESSOR_VARS="-DFUSED_RANDOM_CHASE_MAX_SIZE={fused_random_chase_max_size}" bin/fused-random-chase'
         postprocess: 'mv bin/fused-random-chase "../bin/{isa}/$BIN_NAME"'
