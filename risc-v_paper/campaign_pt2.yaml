@@ -1,0 +1,51 @@
+name: "RISC-V Paper Pt2"
+parallel_clusters: true
+
+apps:
+  - name: pointerchasing
+    dir: ../PointerChasing
+    # cluster_whitelist: [bsc-hca-pioneer]
+    cluster_whitelist:
+      - dalek-mono-bpi-f3
+      - dalek-mono-oh5
+      - dalek-mono-rpi-5b
+      - dalek-mono-sip-k3
+      - dalek-mono-jts-onx
+      - dalek-minix
+    configs: []
+    steps:
+      # Note: compile jobs must be serialized
+      # Run them manually
+      # - name: compile
+      #   jobs: compile.yaml
+      - name: jobs
+        jobs: jobs.yaml
+
+
+  - name: mlbench
+    dir: ../MLBench
+    # cluster_whitelist: [bsc-hca-pioneer]
+    cluster_whitelist:
+      - dalek-mono-sip-k3
+      - dalek-mono-bpi-f3
+      - dalek-mono-oh5
+      - dalek-mono-rpi-5b
+      - dalek-mono-jts-onx
+      - dalek-minix
+    steps:
+      - name: compile
+        jobs: compile.yaml
+      # - name: inference
+      #   jobs: jobs_inference.yaml
+      # - name: mlops-gemm
+      #   jobs: jobs_operators.yaml
+      #   jobs_args: ["-t", "gemm-*"]
+      # - name: mlops-gemv
+      #   jobs: jobs_operators.yaml
+      #   jobs_args: ["-t", "gemv-*"]
+      # - name: mlops-gelu
+      #   jobs: jobs_operators.yaml
+      #   jobs_args: ["-t", "gelu_*"]
+      # - name: mlops-softmax
+      #   jobs: jobs_operators.yaml
+      #   jobs_args: ["-t", "softmax_*"]

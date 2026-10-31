@@ -90,11 +90,11 @@ jobs:
   - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
     config_jobs:
 
-      - tag: "gemm_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{shape_n[shape]}_k{shape_k[shape]}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
+      - tag: "gemm-{shape_cat[shape]}_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{shape_n[shape]}_k{shape_k[shape]}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
         category: "gemm-{shape_cat[shape]}"
         command: "{energy_measure_before_exec}./build_{compiler}_{isa}_{blas_lib}/mlops/gemm --m {m} --k {shape_k[shape]} --n {shape_n[shape]} --dtype {dtype} --threads {ncpus} --iters {repetitions} --warmup {warmup} --seed {seed}"
 
-      - tag: "gemv_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{shape_n[shape]}_k{shape_k[shape]}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
+      - tag: "gemv-{shape_cat[shape]}_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_m{m}_n{shape_n[shape]}_k{shape_k[shape]}_{dtype}_{ncpus}cpus_{warmup}w_{repetitions}r_{seed}s"
         category: "gemv-{shape_cat[shape]}"
         variables:
           m: [1]

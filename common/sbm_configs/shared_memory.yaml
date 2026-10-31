@@ -3,7 +3,7 @@ include_variables:
   - "shared_memory_all_blas_libs.yaml"
 
 variables:
-  walltime: ['00:20:00']
+  walltime: ['00:05:00']
 
 # == Environment variables ==
 # Each configuration sets:

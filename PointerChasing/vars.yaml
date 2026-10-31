@@ -1,9 +1,3 @@
-# program:
-#   - "linear-chase"
-#   - "random-chase"
-#   - "fused-linear-chase"
-#   - "fused-random-chase"
-
 linear_chase_max_stride:        [1500]
 fused_linear_chase_max_stride:  [128]
 

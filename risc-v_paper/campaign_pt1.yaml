@@ -1,4 +1,4 @@
-name: "RISC-V Paper"
+name: "RISC-V Paper Pt1"
 parallel_clusters: true
 
 apps:
@@ -60,22 +60,3 @@ apps:
       - name: FissileTicket
         jobs: jobs.yaml
         jobs_args: ["-v", "lock=FissileTicket"]
-
-  # - name: mlbench
-  #   dir: ../MLBench
-  #   # cluster_whitelist: [bsc-hca-pioneer]
-  #   cluster_whitelist:
-  #     - dalek-mono-sip-k3
-  #     # - dalek-mono-bpi-f3
-  #     # - dalek-mono-oh5
-  #     # - dalek-mono-rpi-5b
-  #     # - dalek-mono-jts-onx
-  #     # - dalek-minix
-  #   steps:
-  #     - name: compile
-  #       jobs: compile.yaml
-  #     - name: inference
-  #       jobs: jobs_inference.yaml
-  #     - name: inference
-  #       jobs: jobs_inference.yaml
-  #       jobs_args: ["-v", "lock=MCS"]
