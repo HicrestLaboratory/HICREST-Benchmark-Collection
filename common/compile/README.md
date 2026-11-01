@@ -38,4 +38,5 @@ TARGET_GLIBC_RISCV64=2.39 ./install_compilers.sh --all --isa riscv64 --gcc 16.1.
 ./install_blas.sh sg2042 # RVV0.7.1
 ./install_blas.sh grace  # ARM - Grace
 ./install_blas.sh sapphirerapids # x86 - Intel
+# see the script for the full list of targets
 ```

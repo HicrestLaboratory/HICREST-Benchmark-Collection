@@ -35,5 +35,5 @@ pip install pipx
 pipx install mtxman
 
 # Download graphs
-mtxman sync graphs.yaml --binary-mtx
+mtxman sync -kmtx graphs.yaml 
 ```

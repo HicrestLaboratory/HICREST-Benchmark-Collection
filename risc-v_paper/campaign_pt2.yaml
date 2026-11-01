@@ -15,10 +15,9 @@ apps:
     #   - dalek-minix
     configs: []
     steps:
-      # Note: compile jobs must be serialized
-      # Run them manually
-      # - name: compile
-      #   jobs: compile.yaml
+      - name: compile
+        jobs: compile.yaml
+        parallel_clusters: false
       - name: jobs
         jobs: jobs.yaml
 
@@ -31,7 +30,7 @@ apps:
       - dalek-mono-sip-k3
       - dalek-mono-bpi-f3
       - dalek-mono-oh5
-      - dalek-mono-rpi-5b
+      # - dalek-mono-rpi-5b
       - dalek-mono-jts-onx
       - dalek-minix
     steps:
@@ -39,14 +38,12 @@ apps:
         jobs: compile.yaml
       - name: inference
         jobs: jobs_inference.yaml
-        jobs_args: '-v ncpus=4 -v ncpus=8'
-        
-      # - name: mlops-gemm
-      #   jobs: jobs_operators.yaml
-      #   jobs_args: ["-t", '"gemm-*"']
-      # - name: mlops-gemv
-      #   jobs: jobs_operators.yaml
-      #   jobs_args: ["-t", '"gemv-*"']
+      - name: mlops-gemm
+        jobs: jobs_operators.yaml
+        jobs_args: '-t "gemm-*" -v ncpus=1 -v ncpus=8'
+      - name: mlops-gemv
+        jobs: jobs_operators.yaml
+        jobs_args: '-t "gemv-*" -v ncpus=1 -v ncpus=8'
       - name: mlops-gelu
         jobs: jobs_operators.yaml
         jobs_args: '-t "gelu_*" -v ncpus=1 -v ncpus=8'

@@ -3,11 +3,12 @@ sequential: true
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
   - "vars.yaml"
 
 
 preprocess: |
-  mkdir -p bin
+  mkdir -p bin/{isa}
   cd NPB-OMP
   rm config/make.def
   cat > config/make.def<< EOF
@@ -72,7 +73,7 @@ preprocess: |
   
 command: 'make {benchmark} CLASS={class[benchmark]}'
 postprocess: 'mv "bin/${NPB_BENCH,,}.{class[benchmark]}" "../bin/{isa}/$BIN_NAME" && mkdir -p "$SBATCHMAN_JOB_DIR/{isa}"; {compiler_disass[compiler]} "../bin/{isa}/$BIN_NAME" > "$SBATCHMAN_JOB_DIR/{isa}/$BIN_NAME".asm'
-check: '[[ -f "../bin/$BIN_NAME" ]]'
+check: '[[ -f "../bin/{isa}/$BIN_NAME" ]]'
 
 
 jobs:

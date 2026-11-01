@@ -218,14 +218,14 @@ compiler_common:
     clang_epi_rvv1:
       default: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -fopenmp -ffast-math'] # These are in LD_LIBRARY_PATH from config
       per_cluster:
-        mc-SG2042: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
-        mc-SG2044: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
+        mc-SG2042: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -I/usr/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
+        mc-SG2044: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv1/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv1/include -I/usr/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
     
     clang_epi_rvv071:
       default: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -fopenmp -ffast-math'] # -L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib
       per_cluster:
-        mc-SG2042: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
-        mc-SG2044: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
+        mc-SG2042: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -I/usr/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
+        mc-SG2044: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -I/usr/include -fopenmp -ffast-math --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"']
     
 compiler_opt:
   map:
@@ -245,10 +245,10 @@ compiler_march:
 compiler_extra_flags_name:
   map:
     default:            ['none']
-    gcc:                ['autovec_gcc', 'novec_gcc']
-    clang:              ['autovec_clang', 'novec_clang']
-    clang_epi_rvv1:     ['autovec_clang_epi_rvv1', 'novec_clang_epi_rvv1']
-    clang_epi_rvv071:   ['autovec_clang_epi_rvv071', 'novec_clang_epi_rvv071']
+    gcc:                ['none', 'autovec_gcc', 'novec_gcc']
+    clang:              ['none', 'autovec_clang', 'novec_clang']
+    clang_epi_rvv1:     ['none', 'autovec_clang_epi_rvv1', 'novec_clang_epi_rvv1']
+    clang_epi_rvv071:   ['none', 'autovec_clang_epi_rvv071', 'novec_clang_epi_rvv071']
 
 compiler_extra_flags:
   map:
