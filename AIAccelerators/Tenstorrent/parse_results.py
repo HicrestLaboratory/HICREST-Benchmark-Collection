@@ -1,78 +1,37 @@
+"""Export canonical matrix campaign results from SbatchMan or saved stdout."""
+import argparse
 import json
 from pathlib import Path
-from typing import Any
-
 import pandas as pd
-import sbatchman as sbm
-
-from parser import parse
+from parser import parse, parse_stdout, CASE_MAP
 
 
-OUT_DIR = Path("results")
-
-
-def csv_safe(value: Any) -> Any:
-    """Serialize nested values while leaving CSV-friendly scalars intact."""
-    if isinstance(value, (dict, list, tuple)):
-        return json.dumps(value, sort_keys=True)
-    return value
-
-
-def main() -> None:
-    jobs = sbm.jobs_list(
-        status=[sbm.Status.COMPLETED],
-        from_active=True,
-        from_archived=True,
-    )
-
+def main():
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument('--logs', type=Path, nargs='*', help='Saved stdout files; names must be exact job tags plus .log')
+    cli.add_argument('--output', type=Path, default=Path('results/tenstorrent_matrix_data.csv'))
+    args = cli.parse_args()
     rows = []
-
-    for job in jobs:
-        parsed = parse(job)
-
-        if parsed is None:
-            continue
-
-        rows.append(
-            {
-                key: csv_safe(value)
-                for key, value in parsed["tenstorrent"].items()
-            }
-        )
-
+    if args.logs is not None:
+        for path in args.logs:
+            row = parse_stdout(path.read_text(), path.stem, {'source': str(path)})
+            if row:
+                rows.append(row)
+    else:
+        import sbatchman as sbm
+        for job in sbm.jobs_list(status=[sbm.Status.COMPLETED], from_active=True, from_archived=True):
+            parsed = parse(job)
+            if parsed:
+                rows.append(parsed['tenstorrent'])
     if not rows:
-        print("No completed Tenstorrent HICREST_RESULT records found.")
-        return
-
-    dataframe = pd.DataFrame(rows)
-
-    sort_columns = [
-        column
-        for column in (
-            "operation",
-            "dtype",
-            "element_count",
-            "M",
-            "K",
-            "N",
-        )
-        if column in dataframe.columns
-    ]
-
-    if sort_columns:
-        dataframe = dataframe.sort_values(
-            sort_columns,
-            na_position="last",
-        )
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    cluster = sbm.get_cluster_name()
-    output_path = OUT_DIR / f"tenstorrent_{cluster}_data.csv"
-    dataframe.to_csv(output_path, index=False)
-
-    print(f"Wrote {len(dataframe)} experiments to {output_path}")
+        raise SystemExit('No completed MATRIX.md results found.')
+    frame = pd.DataFrame([{k: json.dumps(v) if isinstance(v, (list, dict)) else v for k,v in r.items()} for r in rows])
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    frame.sort_values(['shape_family','operation','M','N','K','dtype']).to_csv(args.output, index=False)
+    missing = sorted(set(CASE_MAP)-set(frame.tag))
+    args.output.with_suffix('.coverage.json').write_text(json.dumps({'expected': len(CASE_MAP), 'completed': len(set(frame.tag)), 'missing_tags': missing}, indent=2)+'\n')
+    print(f'Wrote {len(frame)} runs; {len(missing)} configurations missing (see coverage JSON).')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
-

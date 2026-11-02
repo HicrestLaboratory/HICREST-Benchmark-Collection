@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_DIR="${SCRIPT_DIR}/../AI-accelerators-benchmark/tenstorrent"
+SOURCE_DIR="${SCRIPT_DIR}"
 BUILD_DIR="${SOURCE_DIR}/build"
 
 source "${SCRIPT_DIR}/../../common/compile/utils.sh"
@@ -12,7 +12,7 @@ print_header "Building the Tenstorrent benchmarks"
 
 check_command cmake
 check_file "${SOURCE_DIR}/CMakeLists.txt"
-check_file "${SOURCE_DIR}/third_party/argparse/include/argparse/argparse.hpp"
+check_file "${SCRIPT_DIR}/../AI-accelerators-benchmark/tenstorrent/third_party/argparse/include/argparse/argparse.hpp"
 
 : "${TT_METAL_HOME:?TT_METAL_HOME must point to the tt-metal checkout}"
 : "${TT_METAL_RUNTIME_ROOT:?TT_METAL_RUNTIME_ROOT must be set}"
