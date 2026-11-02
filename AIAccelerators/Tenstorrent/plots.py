@@ -64,10 +64,20 @@ def plot(data, output):
 def main():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument('files', type=Path, nargs='*')
-    cli.add_argument('--output-dir', type=Path, default=Path('plots'))
+    cli.add_argument('--output-dir', '--outdir', type=Path, default=Path('plots'))
     args = cli.parse_args()
-    files = args.files or [Path('results/tenstorrent_matrix_data.csv')]
-    plot(pd.concat([pd.read_csv(p) for p in files], ignore_index=True), args.output_dir)
+    files = args.files or sorted(Path('results').glob('tenstorrent_matrix_*_data.csv'))
+    if not files:
+        raise SystemExit('No results/tenstorrent_matrix_<cluster>_data.csv files found; run parse_results.py first.')
+    data = pd.concat([pd.read_csv(p) for p in files], ignore_index=True)
+    clusters = list(data.groupby('cluster', dropna=False)) if 'cluster' in data else [(None, data)]
+    for cluster, group in clusters:
+        if len(clusters) > 1:
+            if not isinstance(cluster, str) or not cluster or Path(cluster).name != cluster or cluster in ('.', '..'):
+                raise ValueError(f'Invalid cluster name: {cluster!r}')
+            plot(group, args.output_dir / cluster)
+        else:
+            plot(group, args.output_dir)
 
 
 if __name__ == '__main__':

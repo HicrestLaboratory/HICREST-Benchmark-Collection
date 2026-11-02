@@ -45,12 +45,12 @@ Compilation and device compatibility must be checked on the accelerator host.
 
 `parser.py` provides `parse(job, stdout=None)` for SbatchMan, plus the same
 record parser for offline use. `parse_results.py` collects active and archived
-completed jobs into one CSV and writes a `.coverage.json` with missing tags.
+completed jobs into one CSV per cluster and writes a `.coverage.json` with missing tags.
 Only exact canonical campaign tags are accepted, preventing historical square
 sweeps from contaminating the new results. Saved logs can also be parsed:
 
 ```bash
-python parse_results.py --logs /path/tt_matrix_*.log
+python parse_results.py --logs /path/tt_matrix_*.log --cluster disi-frankenstein
 ```
 
 Saved log filenames must be the exact scheduled tag plus `.log`.
@@ -91,3 +91,33 @@ All 840 cases were also passed through the parser with synthetic timings
 and the three PDF/PNG figures rendered successfully. Synthetic figures are
 validation artifacts only and are not benchmark measurements. No accelerator
 compilation or hardware run has been performed on this Mac.
+
+## Output directories
+
+As in HPCG, Graph500 and KernelKmeans, parsed data is stored directly in
+`results/` with the benchmark and cluster in the filename:
+
+```text
+AIAccelerators/Tenstorrent/
+  results/
+    tenstorrent_matrix_disi-frankenstein_data.csv
+    tenstorrent_matrix_disi-frankenstein_data.coverage.json
+  plots/
+    tenstorrent_square.pdf                 # also .png and _data.csv
+    tenstorrent_short_wide.pdf
+    tenstorrent_tall_narrow.pdf
+  generated/sbatchman/<result-id>/         # raw Tracy reports and launcher artifacts
+```
+
+Paths are relative to the benchmark working directory, following the other
+benchmark scripts. `results/`, `plots/`, and `generated/` are gitignored.
+There are no per-operation or datatype subdirectories under `results/`:
+those fields are columns in the combined CSV. Raw Tracy reports remain
+in `generated/sbatchman/`, separate from parsed results.
+
+The plotter automatically discovers `results/tenstorrent_matrix_*_data.csv`.
+If several clusters are loaded, each gets `plots/<cluster>/` to prevent
+aggregation of measurements from different machines. An explicit single
+cluster CSV path can be selected with `parse_results.py --output PATH`;
+`plots.py --outdir PATH` (also `--output-dir`) selects the figure directory.
+Saved logs default to cluster `offline` unless `--cluster` is specified.
