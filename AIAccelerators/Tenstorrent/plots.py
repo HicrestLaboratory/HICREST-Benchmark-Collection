@@ -6,7 +6,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matrix_suite import shapes, FIDELITIES
+from parser import CASE_MAP
+
+FIDELITIES = {"bfp8": ("lofi", "hifi2"), "bf16": ("hifi2", "hifi4"), "fp32": ("hifi4",)}
+SHAPES = list(dict.fromkeys((c["shape_family"], c["N"], c["K"]) for c in CASE_MAP.values()))
 
 
 def plot(data, output):
@@ -19,8 +22,8 @@ def plot(data, output):
     keys = ['shape_family','operation','M','N','K','dtype','math_fidelity','memory_layout','throughput_unit']
     summary = data.groupby(keys, dropna=False).throughput.agg(['median','count']).reset_index()
     colors = {'gemm':'#0072B2','gemv':'#D55E00','gelu':'#009E73','softmax':'#7A6A00'}
-    for family in dict.fromkeys(s[0] for s in shapes()):
-        pairs = [(n,k) for f,n,k in shapes() if f == family]
+    for family in dict.fromkeys(s[0] for s in SHAPES):
+        pairs = [(n,k) for f,n,k in SHAPES if f == family]
         fig, axes = plt.subplots(3, 3, figsize=(19, 13), squeeze=False)
         for i, dtype in enumerate(FIDELITIES):
             for j, m in enumerate((64,512,2048)):

@@ -1,0 +1,46 @@
+# Two dedicated energy experiments, separate from the MATRIX.md throughput sweep.
+# Both device power (tt-smi) and host CPU-package energy (perf) are enabled.
+sequential: true
+
+variables:
+  M: [16384]
+  N: [16384]
+  K: [16384]
+  warmup: [5]
+
+jobs:
+  - config: tenstorrent_local
+    config_jobs:
+      - &energy_job
+        variables:
+          dtype: [fp32]
+          math_fidelity: [hifi4]
+          runs: [100]
+        tag: "tt_energy_square_gemm_{M}_{N}_{K}_{dtype}_{math_fidelity}_interleaved"
+        command: >-
+          bash ../AI-accelerators-benchmark/tenstorrent/scripts/launch_benchmark.sh
+          gemm
+          --result-id tt_energy_square_gemm_{M}_{N}_{K}_{dtype}_{math_fidelity}_interleaved
+          --cpu-power
+          --power-period 0.333333
+          --power-pre 5
+          --power-post 5
+          -- {M} {K} {N}
+          --op matmul
+          --dtype {dtype}
+          --math-fidelity {math_fidelity}
+          --layout tile
+          --memory-layout interleaved
+          --compute-grid-x 8
+          --compute-grid-y 8
+          --shard-grid-x 8
+          --shard-grid-y 8
+          --warmup={warmup}
+          --run={runs}
+
+      # Reuse the command; keep the datatype, fidelity and iteration count paired.
+      - <<: *energy_job
+        variables:
+          dtype: [bfp8]
+          math_fidelity: [lofi]
+          runs: [1000]
