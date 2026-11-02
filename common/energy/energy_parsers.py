@@ -82,12 +82,17 @@ def _parse_mn5_tot_energy(base_path: Path) -> Optional[float]:
     return total if found else None
 
 
-def get_tot_energy_measurement(job: sbm.Job) -> Optional[float]:
+def get_tot_energy_measurement(job: sbm.Job, stdout: Optional[str] = None) -> Optional[float]:
     """Return the total energy consumed by the job, in joules."""
+    if not stdout:
+        stdout = job.get_stdout()
+    if not stdout:
+        return None
+    
     if job.cluster_name.startswith(('dalek', 'bsc-hca')):
-        return _parse_ncm_tot_energy_print(job.get_stdout())
+        return _parse_ncm_tot_energy_print(stdout)
     elif job.cluster_name.startswith('mc'):
-        return _parse_mc_tot_energy_print(job.get_stdout())
+        return _parse_mc_tot_energy_print(stdout)
     elif job.cluster_name.startswith('MN5'):
         return _parse_mn5_tot_energy(job.get_job_base_path())
     else:

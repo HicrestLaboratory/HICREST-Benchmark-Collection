@@ -7,7 +7,7 @@ import sbatchman as sbm
 from typing import List, Optional, Dict
 
 sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from energy_parsers import _parse_ncm_tot_energy_print
+from energy_parsers import get_tot_energy_measurement
 
 sys.path.append(str(Path(__file__).parent.parent / "common" / "utils"))
 from utils import remove_energy_logs, remove_useless_job_meta
@@ -203,7 +203,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
     # print(job.tag)
     # print(records)
 
-    tot_energy = _parse_ncm_tot_energy_print(stdout)
+    tot_energy = get_tot_energy_measurement(stdout)
     if tot_energy:
         meta["tot_energy_J"] = tot_energy
 

@@ -1,3 +1,6 @@
+import re
+from typing import Optional
+
 def dict_get(d, key):
     r = d.get(key)
     if r is None:
@@ -10,8 +13,49 @@ def raise_none(v, msg):
         raise ValueError(f"{msg} not found")
     return v
 
+def remove_between_inline(text: str, start_delim: str, end_delim: Optional[str] = None) -> str:
+    """
+    Removes text between delimiters anywhere within the string (inclusive).
+    Leaves surrounding line content intact if delimiters are inline.
+    """
+    if end_delim is None:
+        end_delim = start_delim
+        
+    pattern = re.escape(start_delim) + r'.*?' + re.escape(end_delim)
+    return re.sub(pattern, '', text, flags=re.DOTALL)
 
-def remove_ncm_logs(stdout: str) -> str:
+
+def remove_between_lines(text: str, start_delim: str, end_delim: Optional[str] = None) -> str:
+    """
+    Removes entire lines from the line containing start_delim 
+    through the line containing end_delim (inclusive).
+    """
+    if end_delim is None:
+        end_delim = start_delim
+
+    lines = text.splitlines(keepends=True)
+    result = []
+    inside_block = False
+
+    for line in lines:
+        if not inside_block:
+            if start_delim in line:
+                inside_block = True
+                # Handle edge case where both delimiters are on the exact same line
+                if end_delim in line:
+                    inside_block = False
+            else:
+                result.append(line)
+        else:
+            if end_delim in line:
+                inside_block = False
+
+    return "".join(result)
+
+def _remove_examon_logs(stdout: str) -> str:
+    return remove_between_lines(stdout, 'START ENERGY MEASUREMENTS', 'END ENERGY MEASUREMENTS')
+    
+def _remove_ncm_logs(stdout: str) -> str:
     res = []
     for s in stdout.splitlines():
         if s.startswith((
@@ -28,7 +72,7 @@ def remove_ncm_logs(stdout: str) -> str:
 
 
 def remove_energy_logs(stdout: str) -> str:
-    return remove_ncm_logs(stdout)
+    return _remove_ncm_logs(_remove_examon_logs(stdout))
 
 
 def remove_useless_job_meta(data: dict) -> dict:

@@ -1,0 +1,89 @@
+{
+  "version": 3,
+  "activeTabIndex": 0,
+  "tabs": [
+    {
+      "version": 3,
+      "label": "Plot 1",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM all_results\nWHERE blas_lib=\"none\" AND internal_run_time_s=60",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "avg_entries"
+            ],
+            "group": [
+              "system"
+            ],
+            "xScale": "log2",
+            "yScale": "log",
+            "xTickFmt": ".0f",
+            "showLegend": true,
+            "errorStyle": "bars"
+          }
+        ],
+        "shareX": false,
+        "shareY": false,
+        "shareXMode": "label",
+        "shareYMode": "none",
+        "xgap": 0.2,
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "right",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "lock"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 3,
+        "groupBy": [
+          "lock"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 12,
+        "tick_size": 11,
+        "legend_size": 11,
+        "title_size": 14,
+        "line_width": 2,
+        "marker_size": 7
+      }
+    }
+  ],
+  "style": {
+    "width_in": 0,
+    "height_in": 0,
+    "label_size": 12,
+    "tick_size": 11,
+    "legend_size": 11,
+    "title_size": 14,
+    "line_width": 2,
+    "marker_size": 7
+  },
+  "script_paths": []
+}

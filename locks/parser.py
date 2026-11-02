@@ -4,10 +4,11 @@ import re
 import sys
 from pathlib import Path
 import sbatchman as sbm
-from typing import Any, List, Optional, Dict
+from typing import List, Optional, Dict
 
-sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from energy_parsers import _parse_ncm_tot_energy_print #, parse_ncm_energy_log
+sys.path.append(str(Path(__file__).parent.parent / "common"))
+from energy.energy_parsers import get_tot_energy_measurement
+from utils.utils import remove_useless_job_meta, remove_energy_logs
 
 
 BENCHMARK_LINE_PATTERN = re.compile(
@@ -58,24 +59,26 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
     meta = {k:v for k,v in (job.variables or {}).items()}
     meta['system'] = job.cluster_name
     meta['tot_runtime'] = job.get_run_time()
+    meta = remove_useless_job_meta(meta)
     lock = meta['lock']
     stdout = job.get_stdout()
 
     if not stdout:
         return None
     
-    tot_energy = _parse_ncm_tot_energy_print(stdout)
+    tot_energy = get_tot_energy_measurement(job, stdout)
     if tot_energy:
         meta['tot_energy_J'] = tot_energy
 
     res = defaultdict(list)
-    for line in stdout.splitlines():
+    for line in remove_energy_logs(stdout).splitlines():
         metrics = parse_benchmark_line(line.strip())
         if metrics:
             print(metrics)
             metrics = asdict(metrics)
             metrics.update(meta)
             res[lock].append(metrics)
+            res['all_results'].append(metrics)
             continue
         
     return res
