@@ -69,14 +69,32 @@ case "${ARCH}" in
         COMPILER_INC="${HOME}/software_env/llvm-EPI/riscv64/rvv1/include"
         COMPILER_LIB="${HOME}/software_env/llvm-EPI/riscv64/rvv1/lib"
 
-        GCC_LIB="/usr/lib/gcc/riscv64-linux-gnu/13"
+        GCC_LIB=""
+        GCC_L_FLAGS=""
+        # On MonteCimone
+        if [[ "$(hostname)" == "mc-peak-2" || "$(hostname)" == "mc-peak-1" ]]; then
+            source /usr/share/Modules/init/bash
+            module use /opt/share/spack/modules/linux-fedora38-riscv64/
+            ml gcc-14.2.0 
+            GCC_LIB="/opt/share/milkv/gcc-14.2.0/gcc-build-14.2.0/lib:/opt/share/milkv/gcc-14.2.0/gcc-build-14.2.0/lib/gcc/riscv64-unknown-linux-gnu/14.2.0/:/lib64"
+            GCC_L_FLAGS="-L/opt/share/milkv/gcc-14.2.0/gcc-build-14.2.0/lib -L/opt/share/milkv/gcc-14.2.0/gcc-build-14.2.0/lib/gcc/riscv64-unknown-linux-gnu/14.2.0/ -B/opt/share/milkv/gcc-14.2.0/gcc-build-14.2.0/lib -B/opt/share/milkv/gcc-14.2.0/gcc-build-14.2.0/lib/gcc/riscv64-unknown-linux-gnu/14.2.0/ -L/lib64 -B/lib64 "
+            # GCC_LIB="/lib/gcc/riscv64-openEuler-linux/12:/lib64"
+            # GCC_L_FLAGS="-L/lib/gcc/riscv64-openEuler-linux/12 -B/lib/gcc/riscv64-openEuler-linux/12 -L/lib64 -B/lib64"
+        fi
 
         EXTRA_INC="${COMPILER_INC}"
         EXTRA_LIB="${COMPILER_LIB}:${GCC_LIB}"
 
         CFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize" # -lprovector-vecclonevp-atrevido_vec" TODO check if it is important
         CXXFLAGS="-I${COMPILER_INC} -O3 -march=rv64gc -mepi -fno-slp-vectorize -mllvm -combiner-store-merging=0 -mllvm -vectorizer-use-vp-strided-load-store -mllvm -enable-mem-access-versioning=0 -mllvm -disable-loop-idiom-memcpy -mllvm -disable-loop-idiom-memset -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize" # -lprovector-vecclonevp-atrevido_vec" TODO check if it is important
-        LDFLAGS="-L${COMPILER_LIB} -L${GCC_LIB} -B${GCC_LIB}"
+        LDFLAGS="-L${COMPILER_LIB} ${GCC_L_FLAGS}"
+
+        if [[ "$(hostname)" == "mc-peak-2" || "$(hostname)" == "mc-peak-1" ]]; then
+            tmp=$(dirname "$(gcc -print-file-name=crtbeginS.o)")
+            CFLAGS+=" --gcc-install-dir=$tmp"
+            CXXFLAGS+=" --gcc-install-dir=$tmp"
+            # -target riscv64-openEuler-linux"
+        fi
 
         ;;
 
@@ -348,6 +366,12 @@ command -v "${CXX}" >/dev/null 2>&1 || {
 }
 
 export LD_LIBRARY_PATH="${EXTRA_LIB}"
+export LIBRARY_PATH="${LD_LIBRARY_PATH}"
+echo "LD_LIBRARY_PATH=${EXTRA_LIB}"
+echo '------------------'
+$CXX -print-search-dirs
+echo '------------------'
+ld --verbose | grep SEARCH_DIR
 
 # ---------------------------------------------------------------------------
 # Structured installation directories
@@ -416,6 +440,7 @@ fi
 
 echo "${OPENBLAS_MAKE_OPTS[@]}"
 
+make clean # TODO comment
 make "${OPENBLAS_MAKE_OPTS[@]}" -j"$(nproc)"
 
 make install \
