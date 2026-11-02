@@ -3,30 +3,19 @@ from pathlib import Path
 import sbatchman as sbm
 import numpy as np
 import pandas as pd
-import warnings
 from typing import Optional, Dict
 
-sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from energy_parsers import parse_ncm_energy_log
+sys.path.append(str(Path(__file__).parent.parent / "common"))
+from energy.energy_parsers import get_tot_energy_measurement
+from utils.utils import remove_useless_job_meta, remove_energy_logs
 
 
-def extract_numeric_matrix(path: Path, expected_cols: int) -> np.ndarray:
-    """Reads log file starting after 'Passive mode:', parses numeric rows,
-
+def extract_numeric_matrix(text: str, expected_cols: int) -> np.ndarray:
+    """Parses log text starting after 'Passive mode:', parses numeric rows,
     pads incomplete rows with NaN, and skips non-numeric header/footer lines.
     """
-    with open(path, 'r') as f:
-        lines = f.readlines()
-
-    # Locate line right after "Passive mode:"
-    start_idx = 0
-    for idx, line in enumerate(lines):
-        if line.startswith("Passive mode:"):
-            start_idx = idx + 2
-            break
-
     rows = []
-    for line in lines[start_idx:]:
+    for line in text.splitlines():
         tokens = line.strip().split()
         if not tokens:
             continue
@@ -47,19 +36,19 @@ def extract_numeric_matrix(path: Path, expected_cols: int) -> np.ndarray:
     return np.array(rows)
 
 
-def parse_random_chase(path):
-    data = extract_numeric_matrix(path, expected_cols=2)
+def parse_random_chase(text: str) -> pd.DataFrame:
+    data = extract_numeric_matrix(text, expected_cols=2)
     return pd.DataFrame(data, columns=['x', 'y']).assign(program='random-chase')
 
 
-def parse_linear_chase(path):
-    data = extract_numeric_matrix(path, expected_cols=2)
+def parse_linear_chase(text: str) -> pd.DataFrame:
+    data = extract_numeric_matrix(text, expected_cols=2)
     return pd.DataFrame(data, columns=['x', 'y']).assign(program='linear-chase')
 
 
-def parse_fused_chase(path):
+def parse_fused_chase(text: str) -> pd.DataFrame:
     # Expect 9 columns: 1 stride (x) + 8 fuse factors
-    raw = extract_numeric_matrix(path, expected_cols=9)
+    raw = extract_numeric_matrix(text, expected_cols=9)
     if raw.size == 0:
         return pd.DataFrame(columns=['x', 'y', 'fuse', 'program'])
 
@@ -97,12 +86,18 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
     meta = {k:v for k,v in (job.variables or {}).items()}
     meta['cluster'] = job.cluster_name
     meta['tot_runtime'] = job.get_run_time()
-    for k in ['energy_measure_start', 'energy_measure_stop']:
-        del meta[k]
+    meta = remove_useless_job_meta(meta)
+    
+    stdout = job.get_stdout()
+    
+    if not stdout:
+        return None
 
     # print(job.get_stdout())
+    tot_energy = get_tot_energy_measurement(job, stdout)
+    meta["tot_energy_J"] = tot_energy
 
-    df = matched_parser(job.get_stdout_path())
+    df = matched_parser(remove_energy_logs(stdout))
     for k, v in meta.items():
         df[k] = v
     # print(data)

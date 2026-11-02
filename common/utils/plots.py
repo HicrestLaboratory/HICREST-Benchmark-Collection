@@ -139,7 +139,8 @@ def format_bytes(size_bytes, binary=False, precision=2, space_between_size_and_u
         str: Human-readable string
     """
     if size_bytes < 0:
-        raise ValueError("size_bytes must be non-negative")
+        # raise ValueError("size_bytes must be non-negative")
+        return size_bytes
 
     if binary:
         # Binary prefixes: 1024

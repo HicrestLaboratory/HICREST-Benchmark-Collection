@@ -1,10 +1,14 @@
 # Name maps
 BOARD_NAMES_MAP = {
-  'brah': 'AMD EPYC 7742',
   'baldo': 'AMD EPYC 7742',
-  'pioneer': 'Milk-V Pioneer',
-  'bananaf3': 'Banana Pi F3',
-  'arriesgado': 'HiFive Unmatched',
+  'bsc-hca-pioneer': 'Milk-V Pioneer',
+  'dalek-mono-bpi-f3': 'Banana Pi F3',
+  'dalek-mono-sip-k3': 'SpacemiT K3 Pico',
+  'dalek-minix': 'AMD Zen 4',
+  'dalek-mono-oh5': 'Hardkernel Odroid H5',
+  'dalek-mono-rpi-5b': 'Raspberry Pi 5',
+  'dalek-mono-jts-onx': 'Jetson Orin NX',
+  'mc-SG2044': 'SG2044',
 }
 BOARD_SHORT_NAMES_MAP = {
   'brah': 'AMD',
@@ -149,3 +153,6 @@ def compute_theoretical_bandwidth(system, comm_type, topology):
         return None
 
     return min(values)
+
+def set_system_column(df):
+    df['system'] = df['cluster'].map(BOARD_NAMES_MAP).fillna(df['cluster'])
