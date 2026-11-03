@@ -1,0 +1,90 @@
+{
+  "version": 3,
+  "activeTabIndex": 0,
+  "tabs": [
+    {
+      "version": 3,
+      "label": "Plot 1",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT * FROM bfs",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "teps"
+            ],
+            "group": [
+              "system"
+            ],
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "showLegend": true,
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)\nEDGES_COUNTS={\n    'GAP-road': 57708624,\n    'europe_osm': 108109320,\n    'rgg_n_2_22_s0': 60718396,\n}\ndf['teps']=df.apply(lambda r: float(EDGES_COUNTS[r['graph_filename']])/r['time'], axis=1)\ndf=agg.summarize(df, ['system', 'implementation', 'graph_filename', 'compiler', 'chunksize', 'ncpus', 'compiler_extra_flags_name'], 'teps')",
+            "errorY": "teps_err",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": true,
+        "shareY": false,
+        "shareXMode": "both",
+        "shareYMode": "label",
+        "xgap": 0.2,
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "implementation",
+          "graph_filename"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 3,
+        "groupBy": [
+          "implementation",
+          "graph_filename"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 9,
+        "tick_size": 8,
+        "legend_size": 8,
+        "title_size": 10
+      }
+    }
+  ],
+  "style": {
+    "width_in": 0,
+    "height_in": 0,
+    "label_size": 9,
+    "tick_size": 8,
+    "legend_size": 8,
+    "title_size": 10
+  },
+  "script_paths": [
+    "../common"
+  ]
+}

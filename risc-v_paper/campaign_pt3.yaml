@@ -5,12 +5,16 @@ apps:
   - name: cachebfs
     dir: ../CacheBFS
     cluster_whitelist:
-      - dalek-mono-sip-k3
       - dalek-mono-bpi-f3
       - dalek-mono-oh5
-      # - dalek-mono-rpi-5b
+      - dalek-mono-rpi-5b
+      - dalek-mono-sip-k3
       - dalek-mono-jts-onx
       - dalek-minix
+      - mc-SG2044
+      - bsc-hca-pioneer
+      - MN5-GRACE
+      - MN5-GPP
     steps:
       - name: compile
         jobs: compile.yaml

@@ -83,6 +83,7 @@ compiler_c:
     gcc:
       default: ['$HOME/software_env/gcc/riscv64/16.1.0/bin/gcc']
       per_cluster:
+        bsc-hca-pioneer:    ["env LD_LIBRARY_PATH='/apps/riscv/ubuntu/glibc/2.38/lib:$HOME/software_env/gcc/riscv64/16.1.0/lib:$HOME/software_env/gcc/riscv64/16.1.0/lib/gcc/riscv64-conda-linux-gnu/16.1.0' $HOME/software_env/gcc/riscv64/16.1.0/bin/gcc"]
         dalek-mono-jts-onx: ['$HOME/software_env/gcc/aarch64/16.1.0/bin/gcc']
         dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/bin/gcc']
         dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/bin/gcc']
@@ -93,6 +94,7 @@ compiler_c:
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/bin/clang']
       per_cluster:
+        bsc-hca-pioneer:    ["env LD_LIBRARY_PATH='/apps/riscv/ubuntu/glibc/2.38/lib:$HOME/software_env/clang/riscv64/23.1.0/lib' $HOME/software_env/clang/riscv64/23.1.0/bin/clang++"]
         dalek-mono-jts-onx: ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang']
         dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang']
         dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang']
@@ -109,6 +111,7 @@ compiler_cxx:
     gcc:
       default: ['$HOME/software_env/gcc/riscv64/16.1.0/bin/g++']
       per_cluster:
+        bsc-hca-pioneer:    ["env LD_LIBRARY_PATH='/apps/riscv/ubuntu/glibc/2.38/lib:$HOME/software_env/gcc/riscv64/16.1.0/lib:$HOME/software_env/gcc/riscv64/16.1.0/lib/gcc/riscv64-conda-linux-gnu/16.1.0' $HOME/software_env/gcc/riscv64/16.1.0/bin/g++"]
         dalek-mono-jts-onx: ['$HOME/software_env/gcc/aarch64/16.1.0/bin/g++']
         dalek-mono-rpi-5b:  ['$HOME/software_env/gcc/aarch64/16.1.0/bin/g++']
         dalek-mono-oh5:     ['$HOME/software_env/gcc/x86_64/16.1.0/bin/g++']
@@ -119,6 +122,7 @@ compiler_cxx:
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/bin/clang++']
       per_cluster:
+        bsc-hca-pioneer:    ["env LD_LIBRARY_PATH='/apps/riscv/ubuntu/glibc/2.38/lib:$HOME/software_env/clang/riscv64/23.1.0/lib' $HOME/software_env/clang/riscv64/23.1.0/bin/clang++"]
         dalek-mono-jts-onx: ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang++']
         dalek-mono-rpi-5b:  ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang++']
         dalek-mono-oh5:     ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang++']

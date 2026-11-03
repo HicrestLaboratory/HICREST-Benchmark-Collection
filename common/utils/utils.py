@@ -64,7 +64,8 @@ def _remove_ncm_logs(stdout: str) -> str:
             'Sending SIGINT',
             'Still alive after',
             'WARNING: process',
-            'STABLE ENERGY'
+            'STABLE ENERGY',
+            'Monitor exited after SIGINT',
         )):
             continue
         res.append(s)

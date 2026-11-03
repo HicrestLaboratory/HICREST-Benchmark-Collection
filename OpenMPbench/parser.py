@@ -203,7 +203,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
     # print(job.tag)
     # print(records)
 
-    tot_energy = get_tot_energy_measurement(stdout)
+    tot_energy = get_tot_energy_measurement(job, stdout)
     if tot_energy:
         meta["tot_energy_J"] = tot_energy
 
