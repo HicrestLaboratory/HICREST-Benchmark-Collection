@@ -60,31 +60,32 @@ LDFLAGS=""
 case "${ARCH}" in
 
     sg2044)
-        OPENBLAS_TARGET="RISCV64_ZVL128B"
-        BLIS_TARGET="rv64iv"
+        export CC="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang"
+	export CXX="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang++"
+	export HOSTCC=gcc
 
-	CC="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang"
-	CXX="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang++"
-	HOSTCC=gcc
+	export GCC_TRIPLE="$(gcc -dumpmachine)"
+	export GCC_INSTALL_DIR="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"
 
-	GCC_TRIPLE=$(gcc -dumpmachine)
-	GCC_INSTALL_DIR=$(dirname "$(gcc -print-file-name=crtbeginS.o)")
+	export COMPILER_INC="$HOME/software_env/llvm-EPI/riscv64/rvv1/include"
+	export COMPILER_LIB="$HOME/software_env/llvm-EPI/riscv64/rvv1/lib"
 
-	COMPILER_INC="$HOME/software_env/llvm-EPI/riscv64/rvv1/include"
-	COMPILER_LIB="$HOME/software_env/llvm-EPI/riscv64/rvv1/lib"
-	
-	CFLAGS="--target=$GCC_TRIPLE \
-        --gcc-install-dir=$GCC_INSTALL_DIR \
-        -I${COMPILER_INC} \
-        -O3 -march=rv64gc -mepi \
-        -fno-slp-vectorize \
-        -mllvm -combiner-store-merging=0 \
-        -mllvm -enable-mem-access-versioning=0 \
-        -mllvm -disable-loop-idiom-memcpy \
-        -mllvm -disable-loop-idiom-memset"
+	export CFLAGS="--target=$GCC_TRIPLE \
+	--gcc-install-dir=$GCC_INSTALL_DIR \
+	-I$COMPILER_INC \
+	-O3 -march=rv64gc -mepi \
+	-fno-slp-vectorize \
+	-mllvm -combiner-store-merging=0 \
+	-mllvm -enable-mem-access-versioning=0 \
+	-mllvm -disable-loop-idiom-memcpy \
+	-mllvm -disable-loop-idiom-memset"
 
-	LDFLAGS="-L$GCC_INSTALL_DIR -L$COMPILER_LIB"
-        ;;
+	export LDFLAGS="-L$GCC_INSTALL_DIR -L$COMPILER_LIB"
+	    
+	    
+	    
+	;;
+
 
     sg2042)
         # Adjust these paths if the SG2042 toolchain has a different layout.
