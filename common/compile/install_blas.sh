@@ -60,7 +60,11 @@ LDFLAGS=""
 case "${ARCH}" in
 
     sg2044)
-        export CC="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang"
+
+    OPENBLAS_TARGET="RISCV64_ZVL128B"
+    BLIS_TARGET="rv64iv"
+    
+    export CC="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang"
 	export CXX="${HOME}/software_env/llvm-EPI/riscv64/rvv1/bin/clang++"
 	export HOSTCC=gcc
 
