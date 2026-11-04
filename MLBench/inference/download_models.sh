@@ -12,7 +12,16 @@ download() {
         return
     fi
     echo "[fetch] $2"
-    curl -fL --retry 5 --retry-delay 3 -C - -o "$dest.part" "$url"
+
+    if command -v curl &>/dev/null; then
+        curl -fL --retry 5 --retry-delay 3 -C - -o "$dest.part" "$url"
+    elif command -v wget &>/dev/null; then
+        wget -c --tries=5 --waitretry=3 -O "$dest.part" "$url"
+    else
+        echo "Error: Neither curl nor wget is installed." >&2
+        exit 1
+    fi
+
     mv "$dest.part" "$dest"
 }
 

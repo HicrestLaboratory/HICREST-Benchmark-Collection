@@ -46,7 +46,7 @@ _RE_THREADS = re.compile(r"^\s*(\d+)\s+thread\(s\)")
 _RE_OUTERREPS = re.compile(r"^\s*(\d+)\s+outer repetitions")
 
 
-def parse_stdout(text, benchmark, system, cores, size):
+def parse_stdout(text, benchmark, cluster, cores, size):
     lines = remove_energy_logs(text).splitlines()
 
     threads = cores
@@ -77,7 +77,7 @@ def parse_stdout(text, benchmark, system, cores, size):
             return
 
         records.append({
-            "system": system,
+            "cluster": cluster,
             "benchmark": benchmark,
             "array_size": size,
             "cores": cores,
@@ -186,7 +186,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
         return None
 
     meta = {k: v for k, v in (job.variables or {}).items()}
-    meta["system"] = job.cluster_name
+    meta["cluster"] = job.cluster_name
     meta["tot_runtime"] = job.get_run_time()
     meta = remove_useless_job_meta(meta)
     benchmark = meta["benchmark"]
@@ -198,7 +198,7 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
     if not stdout:
         return None
 
-    records = parse_stdout(stdout, benchmark, meta["system"], meta["ncpus"], size)
+    records = parse_stdout(stdout, benchmark, meta["cluster"], meta["ncpus"], size)
     # print('============================================')
     # print(job.tag)
     # print(records)

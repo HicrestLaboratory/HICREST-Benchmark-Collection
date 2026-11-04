@@ -2,29 +2,57 @@ sequential: true
 
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
-  - "../common/sbm_configs/shared_memory_vars.yaml"
-  - "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
-  - "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
-  - "../common/sbm_configs/shared_memory_all_blas_libs.yaml"
+- "../common/sbm_configs/shared_memory_vars.yaml"
+- "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
+- "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
+- "../common/sbm_configs/shared_memory_all_blas_libs.yaml"
 
 preprocess: |
   BUILD_DIR="build_{compiler}_${SBATCHMAN_CLUSTER_NAME}_{blas_lib}"
   rm -rf "${BUILD_DIR}"
+
+  # 1. Dynamically locate system GCC runtime files (crtbeginS.o, libstdc++, libgcc) on the host system
+  SYS_GCC_LIB_FILE="$(gcc -print-file-name=crtbeginS.o 2>/dev/null || true)"
+  if [[ -n "$SYS_GCC_LIB_FILE" && "$SYS_GCC_LIB_FILE" != "crtbeginS.o" ]]; then
+      SYS_GCC_DIR="$(dirname "$SYS_GCC_LIB_FILE")"
+      export LIBRARY_PATH="${SYS_GCC_DIR}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+      export LD_LIBRARY_PATH="${SYS_GCC_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
+      # Pass GCC toolchain locations if building with Clang/LLVM
+      if [[ "${CC:-}" == *clang* || "{compiler}" == *clang* ]]; then
+          GCC_TOOLCHAIN_FLAGS="-B${SYS_GCC_DIR} --gcc-install-dir=${SYS_GCC_DIR} -L${SYS_GCC_DIR}"
+          export CFLAGS="${CFLAGS:-} ${GCC_TOOLCHAIN_FLAGS}"
+          export CXXFLAGS="${CXXFLAGS:-} ${GCC_TOOLCHAIN_FLAGS}"
+          export LDFLAGS="${LDFLAGS:-} ${GCC_TOOLCHAIN_FLAGS}"
+      fi
+  fi
+
+  # 2. Synchronize CFLAGS, CXXFLAGS, and LDFLAGS so CMake C++ targets (llama-bench) inherit flags
   export CFLAGS="${CFLAGS/-ffast-math/-fno-finite-math-only}"
+  export CXXFLAGS="${CXXFLAGS:-$CFLAGS}"
+  export CXXFLAGS="${CXXFLAGS/-ffast-math/-fno-finite-math-only}"
+
+  # 3. Add OpenMP library path to build and runtime link search paths
+  OMP_LIB_DIR="$(dirname "{openmp_library_path[compiler]}")"
+  if [[ -d "$OMP_LIB_DIR" ]]; then
+      export LIBRARY_PATH="${OMP_LIB_DIR}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+      export LD_LIBRARY_PATH="${OMP_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+      export LDFLAGS="${LDFLAGS:-} -L${OMP_LIB_DIR}"
+  fi
+
 check: '[[ -f "${BUILD_DIR}/bin/llama-bench" ]]'
 
 jobs:
-  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__4"
-    config_jobs:
-      - tag: "compile_mlbench_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{blas_lib}"
-        category: "compile"
-        variables:
-          blas_lib: ['openblas', 'blis']
-        command: './compile_llama.sh --build-dir "${BUILD_DIR}" --backend {blas_lib} --blas-lib {blaslib_path[blas_lib]}{blaslib_dir[blas_lib]}{blaslib_filename[blas_lib]} --blas-include {blaslib_path[blas_lib]}{blaslib_include_dir[blas_lib]} -- -DOpenMP_C_FLAGS="-fopenmp" -DOpenMP_CXX_FLAGS="-fopenmp" -DOpenMP_C_LIB_NAMES=omp -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY={openmp_library_path[compiler]} -DOpenMP_C_INCLUDE_DIR={openmp_include_path[compiler]} -DOpenMP_CXX_INCLUDE_DIR={openmp_include_path[compiler]}'
+- config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__4"
+  config_jobs:
+  - tag: "compile_mlbench_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{blas_lib}"
+    category: "compile"
+    variables:
+      blas_lib: ['openblas', 'blis']
+    command: './compile_llama.sh --build-dir "${BUILD_DIR}" --backend {blas_lib} --blas-lib {blaslib_path[blas_lib]}{blaslib_dir[blas_lib]}{blaslib_filename[blas_lib]} --blas-include {blaslib_path[blas_lib]}{blaslib_include_dir[blas_lib]} -- -DOpenMP_C_FLAGS="-fopenmp" -DOpenMP_CXX_FLAGS="-fopenmp" -DOpenMP_C_LIB_NAMES=omp -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY={openmp_library_path[compiler]} -DOpenMP_C_INCLUDE_DIR={openmp_include_path[compiler]} -DOpenMP_CXX_INCLUDE_DIR={openmp_include_path[compiler]}'
 
-      - tag: "compile_mlbench_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{blas_lib}"
-        category: "compile"
-        variables:
-          blas_lib: ['none']
-        command: './compile_llama.sh --build-dir "${BUILD_DIR}" --backend {blas_lib} -- -DOpenMP_C_FLAGS="-fopenmp" -DOpenMP_CXX_FLAGS="-fopenmp" -DOpenMP_C_LIB_NAMES=omp -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY={openmp_library_path[compiler]} -DOpenMP_C_INCLUDE_DIR={openmp_include_path[compiler]} -DOpenMP_CXX_INCLUDE_DIR={openmp_include_path[compiler]}'
-        # -fopenmp=libomp
+  - tag: "compile_mlbench_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{blas_lib}"
+    category: "compile"
+    variables:
+      blas_lib: ['none']
+    command: './compile_llama.sh --build-dir "${BUILD_DIR}" --backend {blas_lib} -- -DOpenMP_C_FLAGS="-fopenmp" -DOpenMP_CXX_FLAGS="-fopenmp" -DOpenMP_C_LIB_NAMES=omp -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_omp_LIBRARY={openmp_library_path[compiler]} -DOpenMP_C_INCLUDE_DIR={openmp_include_path[compiler]} -DOpenMP_CXX_INCLUDE_DIR={openmp_include_path[compiler]}'

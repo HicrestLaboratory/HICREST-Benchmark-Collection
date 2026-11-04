@@ -26,6 +26,10 @@ blas_include=""
 build_dir="build"
 extra_args=()
 
+# 1. Fallback CC and CXX defaults to prevent "unbound variable" errors under `set -u`
+CC="${CC:-gcc}"
+CXX="${CXX:-g++}"
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --backend)      backend="$2";      shift 2 ;;
@@ -55,8 +59,33 @@ if [[ ! -d llamacpp ]]; then
     exit 1
 fi
 
-cmake_args=(-DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_BUILD_TYPE=Release -DBACKEND="$backend")
-[[ -n "$blas_lib"     ]] && cmake_args+=(-DGGML_BLAS=ON -DGGML_BLAS_VENDOR="$vendor_name" -DBLAS_LIBRARIES="$blas_lib" -DCMAKE_INSTALL_RPATH="$(dirname "$blas_lib")" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_EXE_LINKER_FLAGS="-L$(dirname "$blas_lib") -Wl,-rpath=$(dirname "$blas_lib") -Wl,-rpath-link=$(dirname "$blas_lib")")
+# 2. Automatically locate GCC library directory containing crtbeginS.o, libstdc++, libgcc_s, libatomic
+gcc_lib_file="$("$CXX" -print-file-name=crtbeginS.o 2>/dev/null || true)"
+linker_flags=""
+
+if [[ -n "$gcc_lib_file" && "$gcc_lib_file" != "crtbeginS.o" ]]; then
+    gcc_lib_dir="$(dirname "$gcc_lib_file")"
+    export LIBRARY_PATH="${gcc_lib_dir}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+    export LD_LIBRARY_PATH="${gcc_lib_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+    linker_flags="-L${gcc_lib_dir}"
+fi
+
+cmake_args=(
+    -DCMAKE_C_COMPILER="$CC"
+    -DCMAKE_CXX_COMPILER="$CXX"
+    -DCMAKE_BUILD_TYPE=Release
+    -DBACKEND="$backend"
+)
+
+# 3. Append explicit search paths to CMake linker flags
+if [[ -n "$linker_flags" ]]; then
+    cmake_args+=(
+        -DCMAKE_EXE_LINKER_FLAGS="$linker_flags"
+        -DCMAKE_SHARED_LINKER_FLAGS="$linker_flags"
+    )
+fi
+
+[[ -n "$blas_lib"     ]] && cmake_args+=(-DGGML_BLAS=ON -DGGML_BLAS_VENDOR="$vendor_name" -DBLAS_LIBRARIES="$blas_lib" -DCMAKE_INSTALL_RPATH="$(dirname "$blas_lib")" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_EXE_LINKER_FLAGS=" -L$(dirname "$blas_lib") -Wl,-rpath=$(dirname "$blas_lib") -Wl,-rpath-link=$(dirname "$blas_lib") $linker_flags")
 [[ -n "$blas_include" ]] && cmake_args+=(-DGGML_BLAS=ON -DGGML_BLAS_VENDOR="$vendor_name" -DBLAS_INCLUDE_DIRS="$blas_include"  -DCMAKE_INSTALL_RPATH="$(dirname "$blas_lib")" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
   
 echo "Running:"

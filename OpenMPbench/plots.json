@@ -1,0 +1,91 @@
+{
+  "version": 3,
+  "activeTabIndex": 0,
+  "tabs": [
+    {
+      "version": 3,
+      "label": "Plot 1",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT * FROM arraybench",
+            "plotType": "line",
+            "x": "cores",
+            "y": [
+              "mean_us"
+            ],
+            "group": [
+              "system"
+            ],
+            "dashBy": "block",
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "legendOrientation": "horizontal",
+            "legendRows": 14,
+            "showLegend": true,
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "errorY": "stddev_us",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": false,
+        "shareY": false,
+        "shareXMode": "none",
+        "shareYMode": "none",
+        "xgap": 0.2,
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "right",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "compiler"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 3,
+        "groupBy": [
+          "compiler"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 9,
+        "tick_size": 8,
+        "legend_size": 8,
+        "title_size": 10
+      }
+    }
+  ],
+  "style": {
+    "width_in": 0,
+    "height_in": 0,
+    "label_size": 9,
+    "tick_size": 8,
+    "legend_size": 8,
+    "title_size": 10
+  },
+  "script_paths": [
+    "../common"
+  ]
+}
