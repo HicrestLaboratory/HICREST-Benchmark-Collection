@@ -9,6 +9,7 @@ BOARD_NAMES_MAP = {
   'dalek-mono-rpi-5b': 'Raspberry Pi 5',
   'dalek-mono-jts-onx': 'Jetson Orin NX',
   'mc-SG2044': 'SG2044',
+  'mc-SG2042': 'SG2042',
 }
 BOARD_SHORT_NAMES_MAP = {
   'brah': 'AMD',

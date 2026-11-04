@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "activeTabIndex": 1,
+  "activeTabIndex": 3,
   "tabs": [
     {
       "version": 3,
@@ -136,7 +136,9 @@
             "z": "y",
             "xLabel": "Fuse",
             "yLabel": "Array Size",
-            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'x':\n        return int(value)\n    return format_bytes(value, precision=0)",
+            "xScale": "category",
+            "yScale": "category",
+            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis, index):\n    if axis == 'x':\n        return int(value)\n    if index % 2 == 0:\n        return format_bytes(value, precision=0)\n    return ''",
             "showLegend": true,
             "extra": {
               "z": "y",
@@ -146,11 +148,193 @@
             "errorStyle": "bars"
           }
         ],
-        "shareX": true,
+        "shareX": false,
         "shareY": true,
-        "shareXMode": "both",
+        "shareXMode": "none",
         "shareYMode": "both",
-        "xgap": 0.2,
+        "xgap": "0.06",
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "right",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "system"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 4,
+        "groupBy": [
+          "system"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 9,
+        "tick_size": 8,
+        "legend_size": 8,
+        "title_size": 10
+      }
+    },
+    {
+      "version": 3,
+      "label": "Linear and Random HPC only",
+      "mode": "grid",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "SELECT * FROM linear_chase",
+        "plotType": "line",
+        "x": "x",
+        "y": [
+          "y"
+        ],
+        "group": [
+          "cluster",
+          "compiler",
+          "compiler_extra_flags_name",
+          "compiler_opt"
+        ],
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 2,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM linear_chase\nWHERE cluster IN (\"bsc-hca-pioneer\", \"dalek-minix\", \"dalek-mono-oh5\", \"dalek-mono-jts-onx\", \"mc-SG2044\", \"mc-SG2042\")",
+            "plotType": "line",
+            "chartTitle": "Linear Chase",
+            "x": "x",
+            "y": [
+              "y"
+            ],
+            "group": [
+              "system"
+            ],
+            "xLabel": "Stride",
+            "yLabel": "Latency (ns)",
+            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "showLegend": true,
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "layoutScript": "def customize_matplotlib(fig, ax, config):\n    add_zoom_inset(\n        ax,\n        zoom_region=(0.0, 200.0, 0.0, 15.0),  # x1, x2, y1, y2\n        inset_position=(0.05, 0.6, 0.35, 0.35),  # x, y, width, height\n        draw_rect=True,\n        rect_scaling=1.0,\n        zoom_ax_kwargs={\n            'grid': {'visible': True, 'alpha': 0.25},\n            'tick_params': {'labelsize': 7},\n        },\n    )\n",
+            "errorStyle": "bars"
+          },
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM random_chase\nWHERE cluster IN (\"bsc-hca-pioneer\", \"dalek-minix\", \"dalek-mono-oh5\", \"dalek-mono-jts-onx\", \"mc-SG2044\", \"mc-SG2042\")",
+            "plotType": "line",
+            "chartTitle": "Random Chase",
+            "x": "x",
+            "y": [
+              "y"
+            ],
+            "group": [
+              "system"
+            ],
+            "xLabel": "Array Size",
+            "yLabel": "Latency (ns)",
+            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "showLegend": true,
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "errorStyle": "bars"
+          }
+        ],
+        "shareX": false,
+        "shareY": false,
+        "shareXMode": "none",
+        "shareYMode": "none",
+        "xgap": "0.08",
+        "ygap": "0",
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [],
+        "facetAxis": "cols",
+        "facetCount": 2,
+        "groupBy": [],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 12,
+        "subplotHeight": 5,
+        "facetLabelFormat": "{column}={value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 9,
+        "tick_size": 8,
+        "legend_size": 8,
+        "title_size": 10
+      }
+    },
+    {
+      "version": 3,
+      "label": "Fused Linear",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "y": [
+          "y"
+        ],
+        "group": [
+          "cluster",
+          "compiler",
+          "compiler_extra_flags_name",
+          "compiler_opt"
+        ],
+        "showLegend": true,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM fused_linear_chase",
+            "plotType": "heatmap",
+            "x": "fuse",
+            "y": [
+              "x"
+            ],
+            "z": "y",
+            "xLabel": "Fuse",
+            "yLabel": "Stride",
+            "xScale": "category",
+            "yScale": "category",
+            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis, index):\n    if axis == 'x':\n        return int(value)\n    if index % 2 == 0:\n        return format_bytes(value, precision=0)\n    return ''",
+            "showLegend": true,
+            "extra": {
+              "z": "y",
+              "z_label": "Bandwith [GiB/s]"
+            },
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "errorStyle": "bars"
+          }
+        ],
+        "shareX": false,
+        "shareY": true,
+        "shareXMode": "none",
+        "shareYMode": "both",
+        "xgap": "0.06",
         "ygap": 0.24,
         "panelLabels": false,
         "facetByGroup": false,
