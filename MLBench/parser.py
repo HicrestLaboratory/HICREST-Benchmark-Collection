@@ -190,32 +190,6 @@ def inference_parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, List[Dict]]
         rows.append({**base, **item})  # item columns override job variables
 
     return {TABLE_NAME: rows} if rows else None
-def inference_parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, List[Dict]]]:
-    from_json = True
-    try:
-        json_data = json.loads(stdout)
-    except json.JSONDecodeError:
-        # Not JSON: assume llama-bench markdown table
-        from_json = False
-        json_data = inference_parse_table(stdout)
-
-    if not isinstance(json_data, list) or not json_data:
-        return None
-
-    base = {k: v for k, v in (job.variables or {}).items()}
-    base['cluster'] = job.cluster_name
-    base['tot_runtime'] = job.get_run_time()
-
-    rows = []
-    for item in json_data:
-        if not isinstance(item, dict):
-            continue
-        if from_json:
-            # keep only the fields you care about from the JSON output
-            item = {k: item.get(k) for k in _JSON_KEYS if k in item}
-        rows.append({**base, **item})  # item columns override job variables
-
-    return {TABLE_NAME: rows} if rows else None
 
 def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
     if job.status != sbm.Status.COMPLETED.value or job.category == 'compile':
