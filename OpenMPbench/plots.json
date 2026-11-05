@@ -4,7 +4,7 @@
   "tabs": [
     {
       "version": 3,
-      "label": "Plot 1",
+      "label": "Arraybench",
       "mode": "facet",
       "rendererBackend": "matplotlib",
       "single": {
@@ -12,6 +12,12 @@
         "sql": "",
         "plotType": "line",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -21,7 +27,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT * FROM arraybench",
+            "sql": "SELECT *\nFROM arraybench\nWHERE kind=\"PRIVATE\"",
             "plotType": "line",
             "x": "cores",
             "y": [
@@ -30,13 +36,25 @@
             "group": [
               "system"
             ],
-            "dashBy": "block",
+            "markerBy": [
+              "array_size"
+            ],
+            "dashBy": [
+              "compiler"
+            ],
             "xScale": "log2",
             "xTickFmt": ".0f",
+            "legendPosition": "top",
             "legendOrientation": "horizontal",
             "legendRows": 14,
             "showLegend": true,
-            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "shortLegend": true,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)\ndef map_compiler_flag_names(v: str):\n    if 'autovec' in v:\n        return 'autovec'\n    if 'novec' in v:\n        return 'novec'\n    return v\ndf['compiler_extra_flags_name']=df['compiler_extra_flags_name'].map(map_compiler_flag_names)",
             "errorY": "stddev_us",
             "errorStyle": "band"
           }
@@ -49,17 +67,17 @@
         "ygap": 0.24,
         "panelLabels": false,
         "facetByGroup": false,
-        "legendPosition": "right",
+        "legendPosition": "top",
         "legendTitle": "",
         "showLegend": true,
         "shareLegend": true,
         "facetGroupCols": [
-          "compiler"
+          "kind"
         ],
         "facetAxis": "cols",
         "facetCount": 3,
         "groupBy": [
-          "compiler"
+          "kind"
         ],
         "figureWidth": 0,
         "figureHeight": 0,
