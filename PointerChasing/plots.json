@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "activeTabIndex": 3,
+  "activeTabIndex": 0,
   "tabs": [
     {
       "version": 3,
@@ -46,6 +46,7 @@
             "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
             "showLegend": true,
             "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "layoutScript": "def customize_matplotlib(fig, ax, config):\n    add_zoom_inset(\n        ax,\n        zoom_region=(0.0, 200.0, 0.0, 15.0),  # x1, x2, y1, y2\n        inset_position=(0.04, 0.65, 0.3, 0.3),  # x, y, width, height\n        draw_rect=True,\n        rect_scaling=1.0,\n        zoom_ax_kwargs={\n            'grid': {'visible': True, 'alpha': 0.25},\n            'tick_params': {'labelsize': 7},\n        },\n    )\n",
             "errorStyle": "bars"
           },
           {

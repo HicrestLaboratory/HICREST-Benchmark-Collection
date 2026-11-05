@@ -11,6 +11,8 @@
         "database": "data",
         "sql": "",
         "plotType": "line",
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
         "showLegend": true,
         "shortLegend": false,
         "shortLegendLabels": {
@@ -27,7 +29,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT *\nFROM arraybench\nWHERE kind=\"PRIVATE\"",
+            "sql": "SELECT *\nFROM arraybench\nWHERE blas_lib=\"none\"",
             "plotType": "line",
             "x": "cores",
             "y": [
@@ -40,19 +42,21 @@
               "array_size"
             ],
             "dashBy": [
-              "compiler"
+              "compiler",
+              "compiler_extra_flags_name"
             ],
             "xScale": "log2",
             "xTickFmt": ".0f",
             "legendPosition": "top",
-            "legendOrientation": "horizontal",
-            "legendRows": 14,
+            "legendFieldSeparator": " - ",
+            "legendFieldFormat": "{value}",
+            "legendRows": 2,
             "showLegend": true,
             "shortLegend": true,
             "shortLegendLabels": {
-              "color": true,
-              "linestyle": true,
-              "marker": true
+              "color": false,
+              "linestyle": false,
+              "marker": false
             },
             "transformScript": "from constants.systems import set_system_column\nset_system_column(df)\ndef map_compiler_flag_names(v: str):\n    if 'autovec' in v:\n        return 'autovec'\n    if 'novec' in v:\n        return 'novec'\n    return v\ndf['compiler_extra_flags_name']=df['compiler_extra_flags_name'].map(map_compiler_flag_names)",
             "errorY": "stddev_us",
@@ -75,7 +79,7 @@
           "kind"
         ],
         "facetAxis": "cols",
-        "facetCount": 3,
+        "facetCount": 5,
         "groupBy": [
           "kind"
         ],

@@ -82,10 +82,8 @@ def mlops_parser_parse(job: sbm.Job, stdout: str, table_name: str) -> Optional[D
 
     # Base metadata shared by every row of this job.
     base: Dict[str, Any] = dict(job.variables or {})
-    base["cluster"] = job.cluster_name
-    base["tag"] = job.tag
     base["job_id"] = job.job_id
-    base["config_name"] = job.config_name
+    base["cluster"] = job.cluster_name
     try:
         base["tot_runtime"] = job.get_run_time()
     except Exception:
@@ -101,7 +99,6 @@ def mlops_parser_parse(job: sbm.Job, stdout: str, table_name: str) -> Optional[D
                 del merged[k]
         enriched.append(merged)
 
-    print({table_name: enriched})
     return {table_name: enriched}
 
 def _num(s: str):
@@ -196,8 +193,6 @@ def inference_parse(job: sbm.Job, stdout: str, table_name: str) -> Optional[Dict
 def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
     if job.status != sbm.Status.COMPLETED.value or job.category == 'compile':
         return None
-    # print(job.category)
-    # print(job.tag)
     
     stdout = None
     try:
@@ -213,7 +208,6 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
     if job.category.startswith('gelu') and job.tag.startswith('softmax'):
         job.category = 'softmax'
 
-    # TODO add energy
     if job.category.startswith(('gemv', 'gemm', 'gelu', 'softmax')):
         res = mlops_parser_parse(job, remove_energy_logs(stdout), "mlops")
     elif job.category.startswith(('inference')):
@@ -222,12 +216,6 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
         print(f'WARNING: category "{job.category}" not recognized (tag {job.tag}).')
         return None
     
-    # TODO separate table?
-    # if res:
-    #     tot_energy = parse_ncm_tot_energy_print(stdout)
-    #     if tot_energy:
-    #         for k in res.keys():
-    #             res[k]['tot_energy_J'] = tot_energy
     
     if res:
         tables = list(res.keys())
@@ -235,6 +223,4 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
             for i in range(len(res[k])):
                 res[k][i] = remove_useless_job_meta(res[k][i])
                 
-    # print(res[list(res.keys())[0]][0].keys())
-    # print('====================')
     return res

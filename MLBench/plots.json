@@ -12,6 +12,12 @@
         "sql": "",
         "plotType": "line",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -31,10 +37,18 @@
             "group": [
               "blas_lib"
             ],
-            "dashBy": "cluster",
+            "dashBy": [
+              "cluster"
+            ],
             "xScale": "log2",
             "xTickFmt": ".0f",
             "showLegend": true,
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
             "transformScript": "df = agg.summarize(df, 'job_id', 'gflops')",
             "errorY": "gflops_err",
             "errorStyle": "band"
@@ -51,10 +65,18 @@
             "group": [
               "blas_lib"
             ],
-            "dashBy": "cluster",
+            "dashBy": [
+              "cluster"
+            ],
             "xScale": "log2",
             "xTickFmt": ".0f",
             "showLegend": true,
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
             "transformScript": "df = agg.summarize(df, 'job_id', 'gflops')",
             "errorY": "gflops_err",
             "errorStyle": "band"
@@ -94,13 +116,19 @@
     {
       "version": 3,
       "label": "Operators-GELU-Softmax",
-      "mode": "grid",
+      "mode": "facet",
       "rendererBackend": "matplotlib",
       "single": {
         "database": "data",
         "sql": "",
         "plotType": "line",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -110,7 +138,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT * \nFROM mlops\nWHERE op=\"gelu\"",
+            "sql": "SELECT *, CONCAT_WS('x', CAST(rows as int), CAST(cols as int)) AS mtx\nFROM mlops\nWHERE op=\"gelu\"",
             "plotType": "line",
             "chartTitle": "GELU",
             "x": "ncpus",
@@ -118,15 +146,24 @@
               "throughput"
             ],
             "group": [
-              "blas_lib",
+              "system"
+            ],
+            "markerBy": [
+              "mtx"
+            ],
+            "dashBy": [
               "dtype"
             ],
-            "markerBy": "dtype",
-            "dashBy": "cluster",
             "xScale": "log2",
             "xTickFmt": ".0f",
             "showLegend": true,
-            "transformScript": "df = agg.summarize(df, 'job_id', 'gbps')",
+            "shortLegend": true,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)\ndf = agg.summarize(df, 'job_id', 'gbps')",
             "errorY": "gbps_err",
             "errorStyle": "band"
           }
@@ -143,14 +180,18 @@
         "legendTitle": "",
         "showLegend": true,
         "shareLegend": true,
-        "facetGroupCols": [],
+        "facetGroupCols": [
+          "blas_lib"
+        ],
         "facetAxis": "cols",
-        "facetCount": 2,
-        "groupBy": [],
+        "facetCount": 3,
+        "groupBy": [
+          "blas_lib"
+        ],
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 4,
-        "subplotHeight": 3,
+        "subplotHeight": "4",
         "facetLabelFormat": "{column}={value}"
       },
       "style": {
@@ -171,5 +212,7 @@
     "legend_size": 8,
     "title_size": 10
   },
-  "script_paths": []
+  "script_paths": [
+    "../common"
+  ]
 }
