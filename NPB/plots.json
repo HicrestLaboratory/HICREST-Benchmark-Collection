@@ -1,56 +1,169 @@
 {
   "version": 3,
+  "activeTabIndex": 0,
   "tabs": [
     {
       "version": 3,
       "label": "Performance",
-      "mode": "single",
-      "database": "data",
-      "sql": "SELECT *\nFROM npb\nORDER BY benchmark, class, compiler, compiler_extra_flags_name, compiler_opt, ncpus",
-      "plotType": "line",
-      "chartTitle": "NPB - Performance",
-      "x": "ncpus",
-      "y": [
-        "mops"
-      ],
-      "group": [
-        "benchmark",
-        "class",
-        "compiler",
-        "compiler_extra_flags_name",
-        "compiler_opt",
-        "cluster"
-      ],
-      "markerBy": "compiler",
-      "dashBy": "compiler_extra_flags_name",
-      "xLabel": "# of CPUs",
-      "yLabel": "Mop/s",
-      "yScale": "log"
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "shortLegend": false,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM npb\nWHERE verify=\"SUCCESSFUL\"\n    AND class=\"A\"\n    AND compiler_extra_flags_name LIKE \"autovec%\"\nORDER BY benchmark",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "mops"
+            ],
+            "group": [
+              "system"
+            ],
+            "dashBy": "compiler",
+            "xLabel": "Cores",
+            "yLabel": "Mop/s",
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "legendOrientation": "vertical",
+            "showLegend": true,
+            "shortLegend": true,
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)\ndf['benchmark']=df['benchmark'].map({\n    'CG': 'Conjugate Gradient',\n    'EP': 'Embarrassingly Parallel',\n    'FT': 'Fourier Transform',\n    'IS': 'Integer Sort',\n    'MG': 'Multi-Grid',\n})",
+            "errorStyle": "bars"
+          }
+        ],
+        "shareX": true,
+        "shareY": false,
+        "shareXMode": "both",
+        "shareYMode": "label",
+        "xgap": "0.18",
+        "ygap": "0.18",
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "right",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "benchmark"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 5,
+        "groupBy": [
+          "benchmark"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 9,
+        "tick_size": 8,
+        "legend_size": 8,
+        "title_size": 10
+      }
     },
     {
       "version": 3,
       "label": "Energy",
-      "mode": "single",
-      "database": "data",
-      "sql": "SELECT *\nFROM npb\nORDER BY benchmark, class, compiler, compiler_extra_flags_name, compiler_opt, ncpus",
-      "plotType": "line",
-      "chartTitle": "NPB - Energy",
-      "x": "ncpus",
-      "y": [
-        "tot_energy_J"
-      ],
-      "group": [
-        "benchmark",
-        "class",
-        "compiler",
-        "compiler_extra_flags_name",
-        "compiler_opt",
-        "cluster"
-      ],
-      "markerBy": "compiler",
-      "dashBy": "compiler_extra_flags_name",
-      "xLabel": "# of CPUs",
-      "yLabel": "Tot Energy Consumed (J)"
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "showLegend": true,
+        "shortLegend": false,
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM npb\nWHERE verify=\"SUCCESSFUL\"\n    AND class=\"A\"\n    AND compiler_extra_flags_name LIKE \"autovec%\"\nORDER BY benchmark",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "tot_energy_J"
+            ],
+            "group": [
+              "system"
+            ],
+            "dashBy": "compiler",
+            "xLabel": "Cores",
+            "yLabel": "Mop/s",
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "legendOrientation": "horizontal",
+            "showLegend": true,
+            "shortLegend": true,
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "errorStyle": "bars"
+          }
+        ],
+        "shareX": true,
+        "shareY": false,
+        "shareXMode": "both",
+        "shareYMode": "label",
+        "xgap": "0.18",
+        "ygap": "0.18",
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "benchmark"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 5,
+        "groupBy": [
+          "benchmark"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 9,
+        "tick_size": 8,
+        "legend_size": 8,
+        "title_size": 10
+      }
     }
+  ],
+  "style": {
+    "width_in": 0,
+    "height_in": 0,
+    "label_size": 9,
+    "tick_size": 8,
+    "legend_size": 8,
+    "title_size": 10
+  },
+  "script_paths": [
+    "../common"
   ]
 }

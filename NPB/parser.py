@@ -5,12 +5,10 @@ import pandas as pd
 import sbatchman as sbm
 from typing import Optional, Dict
 
-sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from energy_parsers import _parse_ncm_tot_energy_print #, parse_ncm_energy_log
+sys.path.append(str(Path(__file__).parent.parent / "common"))
+from energy.energy_parsers import get_tot_energy_measurement
+from utils.utils import remove_energy_logs, remove_useless_job_meta
 
-# ---------------------------
-# Regex for NPB output
-# ---------------------------
 
 RE_TIME = re.compile(r"Time in seconds\s*=\s*([\d.]+)")
 RE_MOPS = re.compile(r"Mop/s total\s*=\s*([\d.]+)")
@@ -22,9 +20,10 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
     if not job.tag.startswith('NPB-OMP_') or job.status != sbm.Status.COMPLETED.value:
         return None
 
-    res = {k:v for k,v in (job.variables or {}).items()}
-    res['cluster'] = job.cluster_name
-    res['tot_runtime'] = job.get_run_time()
+    res = {k: v for k, v in (job.variables or {}).items()}
+    res["cluster"] = job.cluster_name
+    res["tot_runtime"] = job.get_run_time()
+    res = remove_useless_job_meta(res)
     stdout = job.get_stdout()
 
     if not stdout:
@@ -51,8 +50,8 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict]]:
             if m:
                 res['verify'] = m.group(1)
 
-    tot_energy = _parse_ncm_tot_energy_print(stdout)
+    tot_energy = get_tot_energy_measurement(job, stdout)
     if tot_energy:
-        res['tot_energy_J'] = tot_energy
+        res["tot_energy_J"] = tot_energy
 
     return { 'npb': res }

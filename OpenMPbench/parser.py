@@ -6,11 +6,9 @@ from copy import copy
 import sbatchman as sbm
 from typing import List, Optional, Dict
 
-sys.path.append(str(Path(__file__).parent.parent / "common" / "energy"))
-from energy_parsers import get_tot_energy_measurement
-
-sys.path.append(str(Path(__file__).parent.parent / "common" / "utils"))
-from utils import remove_energy_logs, remove_useless_job_meta
+sys.path.append(str(Path(__file__).parent.parent / "common"))
+from energy.energy_parsers import get_tot_energy_measurement
+from utils.utils import remove_energy_logs, remove_useless_job_meta
 
 _RE_COMPUTING = re.compile(r"^Computing (.+?) time using (\d+) reps")
 
@@ -46,6 +44,17 @@ _RE_THREADS = re.compile(r"^\s*(\d+)\s+thread\(s\)")
 _RE_OUTERREPS = re.compile(r"^\s*(\d+)\s+outer repetitions")
 
 
+def clean_kind(block_name: str, is_ref: bool) -> str:
+    """Strips array sizes and standardizes baseline to 'REFERENCE'."""
+    if is_ref:
+        return "REFERENCE"
+    # Remove parenthesized size if present, e.g. "PRIVATE (1024)" -> "PRIVATE"
+    name = re.sub(r"[\(\[\{].*?[\)\]\}]", "", block_name).strip()
+    # Remove trailing numeric array size, e.g. "FIRSTPRIVATE 2187" -> "FIRSTPRIVATE"
+    name = re.sub(r"\s+\d+\s*$", "", name).strip()
+    return name
+
+
 def parse_stdout(text, benchmark, cluster, cores, size):
     lines = remove_energy_logs(text).splitlines()
 
@@ -65,13 +74,13 @@ def parse_stdout(text, benchmark, cluster, cores, size):
 
     block_name = None
     innerreps = None
-    kind = None
+    is_ref = False
     expect_stats = False
     cur_stats = {}
     pending = {}
 
     def flush():
-        nonlocal block_name, innerreps, kind, cur_stats, pending
+        nonlocal block_name, innerreps, is_ref, cur_stats, pending
 
         if block_name is None:
             return
@@ -84,8 +93,7 @@ def parse_stdout(text, benchmark, cluster, cores, size):
             "threads": threads,
             "outerreps": outerreps,
             "innerreps": innerreps,
-            "block": block_name,
-            "kind": kind,
+            "kind": clean_kind(block_name, is_ref),
             "sample_size": cur_stats.get("sample_size"),
             "mean_us": cur_stats.get("mean"),
             "median_us": cur_stats.get("median"),
@@ -101,11 +109,12 @@ def parse_stdout(text, benchmark, cluster, cores, size):
             "overhead_us": pending.get("overhead"),
             "overhead_ci": pending.get("overhead_ci"),
             "median_overhead_us": pending.get("median_ovhd"),
+            "speedup": None,
         })
 
         block_name = None
         innerreps = None
-        kind = None
+        is_ref = False
         cur_stats = {}
         pending = {}
 
@@ -119,7 +128,7 @@ def parse_stdout(text, benchmark, cluster, cores, size):
             flush()
             block_name = m.group(1).strip()
             innerreps = int(m.group(2))
-            kind = "reference" if "reference time" in block_name.lower() else "test"
+            is_ref = "reference" in block_name.lower()
             continue
 
         if line.startswith("Sample_size"):
@@ -154,27 +163,38 @@ def parse_stdout(text, benchmark, cluster, cores, size):
             continue
 
         m = _RE_TEST_TIME.match(line)
-
-        if m and kind == "test":
+        if m and not is_ref:
             pending["time"] = float(m.group(2))
             pending["time_ci"] = float(m.group(3))
             continue
 
         m = _RE_TEST_OVHD.match(line)
-
-        if m and kind == "test":
+        if m and not is_ref:
             pending["overhead"] = float(m.group(2))
             pending["overhead_ci"] = float(m.group(3))
             continue
 
         m = _RE_TEST_MEDOVHD.match(line)
-
-        if m and kind == "test":
+        if m and not is_ref:
             pending["median_ovhd"] = float(m.group(2))
             flush()
             continue
 
     flush()
+
+    # Extract baseline baseline time from the REFERENCE entry
+    ref_rec = next((r for r in records if r["kind"] == "REFERENCE"), None)
+    baseline_time = None
+    if ref_rec:
+        baseline_time = ref_rec.get("ref_mean_us") or ref_rec.get("mean_us")
+
+    # Calculate speedup (T_ref / T_test) for non-REFERENCE kinds
+    for r in records:
+        if r["kind"] != "REFERENCE":
+            test_time = r.get("time_us") or r.get("mean_us")
+            if baseline_time is not None and test_time and test_time > 0:
+                r["speedup"] = baseline_time / test_time
+
     return records
 
 
@@ -199,9 +219,6 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Dict | List[Dict]]]:
         return None
 
     records = parse_stdout(stdout, benchmark, meta["cluster"], meta["ncpus"], size)
-    # print('============================================')
-    # print(job.tag)
-    # print(records)
 
     tot_energy = get_tot_energy_measurement(job, stdout)
     if tot_energy:

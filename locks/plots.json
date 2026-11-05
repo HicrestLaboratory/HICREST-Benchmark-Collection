@@ -4,7 +4,7 @@
   "tabs": [
     {
       "version": 3,
-      "label": "Plot 1",
+      "label": "All",
       "mode": "facet",
       "rendererBackend": "matplotlib",
       "single": {
@@ -12,6 +12,12 @@
         "sql": "",
         "plotType": "line",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -21,7 +27,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT *\nFROM all_results\nWHERE blas_lib=\"none\" AND internal_run_time_s=60",
+            "sql": "SELECT *, system AS cluster\nFROM all_results\nWHERE blas_lib=\"none\" AND internal_run_time_s=60\n    AND ncpus>1",
             "plotType": "line",
             "x": "ncpus",
             "y": [
@@ -31,18 +37,24 @@
               "system"
             ],
             "xScale": "log2",
-            "yScale": "log",
             "xTickFmt": ".0f",
             "showLegend": true,
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
             "errorStyle": "bars"
           }
         ],
-        "shareX": false,
+        "shareX": true,
         "shareY": false,
-        "shareXMode": "label",
-        "shareYMode": "none",
+        "shareXMode": "both",
+        "shareYMode": "label",
         "xgap": 0.2,
-        "ygap": 0.24,
+        "ygap": "0.18",
         "panelLabels": false,
         "facetByGroup": false,
         "legendPosition": "right",
@@ -85,5 +97,7 @@
     "line_width": 2,
     "marker_size": 7
   },
-  "script_paths": []
+  "script_paths": [
+    "../common"
+  ]
 }
