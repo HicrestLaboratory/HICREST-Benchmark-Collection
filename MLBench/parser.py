@@ -12,7 +12,7 @@ import sbatchman as sbm
 # import inference.parser as inference_parser
 
 sys.path.append(str(Path(__file__).parent.parent / "common"))
-from utils.utils import _remove_ncm_logs
+from utils.utils import remove_useless_job_meta, remove_energy_logs
 from energy.energy_parsers import _parse_ncm_tot_energy_print
 from utils.utils import remove_useless_job_meta
 
@@ -22,7 +22,6 @@ from utils.utils import remove_useless_job_meta
 #   gemv:    op,K,N,dtype,threads,iter,ms,gflops
 #   gelu:    op,rows,cols,dtype,threads,iter,ms,gbps
 #   softmax: op,rows,cols,dtype,threads,iter,ms,gbps
-TABLE_NAME = "mlops"
 
 _INT_COLS = {"M", "K", "N", "rows", "cols", "threads", "iter"}
 _FLOAT_COLS = {"ms", "gflops", "gbps"}
@@ -68,13 +67,16 @@ def _parse_mlops_csv(stdout: str) -> List[Dict[str, Any]]:
     return rows
 
 
-def mlops_parser_parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, Any]]:
+
+def mlops_parser_parse(job: sbm.Job, stdout: str, table_name: str) -> Optional[Dict[str, Any]]:
     """Parse one mlops benchmark job for `sbatchman visualize`.
 
     Returns ``{"mlops": [row, ...]}`` (one row per timed iteration, enriched
     with job metadata) or ``None`` when the job has no parsable mlops CSV.
     """
+
     iter_rows = _parse_mlops_csv(stdout)
+
     if not iter_rows:
         return None
 
@@ -87,6 +89,7 @@ def mlops_parser_parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, Any]]:
     try:
         base["tot_runtime"] = job.get_run_time()
     except Exception:
+        print(f"WARNING: failed to get run time for job {job.job_id} (tag {job.tag})")
         pass
 
     enriched: List[Dict[str, Any]] = []
@@ -97,10 +100,9 @@ def mlops_parser_parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, Any]]:
             if k in merged:
                 del merged[k]
         enriched.append(merged)
-    
-    return {TABLE_NAME: enriched}
 
-TABLE_NAME = "inference"
+    print({table_name: enriched})
+    return {table_name: enriched}
 
 def _num(s: str):
     for cast in (int, float):
@@ -164,7 +166,7 @@ def inference_parse_table(stdout: str) -> List[Dict[str, Any]]:
 
 _JSON_KEYS = ('cpu_info', 'samples_ts', 'samples_ns', 'model_filename', 'model_size')
 
-def inference_parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, List[Dict]]]:
+def inference_parse(job: sbm.Job, stdout: str, table_name: str) -> Optional[Dict[str, List[Dict]]]:
     from_json = True
     try:
         json_data = json.loads(stdout)
@@ -189,7 +191,7 @@ def inference_parse(job: sbm.Job, stdout: str) -> Optional[Dict[str, List[Dict]]
             item = {k: item.get(k) for k in _JSON_KEYS if k in item}
         rows.append({**base, **item})  # item columns override job variables
 
-    return {TABLE_NAME: rows} if rows else None
+    return {table_name: rows} if rows else None
 
 def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
     if job.status != sbm.Status.COMPLETED.value or job.category == 'compile':
@@ -213,9 +215,9 @@ def parse(job: sbm.Job) -> Optional[Dict[str, Any]]:
 
     # TODO add energy
     if job.category.startswith(('gemv', 'gemm', 'gelu', 'softmax')):
-        res = mlops_parser_parse(job, _remove_ncm_logs(stdout))
+        res = mlops_parser_parse(job, remove_energy_logs(stdout), "mlops")
     elif job.category.startswith(('inference')):
-        res = inference_parse(job, _remove_ncm_logs(stdout))
+        res = inference_parse(job, remove_energy_logs(stdout), "inference")
     else:
         print(f'WARNING: category "{job.category}" not recognized (tag {job.tag}).')
         return None
