@@ -1,17 +1,27 @@
 {
   "version": 3,
-  "activeTabIndex": 0,
+  "activeTabIndex": 1,
   "tabs": [
     {
       "version": 3,
-      "label": "Plot 1",
+      "label": "TEPS",
       "mode": "facet",
       "rendererBackend": "matplotlib",
       "single": {
         "database": "data",
         "sql": "",
         "plotType": "line",
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -21,7 +31,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT * FROM bfs",
+            "sql": "SELECT *\nFROM bfs",
             "plotType": "line",
             "x": "ncpus",
             "y": [
@@ -30,10 +40,22 @@
             "group": [
               "system"
             ],
+            "xLabel": "# cores",
+            "yLabel": "TEPS",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
             "xScale": "log2",
             "xTickFmt": ".0f",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
             "showLegend": true,
-            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)\nEDGES_COUNTS={\n    'GAP-road': 57708624,\n    'europe_osm': 108109320,\n    'rgg_n_2_22_s0': 60718396,\n}\ndf['teps']=df.apply(lambda r: float(EDGES_COUNTS[r['graph_filename']])/r['time'], axis=1)\ndf=agg.summarize(df, ['system', 'implementation', 'graph_filename', 'compiler', 'chunksize', 'ncpus', 'compiler_extra_flags_name'], 'teps')",
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column\ndf.drop(columns=['graph'], inplace=True)\nset_system_column(df)\nEDGES_COUNTS={\n    'GAP-road': 57708624,\n    'europe_osm': 108109320,\n    'rgg_n_2_22_s0': 60718396,\n}\ndf['teps']=df.apply(lambda r: float(EDGES_COUNTS[r['graph_filename']])/r['time'], axis=1)\ndf=agg.summarize(df, ['system', 'graph_filename', 'implementation', 'compiler', 'chunksize', 'ncpus', 'compiler_extra_flags_name'], 'teps')",
             "errorY": "teps_err",
             "errorStyle": "band"
           }
@@ -42,8 +64,117 @@
         "shareY": false,
         "shareXMode": "both",
         "shareYMode": "label",
-        "xgap": 0.2,
-        "ygap": 0.24,
+        "xgap": "0.16",
+        "ygap": "0.22",
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "implementation",
+          "graph_filename"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 4,
+        "groupBy": [
+          "implementation",
+          "graph_filename"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": "2.5",
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 12,
+        "tick_size": 11,
+        "legend_size": 11,
+        "title_size": 14,
+        "line_width": 2,
+        "marker_size": 7,
+        "palette": [
+          "#E41A1C",
+          "#377EB8",
+          "#4DAF4A",
+          "#984EA3",
+          "#FF7F00",
+          "#FFFF33",
+          "#A65628",
+          "#F781BF",
+          "#999999"
+        ]
+      }
+    },
+    {
+      "version": 3,
+      "label": "Speedups",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
+        "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM bfs",
+            "plotType": "line",
+            "x": "ncpus",
+            "y": [
+              "speedup"
+            ],
+            "group": [
+              "system"
+            ],
+            "xLabel": "# cores",
+            "yLabel": "Speedup (wrt GAP)",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "tickFormatter": "def format_tick(value, axis):\n    if axis == 'y':\n        return f'{value:.2f}x'\n    return value",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
+            "showLegend": true,
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column\n\ndf.drop(columns=['graph'], inplace=True)\nset_system_column(df)\n\nBASELINE_KEYS = ['system', 'graph_filename', 'ncpus']\n\n# Extract GAP baseline times\nbaseline = (\n    df[df['implementation'] == 'gap']\n    .groupby(BASELINE_KEYS, as_index=False)\n    .agg(gap_time=('time', 'mean'))\n)\n\n# Match runs with their corresponding GAP baseline\ndf = df.merge(\n    baseline,\n    on=BASELINE_KEYS,\n    how='inner',\n)\n\n# Compute speedup (higher is better)\ndf['speedup'] = df['gap_time'] / df['time']\n\n# Remove GAP baseline entries\ndf = df[df['implementation'] != 'gap'].copy()\n\n# Aggregate\ndf = agg.summarize(\n    df,\n    [\n        'system',\n        'graph_filename',\n        'implementation',\n        'compiler',\n        'chunksize',\n        'ncpus',\n        'compiler_extra_flags_name',\n    ],\n    'speedup',\n)",
+            "errorY": "speedup_err",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": true,
+        "shareY": false,
+        "shareXMode": "both",
+        "shareYMode": "label",
+        "xgap": "0.2",
+        "ygap": "0.22",
         "panelLabels": false,
         "facetByGroup": false,
         "legendPosition": "top",
@@ -63,26 +194,52 @@
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 4,
-        "subplotHeight": 3.3,
+        "subplotHeight": 2.5,
         "facetLabelFormat": "{value}"
       },
       "style": {
         "width_in": 0,
         "height_in": 0,
-        "label_size": 9,
-        "tick_size": 8,
-        "legend_size": 8,
-        "title_size": 10
+        "label_size": 12,
+        "tick_size": 11,
+        "legend_size": 11,
+        "title_size": 14,
+        "line_width": 2,
+        "marker_size": 7,
+        "palette": [
+          "#E41A1C",
+          "#377EB8",
+          "#4DAF4A",
+          "#984EA3",
+          "#FF7F00",
+          "#FFFF33",
+          "#A65628",
+          "#F781BF",
+          "#999999"
+        ]
       }
     }
   ],
   "style": {
     "width_in": 0,
     "height_in": 0,
-    "label_size": 9,
-    "tick_size": 8,
-    "legend_size": 8,
-    "title_size": 10
+    "label_size": 12,
+    "tick_size": 11,
+    "legend_size": 11,
+    "title_size": 14,
+    "line_width": 2,
+    "marker_size": 7,
+    "palette": [
+      "#E41A1C",
+      "#377EB8",
+      "#4DAF4A",
+      "#984EA3",
+      "#FF7F00",
+      "#FFFF33",
+      "#A65628",
+      "#F781BF",
+      "#999999"
+    ]
   },
   "script_paths": [
     "../common"

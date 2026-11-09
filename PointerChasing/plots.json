@@ -1,10 +1,10 @@
 {
   "version": 3,
-  "activeTabIndex": 0,
+  "activeTabIndex": 3,
   "tabs": [
     {
       "version": 3,
-      "label": "Linear and Random",
+      "label": "Linear and Random Non HPC",
       "mode": "grid",
       "rendererBackend": "matplotlib",
       "single": {
@@ -21,7 +21,17 @@
           "compiler_extra_flags_name",
           "compiler_opt"
         ],
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -43,10 +53,20 @@
             ],
             "xLabel": "Stride",
             "yLabel": "Latency (ns)",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
             "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
             "showLegend": true,
-            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
-            "layoutScript": "def customize_matplotlib(fig, ax, config):\n    add_zoom_inset(\n        ax,\n        zoom_region=(0.0, 200.0, 0.0, 15.0),  # x1, x2, y1, y2\n        inset_position=(0.04, 0.65, 0.3, 0.3),  # x, y, width, height\n        draw_rect=True,\n        rect_scaling=1.0,\n        zoom_ax_kwargs={\n            'grid': {'visible': True, 'alpha': 0.25},\n            'tick_params': {'labelsize': 7},\n        },\n    )\n",
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\nset_system_column(df)\ndf = filter_by_system(df, only_hpc=False)",
+            "layoutScript": "def customize_matplotlib(fig, ax, config):\n    add_zoom_inset(\n        ax,\n        zoom_region=(0.0, 200.0, 0.0, 13.0),  # x1, x2, y1, y2\n        inset_position=(0.04, 0.65, 0.3, 0.3),  # x, y, width, height\n        draw_rect=True,\n        rect_scaling=1.0,\n        zoom_ax_kwargs={\n            'grid': {'visible': True, 'alpha': 0.25},\n            'tick_params': {'labelsize': 10},\n        },\n    )\n",
             "errorStyle": "bars"
           },
           {
@@ -62,18 +82,27 @@
               "system"
             ],
             "xLabel": "Array Size",
-            "yLabel": "Latency (ns)",
+            "xLabelHidden": false,
+            "yLabelHidden": true,
             "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
             "showLegend": true,
-            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\nset_system_column(df)\ndf = filter_by_system(df, only_hpc=False)",
             "errorStyle": "bars"
           }
         ],
         "shareX": false,
         "shareY": false,
-        "shareXMode": "none",
+        "shareXMode": "label",
         "shareYMode": "none",
-        "xgap": "0.08",
+        "xgap": "0.07",
         "ygap": "0",
         "panelLabels": false,
         "facetByGroup": false,
@@ -88,16 +117,29 @@
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 12,
-        "subplotHeight": 5,
+        "subplotHeight": 4,
         "facetLabelFormat": "{column}={value}"
       },
       "style": {
         "width_in": 0,
         "height_in": 0,
-        "label_size": 9,
-        "tick_size": 8,
-        "legend_size": 8,
-        "title_size": 10
+        "label_size": 16,
+        "tick_size": 12,
+        "legend_size": 10,
+        "title_size": 16,
+        "line_width": 1.2,
+        "marker_size": 4,
+        "palette": [
+          "#E41A1C",
+          "#377EB8",
+          "#4DAF4A",
+          "#984EA3",
+          "#FF7F00",
+          "#FFFF33",
+          "#A65628",
+          "#F781BF",
+          "#999999"
+        ]
       }
     },
     {
@@ -118,7 +160,17 @@
           "compiler_extra_flags_name",
           "compiler_opt"
         ],
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -137,10 +189,20 @@
             "z": "y",
             "xLabel": "Fuse",
             "yLabel": "Array Size",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
             "xScale": "category",
             "yScale": "category",
             "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis, index):\n    if axis == 'x':\n        return int(value)\n    if index % 2 == 0:\n        return format_bytes(value, precision=0)\n    return ''",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{column}={value}",
             "showLegend": true,
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
             "extra": {
               "z": "y",
               "z_label": "Bandwith [GiB/s]"
@@ -149,12 +211,12 @@
             "errorStyle": "bars"
           }
         ],
-        "shareX": false,
+        "shareX": true,
         "shareY": true,
-        "shareXMode": "none",
+        "shareXMode": "both",
         "shareYMode": "both",
-        "xgap": "0.06",
-        "ygap": 0.24,
+        "xgap": "0.18",
+        "ygap": "0.18",
         "panelLabels": false,
         "facetByGroup": false,
         "legendPosition": "right",
@@ -171,17 +233,30 @@
         ],
         "figureWidth": 0,
         "figureHeight": 0,
-        "subplotWidth": 4,
-        "subplotHeight": 3.3,
+        "subplotWidth": "3",
+        "subplotHeight": "4",
         "facetLabelFormat": "{value}"
       },
       "style": {
         "width_in": 0,
         "height_in": 0,
-        "label_size": 9,
-        "tick_size": 8,
-        "legend_size": 8,
-        "title_size": 10
+        "label_size": 16,
+        "tick_size": 12,
+        "legend_size": 10,
+        "title_size": 16,
+        "line_width": 1.2,
+        "marker_size": 4,
+        "palette": [
+          "#E41A1C",
+          "#377EB8",
+          "#4DAF4A",
+          "#984EA3",
+          "#FF7F00",
+          "#FFFF33",
+          "#A65628",
+          "#F781BF",
+          "#999999"
+        ]
       }
     },
     {
@@ -203,7 +278,17 @@
           "compiler_extra_flags_name",
           "compiler_opt"
         ],
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -225,10 +310,20 @@
             ],
             "xLabel": "Stride",
             "yLabel": "Latency (ns)",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
             "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
             "showLegend": true,
-            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
-            "layoutScript": "def customize_matplotlib(fig, ax, config):\n    add_zoom_inset(\n        ax,\n        zoom_region=(0.0, 200.0, 0.0, 15.0),  # x1, x2, y1, y2\n        inset_position=(0.05, 0.6, 0.35, 0.35),  # x, y, width, height\n        draw_rect=True,\n        rect_scaling=1.0,\n        zoom_ax_kwargs={\n            'grid': {'visible': True, 'alpha': 0.25},\n            'tick_params': {'labelsize': 7},\n        },\n    )\n",
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\nset_system_column(df)\ndf = filter_by_system(df, only_hpc=True)",
+            "layoutScript": "def customize_matplotlib(fig, ax, config):\n    add_zoom_inset(\n        ax,\n        zoom_region=(0.0, 200.0, 0.0, 15.0),  # x1, x2, y1, y2\n        inset_position=(0.05, 0.6, 0.35, 0.35),  # x, y, width, height\n        draw_rect=True,\n        rect_scaling=1.0,\n        zoom_ax_kwargs={\n            'grid': {'visible': True, 'alpha': 0.25},\n            'tick_params': {'labelsize': 10},\n        },\n    )\n",
             "errorStyle": "bars"
           },
           {
@@ -244,10 +339,19 @@
               "system"
             ],
             "xLabel": "Array Size",
-            "yLabel": "Latency (ns)",
+            "xLabelHidden": false,
+            "yLabelHidden": true,
             "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
             "showLegend": true,
-            "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\nset_system_column(df)\ndf = filter_by_system(df, only_hpc=True)",
             "errorStyle": "bars"
           }
         ],
@@ -270,16 +374,29 @@
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 12,
-        "subplotHeight": 5,
+        "subplotHeight": 4,
         "facetLabelFormat": "{column}={value}"
       },
       "style": {
         "width_in": 0,
         "height_in": 0,
-        "label_size": 9,
-        "tick_size": 8,
-        "legend_size": 8,
-        "title_size": 10
+        "label_size": 16,
+        "tick_size": 12,
+        "legend_size": 10,
+        "title_size": 16,
+        "line_width": 1.2,
+        "marker_size": 4,
+        "palette": [
+          "#E41A1C",
+          "#377EB8",
+          "#4DAF4A",
+          "#984EA3",
+          "#FF7F00",
+          "#FFFF33",
+          "#A65628",
+          "#F781BF",
+          "#999999"
+        ]
       }
     },
     {
@@ -300,7 +417,17 @@
           "compiler_extra_flags_name",
           "compiler_opt"
         ],
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -319,10 +446,20 @@
             "z": "y",
             "xLabel": "Fuse",
             "yLabel": "Stride",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
             "xScale": "category",
             "yScale": "category",
             "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis, index):\n    if axis == 'x':\n        return int(value)\n    if index % 2 == 0:\n        return format_bytes(value, precision=0)\n    return ''",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{column}={value}",
             "showLegend": true,
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
             "extra": {
               "z": "y",
               "z_label": "Bandwith [GiB/s]"
@@ -331,12 +468,12 @@
             "errorStyle": "bars"
           }
         ],
-        "shareX": false,
+        "shareX": true,
         "shareY": true,
-        "shareXMode": "none",
+        "shareXMode": "both",
         "shareYMode": "both",
-        "xgap": "0.06",
-        "ygap": 0.24,
+        "xgap": "0.18",
+        "ygap": "0.16",
         "panelLabels": false,
         "facetByGroup": false,
         "legendPosition": "right",
@@ -347,33 +484,59 @@
           "system"
         ],
         "facetAxis": "cols",
-        "facetCount": 4,
+        "facetCount": 5,
         "groupBy": [
           "system"
         ],
         "figureWidth": 0,
         "figureHeight": 0,
-        "subplotWidth": 4,
-        "subplotHeight": 3.3,
+        "subplotWidth": "3",
+        "subplotHeight": "4",
         "facetLabelFormat": "{value}"
       },
       "style": {
         "width_in": 0,
         "height_in": 0,
-        "label_size": 9,
-        "tick_size": 8,
-        "legend_size": 8,
-        "title_size": 10
+        "label_size": 16,
+        "tick_size": 12,
+        "legend_size": 10,
+        "title_size": 16,
+        "line_width": 1.2,
+        "marker_size": 4,
+        "palette": [
+          "#E41A1C",
+          "#377EB8",
+          "#4DAF4A",
+          "#984EA3",
+          "#FF7F00",
+          "#FFFF33",
+          "#A65628",
+          "#F781BF",
+          "#999999"
+        ]
       }
     }
   ],
   "style": {
     "width_in": 0,
     "height_in": 0,
-    "label_size": 9,
-    "tick_size": 8,
-    "legend_size": 8,
-    "title_size": 10
+    "label_size": 16,
+    "tick_size": 12,
+    "legend_size": 10,
+    "title_size": 16,
+    "line_width": 1.2,
+    "marker_size": 4,
+    "palette": [
+      "#E41A1C",
+      "#377EB8",
+      "#4DAF4A",
+      "#984EA3",
+      "#FF7F00",
+      "#FFFF33",
+      "#A65628",
+      "#F781BF",
+      "#999999"
+    ]
   },
   "script_paths": [
     "../common"

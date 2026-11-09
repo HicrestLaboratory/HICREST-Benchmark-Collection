@@ -11,6 +11,10 @@
         "database": "data",
         "sql": "",
         "plotType": "line",
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
         "showLegend": true,
         "shortLegend": false,
         "shortLegendLabels": {
@@ -27,7 +31,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT *, system AS cluster\nFROM all_results\nWHERE blas_lib=\"none\" AND internal_run_time_s=60\n    AND ncpus>1",
+            "sql": "SELECT *, system AS cluster\nFROM all_results\nWHERE blas_lib=\"none\" \n      AND internal_run_time_s=60\n      AND ncpus>1",
             "plotType": "line",
             "x": "ncpus",
             "y": [
@@ -36,8 +40,14 @@
             "group": [
               "system"
             ],
+            "xLabel": "# of threads",
+            "yLabel": "Atomic Accesses",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
             "xScale": "log2",
             "xTickFmt": ".0f",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
             "showLegend": true,
             "shortLegend": false,
             "shortLegendLabels": {
@@ -54,10 +64,10 @@
         "shareXMode": "both",
         "shareYMode": "label",
         "xgap": 0.2,
-        "ygap": "0.18",
+        "ygap": "0.2",
         "panelLabels": false,
         "facetByGroup": false,
-        "legendPosition": "right",
+        "legendPosition": "top",
         "legendTitle": "",
         "showLegend": true,
         "shareLegend": true,
@@ -72,7 +82,7 @@
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 4,
-        "subplotHeight": 3.3,
+        "subplotHeight": "3",
         "facetLabelFormat": "{value}"
       },
       "style": {
@@ -83,7 +93,18 @@
         "legend_size": 11,
         "title_size": 14,
         "line_width": 2,
-        "marker_size": 7
+        "marker_size": 7,
+        "palette": [
+          "#E41A1C",
+          "#377EB8",
+          "#4DAF4A",
+          "#984EA3",
+          "#FF7F00",
+          "#FFFF33",
+          "#A65628",
+          "#F781BF",
+          "#999999"
+        ]
       }
     }
   ],
@@ -95,7 +116,18 @@
     "legend_size": 11,
     "title_size": 14,
     "line_width": 2,
-    "marker_size": 7
+    "marker_size": 7,
+    "palette": [
+      "#E41A1C",
+      "#377EB8",
+      "#4DAF4A",
+      "#984EA3",
+      "#FF7F00",
+      "#FFFF33",
+      "#A65628",
+      "#F781BF",
+      "#999999"
+    ]
   },
   "script_paths": [
     "../common"

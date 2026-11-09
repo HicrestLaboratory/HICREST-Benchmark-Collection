@@ -10,6 +10,9 @@ BOARD_NAMES_MAP = {
   'dalek-mono-jts-onx': 'Jetson Orin NX',
   'mc-SG2044': 'SG2044',
   'mc-SG2042': 'SG2042',
+  'MN5-GRACE': 'Grace',
+  'MN5-GPP': 'Intel Sapphire Rapids',
+  'isarco': 'AMD EPYC 9135',
 }
 BOARD_SHORT_NAMES_MAP = {
   'brah': 'AMD',
@@ -18,6 +21,30 @@ BOARD_SHORT_NAMES_MAP = {
   'bananaf3': 'BananaPi',
   'arriesgado': 'HiFive',
 }
+HPC_SYSTEM_NAMES = [
+    'baldo',
+    'bsc-hca-pioneer',
+    'mc-SG2044',
+    'mc-SG2042',
+    'MN5-GRACE',
+    'MN5-GPP',
+    'isarco',
+]
+SYSTEMS_CATEGORICAL_ORDER = [
+  'mc-SG2044',
+  'mc-SG2042',
+  'bsc-hca-pioneer',
+  'MN5-GRACE',
+  'MN5-GPP',
+  'isarco',
+  'baldo',
+  'dalek-mono-bpi-f3',
+  'dalek-mono-sip-k3',
+  'dalek-mono-jts-onx',
+  'dalek-mono-rpi-5b',
+  'dalek-minix',
+  'dalek-mono-oh5',
+]
 
 # Hard-coded data
 CACHE_SIZES = {
@@ -155,5 +182,21 @@ def compute_theoretical_bandwidth(system, comm_type, topology):
 
     return min(values)
 
+
+def filter_by_system(df, only_hpc=True):
+    mask = df['system'].isin(HPC_SYSTEM_NAMES) | df['system'].isin([BOARD_NAMES_MAP[k] for k in HPC_SYSTEM_NAMES])
+    return df[mask if only_hpc else ~mask]
+
+
+def sort_by_system_categorical(df):
+    import pandas as pd
+    df['system'] = pd.Categorical(df['system'], categories=[BOARD_NAMES_MAP[k] for k in SYSTEMS_CATEGORICAL_ORDER])
+    df.sort_values(by='system')
+
+
 def set_system_column(df):
-    df['system'] = df['cluster'].map(BOARD_NAMES_MAP).fillna(df['cluster'])
+    k = 'cluster'
+    if 'system' in df.columns:
+        k = 'system'
+    df['system'] = df[k].map(BOARD_NAMES_MAP).fillna(df[k])
+    
