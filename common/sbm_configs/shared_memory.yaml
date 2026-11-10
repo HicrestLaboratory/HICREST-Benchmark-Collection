@@ -59,7 +59,9 @@ dalek-mono-bpi-f3:
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
         - "export NCM_PATH=/opt/software/ncm-1.1.2/bin/ncm-control"
       
 
@@ -86,7 +88,9 @@ dalek-minix:
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
         - "export NCM_PATH=/mnt/nfs/software/ncm-1.1.2/bin/ncm-control"
 
 # Hardkernel Odroid H5 @ Dalek
@@ -112,7 +116,9 @@ dalek-mono-oh5:
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
         - "export NCM_PATH=/mnt/nfs/software/ncm-1.1.2/bin/ncm-control"
 
 
@@ -139,7 +145,9 @@ dalek-mono-jts-onx:
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
         - "export NCM_PATH=/opt/software/ncm-1.2.0/bin/ncm-control"
 
 
@@ -166,7 +174,9 @@ dalek-mono-rpi-5b:
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
         - "export NCM_PATH=/opt/software/ncm-1.2.0/bin/ncm-control"
 
 
@@ -195,7 +205,9 @@ dalek-mono-sip-k3:
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
         - "export NCM_PATH=/opt/software/ncm-1.2.0/bin/ncm-control"
 
 
@@ -239,7 +251,9 @@ bsc-hca-pioneer:
           }
         - "export LANG=C"
         - "export LC_ALL=C"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
         - "export NCM_PATH=/apps/ncm/1.2.0/bin/ncm-control"
 
 
@@ -269,7 +283,9 @@ mc-SG2044:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
         - "source ~/.peak-venv/bin/activate"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
 
 
 # Sophgo SG2042 - E4 dual socket @ MC
@@ -298,7 +314,9 @@ mc-SG2042:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "source /etc/profile.d/modules.sh"
         - "source ~/.blade-venv/bin/activate"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
 
 
 # Intel Xeon P. 8480+ - BSC's General Purpose @ MN5
@@ -332,7 +350,9 @@ MN5-GPP:
         - "#SBATCH --cpus-per-task={ncpus}"
         - "#SBATCH --ear=on"
         - "#SBATCH --ear-user-db=metric_gpp_sbatch"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
 
 # Grace - BSC's Grace - General Purpose @ MN5
 MN5-GRACE:
@@ -359,7 +379,9 @@ MN5-GRACE:
         - "OMP_NUM_THREADS={ncpus}"
       custom_headers:
         - "#SBATCH --cpus-per-task={ncpus}"
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}"'
+        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
         - "export EAR_ROOT=/apps/EAR/ear6.0.grace"
         - "module use ${EAR_ROOT}/etc/module/"
         - "module load ear ear-lite"

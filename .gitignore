@@ -34,6 +34,10 @@ DLNetBench/topos*/
 DLNetBench/**.json
 DLNetBench/**.dot
 
+**.tar
+
 AIAccelerators/Tenstorrent/generated/
 MLOps/results/*
 MLInference/results/*
+
+sdv-cab/

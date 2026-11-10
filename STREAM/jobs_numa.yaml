@@ -1,0 +1,29 @@
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
+  - "vars_numa.yaml"
+
+variables:
+  # Footprint of a single array
+  elements:
+    - 256000000 # 1GB
+
+  # Per-kernel
+  warmup: [5]
+  runs: [25] 
+
+jobs:
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__{ncpus}"
+    config_jobs:
+      - tag: "stream_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}"
+        category: "stream"
+        preprocess: "{energy_measure_start}"
+        command: >
+          {energy_measure_before_exec}./bin/{isa}/stream_numa_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type} 
+          -n {elements}
+          -t {runs}
+          -w {warmup}
+          -v
+        # --csv
+        postprocess: '{energy_measure_stop}'

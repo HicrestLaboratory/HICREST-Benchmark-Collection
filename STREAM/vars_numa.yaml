@@ -1,0 +1,10 @@
+data_type:
+  - "double"
+  - "float"
+
+compiler_extra_flags_name:
+  map:
+    gcc:                ['autovec_gcc', 'novec_gcc']
+    clang:              ['autovec_clang', 'novec_clang']
+    clang_epi_rvv1:     ['autovec_clang_epi_rvv1', 'novec_clang_epi_rvv1']
+    clang_epi_rvv071:   ['autovec_clang_epi_rvv071', 'novec_clang_epi_rvv071']

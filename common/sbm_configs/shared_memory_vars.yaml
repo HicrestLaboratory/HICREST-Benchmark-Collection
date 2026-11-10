@@ -172,6 +172,34 @@ ld_library_path_compiler:
         mc-SG2042:  ['$HOME/software_env/llvm-EPI/riscv64/rvv071/lib:/usr/lib64:$(dirname "$(gcc -print-file-name=crtbeginS.o)")']
 
 
+compiler_system_lib:
+  per_cluster:
+    # # BSC HCA
+    # bsc-hca-pioneer:    ['']
+    # bsc-hca-bananaf3:   ['']
+
+    # Dalek
+    dalek-mono-bpi-f3:    ['/usr/lib/riscv64-linux-gnu/']
+    dalek-mono-sip-k3:    ['/usr/lib/riscv64-linux-gnu/']
+    dalek-mono-jts-onx:   ['/usr/lib/aarch64-linux-gnu/']
+    dalek-mono-rpi-5b:    ['/usr/lib/aarch64-linux-gnu/']
+    dalek-mono-oh5:       ['/usr/lib/x86_64-linux-gnu']
+    dalek-minix:          ['/usr/lib/x86_64-linux-gnu']
+
+    # # MonteCimone
+    # mc-SG2042:          ['']
+    # mc-SG2044:          ['']
+
+    # # Mare5
+    # MN5-GPP:            ['']
+    # MN5-GRACE:          ['']
+
+
+compiler_system_include:
+  per_cluster:
+    default:  ['/usr/include']
+   
+
 openmp_library_path:
   map:
     gcc:
@@ -238,6 +266,7 @@ compiler_common:
         mc-SG2042: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -I/usr/include -fopenmp -ffast-math -L$(dirname "$(gcc -print-file-name=crtbeginS.o)") -L/usr/lib64'] # --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"
         mc-SG2044: ['-L$HOME/software_env/llvm-EPI/riscv64/rvv071/lib -I$HOME/software_env/llvm-EPI/riscv64/rvv071/include -I/usr/include -fopenmp -ffast-math -L$(dirname "$(gcc -print-file-name=crtbeginS.o)") -L/usr/lib64'] # --gcc-install-dir="$(dirname "$(gcc -print-file-name=crtbeginS.o)")"
     
+
 compiler_opt:
   map:
     default: ['-O3']

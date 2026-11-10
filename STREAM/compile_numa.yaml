@@ -1,0 +1,31 @@
+sequential: true
+
+configs: "../common/sbm_configs/shared_memory.yaml"
+include_variables:
+  - "../common/sbm_configs/shared_memory_vars.yaml"
+  - "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
+  - "vars_numa.yaml"
+
+
+preprocess: |
+  mkdir -p bin/{isa}
+  cd STREAM
+  make clean
+  CUSTOM_PREPROCESSOR_VARS_NUMA="-I{compiler_system_include} -L{compiler_system_lib}"
+  if [[ "{data_type}" == "float" ]]; then
+    CUSTOM_PREPROCESSOR_VARS_NUMA+=" -DSTREAM_TYPE_FLOAT=1"
+  fi
+  BIN_NAME="stream_numa_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}"
+  unset OMP_PROC_BIND
+  unset OMP_PLACES
+
+command: 'make CUSTOM_PREPROCESSOR_VARS_NUMA="$CUSTOM_PREPROCESSOR_VARS_NUMA" CFLAGS="$CFLAGS" stream_numa'
+postprocess: 'mv stream_numa "../bin/{isa}/$BIN_NAME" && mkdir -p "$SBATCHMAN_JOB_DIR/{isa}"; {compiler_disass[compiler]} "../bin/{isa}/$BIN_NAME" > "$SBATCHMAN_JOB_DIR/{isa}/$BIN_NAME".asm'
+check: '[[ -f "../bin/{isa}/$BIN_NAME" ]]'
+
+
+jobs:
+  - config: "{compiler}__{compiler_opt[compiler]}__{compiler_extra_flags_name[compiler]}__{blas_lib}__4"
+    config_jobs:
+      - tag: "compile_stream_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}"
+        category: "compile"
