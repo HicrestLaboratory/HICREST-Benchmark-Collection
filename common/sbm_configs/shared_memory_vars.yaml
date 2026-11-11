@@ -350,7 +350,7 @@ blaslib_path:
         dalek-minix:        ['$HOME/software_env/OpenBLAS/x86_64/ZEN/v0.3.34']
         MN5-GPP:            ['$HOME/software_env/OpenBLAS/x86_64/SAPPHIRERAPIDS/v0.3.34']
         MN5-GRACE:          ['$HOME/software_env/OpenBLAS/aarch64/NEOVERSEV2/v0.3.34']
-        isarco-epyc9135:    ['']
+        isarco-epyc9135:    ['$HOME/software_env/OpenBLAS/x86_64/ZEN/v0.3.34']
     blis:
       default:              ['$HOME/software_env/blis/riscv64/rv64iv/2.1'] # RVV1.0
       per_cluster:
@@ -361,7 +361,7 @@ blaslib_path:
         dalek-minix:        ['$HOME/software_env/blis/x86_64/zen/2.1']
         MN5-GPP:            ['$HOME/software_env/blis/x86_64/auto/2.1']
         MN5-GRACE:          ['$HOME/software_env/blis/aarch64/auto/2.1']
-        isarco-epyc9135:    ['']
+        isarco-epyc9135:    ['$HOME/software_env/blis/x86_64/zen3/2.1']
 
 
 blaslib_filename:

@@ -62,6 +62,7 @@ if [[ -z "${ARCH}" ]]; then
     echo "  jtsonx"
     echo "  minix"
     echo "  oh5"
+    echo "  epyc9135"
     echo "  <generic>"
     echo
     echo "Use -h or --help for option details."
@@ -293,6 +294,44 @@ case "${ARCH}" in
 
         OPENBLAS_TARGET="HASWELL"
         BLIS_TARGET="haswell"
+
+        CC="${HOME}/software_env/gcc/x86_64/16.1.0/bin/gcc"
+        CXX="${HOME}/software_env/gcc/x86_64/16.1.0/bin/g++"
+
+        COMPILER_INC="${HOME}/software_env/gcc/x86_64/16.1.0/include"
+        COMPILER_LIB="${HOME}/software_env/gcc/x86_64/16.1.0/lib"
+
+        # Intel oneAPI / MKL
+        MKL_VERSION="2026.1.0"
+        MKL_PREFIX="${SOFTWARE_ENV}/intel-mkl"
+
+        MKL_INSTALLER="intel-oneapi-toolkit-2026.1.0.192_offline.sh"
+        MKL_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/33cb2a22-ddf1-4aa9-8d68-1f5a118acaf2/${MKL_INSTALLER}"
+
+        if [[ ! -d "${MKL_PREFIX}" ]]; then
+            wget -O "${MKL_INSTALLER}" "${MKL_URL}"
+
+            sh "./${MKL_INSTALLER}" \
+                -a \
+                --silent \
+                --eula accept \
+                --install-dir "${MKL_PREFIX}"
+
+            rm -f "${MKL_INSTALLER}"
+        fi
+
+        EXTRA_INC="${MKL_PREFIX}/mkl/latest/include:${COMPILER_INC}"
+        EXTRA_LIB="${MKL_PREFIX}/mkl/latest/lib/intel64:${COMPILER_LIB}"
+
+        CFLAGS="-I${MKL_PREFIX}/mkl/latest/include"
+        CXXFLAGS="-I${MKL_PREFIX}/mkl/latest/include"
+        LDFLAGS="-L${MKL_PREFIX}/mkl/latest/lib/intel64 -L${COMPILER_LIB}"
+
+        ;;
+    epyc9135)
+
+        OPENBLAS_TARGET="ZEN"
+        BLIS_TARGET="zen3"
 
         CC="${HOME}/software_env/gcc/x86_64/16.1.0/bin/gcc"
         CXX="${HOME}/software_env/gcc/x86_64/16.1.0/bin/g++"
