@@ -17,7 +17,7 @@ stream_f: stream.f mysecond.o
 stream_c: stream.c
 	$(CC) $(CFLAGS) $(CUSTOM_PREPROCESSOR_VARS) stream.c -o $@
 
-stream_numa: numa_aware_stream.c
+stream_numa:
 	$(CC) $(CFLAGS) $(CUSTOM_PREPROCESSOR_VARS_NUMA) stream_numa.c -lnuma -lm -o $@
 
 clean:

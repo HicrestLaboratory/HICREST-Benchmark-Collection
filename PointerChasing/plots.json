@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "activeTabIndex": 3,
+  "activeTabIndex": 0,
   "tabs": [
     {
       "version": 3,
@@ -37,7 +37,7 @@
       "grid": {
         "rows": 1,
         "cols": 2,
-        "activePanelIndex": 0,
+        "activePanelIndex": 1,
         "panels": [
           {
             "database": "data",
@@ -55,7 +55,7 @@
             "yLabel": "Latency (ns)",
             "xLabelHidden": false,
             "yLabelHidden": false,
-            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return f'{value:.0f}'\n    return format_bytes(value, precision=0)\n",
             "legendFieldSeparator": " | ",
             "legendFieldFormat": "{value}",
             "showLegend": true,
@@ -84,7 +84,7 @@
             "xLabel": "Array Size",
             "xLabelHidden": false,
             "yLabelHidden": true,
-            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return f'{value:.0f}'\n    return format_bytes(value, precision=0)\n",
             "legendFieldSeparator": " | ",
             "legendFieldFormat": "{value}",
             "showLegend": true,
@@ -139,7 +139,27 @@
           "#A65628",
           "#F781BF",
           "#999999"
-        ]
+        ],
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
       }
     },
     {
@@ -233,8 +253,8 @@
         ],
         "figureWidth": 0,
         "figureHeight": 0,
-        "subplotWidth": "3",
-        "subplotHeight": "4",
+        "subplotWidth": 3,
+        "subplotHeight": 4,
         "facetLabelFormat": "{value}"
       },
       "style": {
@@ -256,7 +276,27 @@
           "#A65628",
           "#F781BF",
           "#999999"
-        ]
+        ],
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
       }
     },
     {
@@ -294,7 +334,7 @@
       "grid": {
         "rows": 1,
         "cols": 2,
-        "activePanelIndex": 0,
+        "activePanelIndex": 1,
         "panels": [
           {
             "database": "data",
@@ -312,7 +352,7 @@
             "yLabel": "Latency (ns)",
             "xLabelHidden": false,
             "yLabelHidden": false,
-            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return f'{value:.0f}'\n    return format_bytes(value, precision=0)\n",
             "legendFieldSeparator": " | ",
             "legendFieldFormat": "{value}",
             "showLegend": true,
@@ -341,7 +381,7 @@
             "xLabel": "Array Size",
             "xLabelHidden": false,
             "yLabelHidden": true,
-            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return value\n    return format_bytes(value, precision=0)\n",
+            "tickFormatter": "from utils.plots import format_bytes\ndef format_tick(value, axis):\n    if axis == 'y' and value > 0:\n        return f'{value:.0f}'\n    return format_bytes(value, precision=0)\n",
             "legendFieldSeparator": " | ",
             "legendFieldFormat": "{value}",
             "showLegend": true,
@@ -396,7 +436,27 @@
           "#A65628",
           "#F781BF",
           "#999999"
-        ]
+        ],
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
       }
     },
     {
@@ -490,8 +550,8 @@
         ],
         "figureWidth": 0,
         "figureHeight": 0,
-        "subplotWidth": "3",
-        "subplotHeight": "4",
+        "subplotWidth": 3,
+        "subplotHeight": 4,
         "facetLabelFormat": "{value}"
       },
       "style": {
@@ -513,7 +573,27 @@
           "#A65628",
           "#F781BF",
           "#999999"
-        ]
+        ],
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
       }
     }
   ],
@@ -536,7 +616,27 @@
       "#A65628",
       "#F781BF",
       "#999999"
-    ]
+    ],
+    "category_style_map": {
+      "color": {
+        "by_field": {
+          "system": {
+            "Milk-V Pioneer": "#FFB300",
+            "Banana Pi F3": "#4A148C",
+            "SpacemiT K3 Pico": "#BA68C8",
+            "Jetson Orin NX": "#1B5E20",
+            "Hardkernel Odroid H5": "#29B6F6",
+            "AMD Zen 4": "#0D47A1",
+            "Raspberry Pi 5": "#8BC34A",
+            "SG2042": "#D84315",
+            "SG2044": "#FF6D00",
+            "Intel Sapphire Rapids": "#880E4F",
+            "Grace": "#00897B",
+            "AMD EPYC 9135": "#FF5252"
+          }
+        }
+      }
+    }
   },
   "script_paths": [
     "../common"

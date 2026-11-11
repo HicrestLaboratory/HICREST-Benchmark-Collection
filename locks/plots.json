@@ -31,7 +31,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT *, system AS cluster\nFROM all_results\nWHERE blas_lib=\"none\" \n      AND internal_run_time_s=60\n      AND ncpus>1",
+            "sql": "SELECT *, system AS cluster\nFROM all_results\nWHERE blas_lib=\"none\" AND internal_run_time_s=60",
             "plotType": "line",
             "x": "ncpus",
             "y": [
@@ -56,6 +56,7 @@
               "marker": true
             },
             "transformScript": "from constants.systems import set_system_column\nset_system_column(df)",
+            "layoutScript": "def customize_matplotlib(fig, ax, config):\n    add_zoom_inset(\n        ax,\n        zoom_region=(0.5, 8.5, -0.1e9, 1.1e9),  # x1, x2, y1, y2\n        inset_position=(0.45, 0.3, 0.5, 0.6),  # x, y, width, height\n        draw_rect=True,\n        rect_scaling=1.0,\n        zoom_ax_kwargs={\n            'grid': {'visible': True, 'alpha': 0.25},\n            'tick_params': {'labelsize': 7},\n        },\n    )",
             "errorStyle": "bars"
           }
         ],
@@ -82,7 +83,7 @@
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 4,
-        "subplotHeight": "3",
+        "subplotHeight": 3,
         "facetLabelFormat": "{value}"
       },
       "style": {

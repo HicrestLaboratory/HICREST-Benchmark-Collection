@@ -12,6 +12,7 @@ BOARD_NAMES_MAP = {
   'mc-SG2042': 'SG2042',
   'MN5-GRACE': 'Grace',
   'MN5-GPP': 'Intel Sapphire Rapids',
+  'isarco-epyc9135': 'AMD EPYC 9135',
   'isarco': 'AMD EPYC 9135',
 }
 BOARD_SHORT_NAMES_MAP = {

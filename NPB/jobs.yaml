@@ -1,7 +1,6 @@
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
-  - "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
   - "vars.yaml"
 
 

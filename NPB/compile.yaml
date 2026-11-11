@@ -3,7 +3,6 @@ sequential: true
 configs: "../common/sbm_configs/shared_memory.yaml"
 include_variables:
   - "../common/sbm_configs/shared_memory_vars.yaml"
-  - "../common/sbm_configs/shared_memory_only_one_compiler_flags_set.yaml"
   - "vars.yaml"
 
 
@@ -11,6 +10,10 @@ preprocess: |
   mkdir -p bin/{isa}
   cd NPB-OMP
   rm config/make.def
+  UCC="{compiler_cxx[compiler]}"
+  if [[ "$(basename $UCC)" == "clang++" ]]; then
+    UCC="gcc"
+  fi
   cat > config/make.def<< EOF
   # ===========================================================================
   # NAS Parallel Benchmarks 3.4
@@ -38,7 +41,7 @@ preprocess: |
   # Utilities C compiler (for scripts and small helpers)
   # ---------------------------------------------------------------------------
 
-  UCC = gcc
+  UCC = $UCC
 
   # ---------------------------------------------------------------------------
   # Executable output directory

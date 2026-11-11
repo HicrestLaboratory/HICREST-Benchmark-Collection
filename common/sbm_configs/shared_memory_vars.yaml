@@ -29,6 +29,9 @@ ncpus:
     MN5-GPP:            [1, 2, 4, 8, 16, 32, 56, 64, 112]
     MN5-GRACE:          [1, 2, 4, 8, 16, 32, 56, 64, 72, 144]
 
+    # Isarco
+    isarco-epyc9135:    [1, 2, 4, 8, 16, 32]
+
 isa:
   per_cluster:
     debug:              ['x86']
@@ -55,6 +58,9 @@ isa:
     # Mare5
     MN5-GPP:            ['x86']
     MN5-GRACE:          ['arm']
+
+    # Isarco
+    isarco-epyc9135:    ['x86']
 
 
 ########################
@@ -90,6 +96,7 @@ compiler_c:
         dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/bin/gcc']
         MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/bin/gcc']
         MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/bin/gcc']
+        isarco-epyc9135:    ['$HOME/software_env/gcc/x86_64/16.1.0/bin/gcc']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/bin/clang']
@@ -101,6 +108,8 @@ compiler_c:
         dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang']
         MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang']
         MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang']
+        isarco-epyc9135:    ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang']
+
 
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/bin/clang']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/bin/clang']
@@ -118,6 +127,7 @@ compiler_cxx:
         dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/bin/g++']
         MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/bin/g++']
         MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/bin/g++']
+        isarco-epyc9135:    ['$HOME/software_env/gcc/x86_64/16.1.0/bin/g++']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/bin/clang++']
@@ -129,6 +139,7 @@ compiler_cxx:
         dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang++']
         MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang++']
         MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/bin/clang++']
+        isarco-epyc9135:    ['$HOME/software_env/clang/x86_64/23.1.0/bin/clang++']
         
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/bin/clang++']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/bin/clang++']
@@ -150,6 +161,7 @@ ld_library_path_compiler:
         dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
         MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
         MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/lib:$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0']
+        isarco-epyc9135:    ['$HOME/software_env/gcc/x86_64/16.1.0/lib:$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/lib']
@@ -161,6 +173,7 @@ ld_library_path_compiler:
         dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
         MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
         MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/lib']
+        isarco-epyc9135:    ['$HOME/software_env/clang/x86_64/23.1.0/lib:$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu']
 
     clang_epi_rvv1:
       per_cluster:
@@ -194,6 +207,9 @@ compiler_system_lib:
     # MN5-GPP:            ['']
     # MN5-GRACE:          ['']
 
+    # Isarco
+    isarco-epyc9135:      ['/usr/lib/gcc/x86_64-redhat-linux/11/']
+
 
 compiler_system_include:
   per_cluster:
@@ -211,6 +227,7 @@ openmp_library_path:
         dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/libgomp.so']
         MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/libgomp.so']
         MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0/libgomp.so']
+        isarco-epyc9135:    ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/libgomp.so']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/lib/libomp.so']
@@ -221,6 +238,7 @@ openmp_library_path:
         dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu/libomp.so']
         MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu/libomp.so']
         MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/lib/libomp.so']
+        isarco-epyc9135:    ['$HOME/software_env/clang/x86_64/23.1.0/lib/x86_64-unknown-linux-gnu/libomp.so']
 
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/lib/libomp.so']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/lib/libomp.so']
@@ -236,6 +254,7 @@ openmp_include_path:
         dalek-minix:        ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/include']
         MN5-GPP:            ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/include']
         MN5-GRACE:          ['$HOME/software_env/gcc/aarch64/16.1.0/lib/gcc/aarch64-conda-linux-gnu/16.1.0/include']
+        isarco-epyc9135:    ['$HOME/software_env/gcc/x86_64/16.1.0/lib/gcc/x86_64-conda-linux-gnu/16.1.0/include']
 
     clang:
       default: ['$HOME/software_env/clang/riscv64/23.1.0/include']
@@ -246,6 +265,7 @@ openmp_include_path:
         dalek-minix:        ['$HOME/software_env/clang/x86_64/23.1.0/include']
         MN5-GPP:            ['$HOME/software_env/clang/x86_64/23.1.0/include']
         MN5-GRACE:          ['$HOME/software_env/clang/aarch64/23.1.0/include']
+        isarco-epyc9135:    ['$HOME/software_env/clang/x86_64/23.1.0/include']
 
     clang_epi_rvv1:   ['$HOME/software_env/llvm-EPI/riscv64/rvv1/include']
     clang_epi_rvv071: ['$HOME/software_env/llvm-EPI/riscv64/rvv071/include']
@@ -330,6 +350,7 @@ blaslib_path:
         dalek-minix:        ['$HOME/software_env/OpenBLAS/x86_64/ZEN/v0.3.34']
         MN5-GPP:            ['$HOME/software_env/OpenBLAS/x86_64/SAPPHIRERAPIDS/v0.3.34']
         MN5-GRACE:          ['$HOME/software_env/OpenBLAS/aarch64/NEOVERSEV2/v0.3.34']
+        isarco-epyc9135:    ['']
     blis:
       default:              ['$HOME/software_env/blis/riscv64/rv64iv/2.1'] # RVV1.0
       per_cluster:
@@ -340,6 +361,7 @@ blaslib_path:
         dalek-minix:        ['$HOME/software_env/blis/x86_64/zen/2.1']
         MN5-GPP:            ['$HOME/software_env/blis/x86_64/auto/2.1']
         MN5-GRACE:          ['$HOME/software_env/blis/aarch64/auto/2.1']
+        isarco-epyc9135:    ['']
 
 
 blaslib_filename:
@@ -381,6 +403,7 @@ energy_measure_start:
     mc-SG2044:          ["export EXAMON_START_TS=$(date +%s%3N)"]
     MN5-GPP:            [""]
     MN5-GRACE:          [""]
+    isarco-epyc9135:    [""]
 
 energy_measure_stop:
   per_cluster:
@@ -398,9 +421,12 @@ energy_measure_stop:
     mc-SG2044:          ['python3.10 ../common/energy/examon_query.py "$EXAMON_START_TS" "$(date +%s%3N)"']
     MN5-GPP:            ['[ -f "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" ] && mv "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
     MN5-GRACE:          ['[ -f "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
+    MN5-GRACE:          ['[ -f "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
+    isarco-epyc9135:    ['[ -f "./energy_measures/${SBATCHMAN_JOB_TAG}/timechart.csv" ] && mv "./energy_measures/${SBATCHMAN_JOB_TAG}/timechart.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
 
 energy_measure_before_exec:
   per_cluster:
     default:           [""]
     MN5-GPP:           ["srun erun --ear=on --ear-verbose=1 --force --ear-user-db=metrics_gpp_sbatch --ear-tag=threads --program="]
     MN5-GRACE:         ["srun --cpu-bind=cores ${EAR_ROOT}/bin/erun --ear=on --ear-user-db=metrics_grace_sbatch --program="]
+    isarco-epyc9135:   ['/opt/AMDuProf_6.0-1520/bin/AMDuProfCLI timechart --event power --interval 200 -o "./energy_measures/$SBATCHMAN_JOB_TAG" ']
