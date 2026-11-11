@@ -403,7 +403,6 @@ isarco-epyc9135:
         - "CXX={compiler_cxx[compiler]}"
         - 'CFLAGS="{compiler_opt[compiler]} {compiler_common[compiler]} {compiler_march} {compiler_extra_flags[compiler_extra_flags_name]}"'
         - "OMP_NUM_THREADS={ncpus}"
-      custom_headers:
-        - 'export LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
-        - 'export LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
-        - 'export C_INCLUDE_PATH="{compiler_system_include}"'
+        - 'LD_LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'LIBRARY_PATH="{ld_library_path_compiler[compiler]}:{compiler_system_lib}"'
+        - 'C_INCLUDE_PATH="{compiler_system_include}"'
