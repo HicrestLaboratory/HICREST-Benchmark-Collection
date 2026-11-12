@@ -13,5 +13,5 @@ jobs:
       - tag: "lock_{lock}_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}"
         category: "{lock}"
         preprocess: "{energy_measure_start}"
-        command: "bin/{isa}/{lock}_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]} {ncpus} {internal_run_time_s} {nruns}"
+        command: "{energy_measure_before_exec}bin/{isa}/{lock}_{compiler}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]} {ncpus} {internal_run_time_s} {nruns}"
         postprocess: "{energy_measure_stop}"

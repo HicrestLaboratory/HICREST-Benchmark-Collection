@@ -14,20 +14,20 @@ jobs:
 
       # linear-chase
       - tag: "linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{linear_chase_max_stride}"
-        command: "./bin/{isa}/linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{linear_chase_max_stride}"
+        command: "{energy_measure_before_exec}./bin/{isa}/linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{linear_chase_max_stride}"
         category: "linear-chase"
 
       # fused-linear-chase
       - tag: "fused-linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_linear_chase_max_stride}"
-        command: "./bin/{isa}/fused-linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_linear_chase_max_stride}"
+        command: "{energy_measure_before_exec}./bin/{isa}/fused-linear-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_linear_chase_max_stride}"
         category: "fused-linear-chase"
 
       # random-chase
       - tag: "random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{random_chase_max_size}"
-        command: "./bin/{isa}/random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{random_chase_max_size}"
+        command: "{energy_measure_before_exec}./bin/{isa}/random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{random_chase_max_size}"
         category: "random-chase"
 
       # fused-random-chase
       - tag: "fused-random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_random_chase_max_size}"
-        command: "./bin/{isa}/fused-random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_random_chase_max_size}"
+        command: "{energy_measure_before_exec}./bin/{isa}/fused-random-chase_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{fused_random_chase_max_size}"
         category: "fused-random-chase"

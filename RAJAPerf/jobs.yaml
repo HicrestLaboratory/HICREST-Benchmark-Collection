@@ -13,7 +13,7 @@ variables:
 jobs:
   - config: "{partition}__{compiler}__{libs}__{ncpus}"
     command: >
-      build_{compiler}_default/bin/raja-perf.exe
+      {energy_measure_before_exec}build_{compiler}_default/bin/raja-perf.exe
       -v Base_Seq Base_OpenMP RAJA_Seq RAJA_OpenMP
       --outdir ./results/{compiler}/{libs}/{ncpus}cpus
     config_jobs:

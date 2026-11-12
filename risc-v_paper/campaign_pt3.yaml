@@ -21,7 +21,6 @@ apps:
         parallel_clusters: false
       - name: jobs
         jobs: jobs_numa.yaml
-        jobs_args: '-v ncpus=8'
 
   - name: cachebfs
     dir: ../CacheBFS

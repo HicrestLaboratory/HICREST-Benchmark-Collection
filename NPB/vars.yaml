@@ -7,8 +7,15 @@ benchmark:
 
 class:
   map:
-    default: ['A']
-
+    default:
+      per_cluster:
+        default:          ['A']
+        mc-SG2042:        ['C']
+        mc-SG2044:        ['C']
+        MN5-GPP:          ['C']
+        MN5-GRACE:        ['C']
+        isarco-epyc9135:  ['C']
+        bsc-hca-pioneer:  ['C']
 
 compiler_extra_flags_name:
   map:

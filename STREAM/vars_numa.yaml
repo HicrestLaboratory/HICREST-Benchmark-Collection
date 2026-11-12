@@ -1,10 +1,28 @@
 data_type:
-  - "double"
-  - "float"
+  - "DOUBLE"
+  - "FLOAT"
+  - "INT32"
+  - "UINT32"
 
 compiler_extra_flags_name:
   map:
     gcc:                ['autovec_gcc', 'novec_gcc']
     clang:              ['autovec_clang', 'novec_clang']
     clang_epi_rvv1:     ['autovec_clang_epi_rvv1', 'novec_clang_epi_rvv1']
-    clang_epi_rvv071:   ['autovec_clang_epi_rvv071', 'novec_clang_epi_rvv071']
+    clang_epi_rvv071:
+      per_cluster:
+        default:          ['autovec_clang_epi_rvv071', 'novec_clang_epi_rvv071'] 
+        mc-SG2042:        ['novec_clang_epi_rvv071'] # NOT WORKING 'autovec_clang_epi_rvv071'
+        bsc-hca-pioneer:  ['novec_clang_epi_rvv071'] # NOT WORKING 'autovec_clang_epi_rvv071'
+
+nonuma:
+    per_cluster:
+      default:            [0]
+      dalek-mono-bpi-f3:  [1]
+      dalek-mono-sip-k3:  [1]
+      dalek-mono-jts-onx: [1]
+      dalek-mono-oh5:     [1]
+      dalek-minix:        [1]
+      dalek-mono-rpi-5b:  [1]
+      # mc-SG2044:          [1]
+    

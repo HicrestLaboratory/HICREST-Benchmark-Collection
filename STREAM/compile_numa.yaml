@@ -6,20 +6,20 @@ include_variables:
   - "../common/sbm_configs/shared_memory_only_one_compiler.yaml"
   - "vars_numa.yaml"
 
-
 preprocess: |
   mkdir -p bin/{isa}
   cd STREAM
   make clean
-  CUSTOM_PREPROCESSOR_VARS_NUMA="-I{compiler_system_include} -L{compiler_system_lib}"
-  if [[ "{data_type}" == "float" ]]; then
-    CUSTOM_PREPROCESSOR_VARS_NUMA+=" -DSTREAM_TYPE_FLOAT=1"
+  CUSTOM_PREPROCESSOR_VARS_NUMA="-DSTREAM_TYPE_{data_type} -I{compiler_system_include} -L{compiler_system_lib}"
+  NONUMA=0
+  EXEC_NAME="stream_numa"
+  if [[ "{nonuma}" == 1 ]]; then
+    NONUMA=1
+    EXEC_NAME="stream_nonuma"
   fi
-  BIN_NAME="stream_numa_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}"
-  unset OMP_PROC_BIND
-  unset OMP_PLACES
+  BIN_NAME="${EXEC_NAME}_{compiler}_{isa}_{compiler_opt[compiler]}_{compiler_extra_flags_name[compiler]}_{data_type}"
 
-command: 'make CUSTOM_PREPROCESSOR_VARS_NUMA="$CUSTOM_PREPROCESSOR_VARS_NUMA" CFLAGS="$CFLAGS" stream_numa'
+command: 'make NONUMA="$NONUMA" CUSTOM_PREPROCESSOR_VARS_NUMA="$CUSTOM_PREPROCESSOR_VARS_NUMA" CFLAGS="$CFLAGS" stream_numa'
 postprocess: 'mv stream_numa "../bin/{isa}/$BIN_NAME" && mkdir -p "$SBATCHMAN_JOB_DIR/{isa}"; {compiler_disass[compiler]} "../bin/{isa}/$BIN_NAME" > "$SBATCHMAN_JOB_DIR/{isa}/$BIN_NAME".asm'
 check: '[[ -f "../bin/{isa}/$BIN_NAME" ]]'
 

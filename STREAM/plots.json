@@ -1,115 +1,27 @@
 {
   "version": 3,
-  "activeTabIndex": 2,
+  "activeTabIndex": 0,
   "tabs": [
     {
       "version": 3,
-      "label": "Copy GCC",
-      "mode": "single",
-      "rendererBackend": "matplotlib",
-      "database": "data",
-      "sql": "SELECT system, array_mem_mb, compiler, compiler_extra_flags_name AS flags, compiler_opt, data_type, ncpus, copy_rate_mb_s\nFROM stream\nWHERE system=\"dalek-mono-rpi-5b\"\nORDER BY data_type, ncpus",
-      "plotType": "line",
-      "columns": [
-        "system",
-        "array_mem_mb",
-        "compiler",
-        "flags",
-        "compiler_opt",
-        "data_type",
-        "ncpus",
-        "copy_rate_mb_s"
-      ],
-      "chartTitle": "Copy GCC",
-      "x": "ncpus",
-      "y": [
-        "copy_rate_mb_s"
-      ],
-      "group": [
-        "data_type",
-        "flags"
-      ],
-      "dashBy": "data_type",
-      "showLegend": true,
-      "errorStyle": "bars"
-    },
-    {
-      "version": 3,
-      "label": "AllKernels",
-      "mode": "grid",
-      "rendererBackend": "matplotlib",
-      "single": {
-        "database": "data",
-        "sql": "",
-        "plotType": "line",
-        "showLegend": true,
-        "errorStyle": "bars"
-      },
-      "grid": {
-        "rows": 1,
-        "cols": 1,
-        "activePanelIndex": 0,
-        "panels": [
-          {
-            "database": "data",
-            "sql": "SELECT system, array_mem_mb, compiler, compiler_extra_flags_name AS flags, compiler_opt, data_type, ncpus, copy_rate_mb_s\nFROM stream\nORDER BY data_type, ncpus",
-            "plotType": "line",
-            "columns": [
-              "system",
-              "array_mem_mb",
-              "compiler",
-              "flags",
-              "compiler_opt",
-              "data_type",
-              "ncpus",
-              "copy_rate_mb_s"
-            ],
-            "x": "ncpus",
-            "y": [
-              "copy_rate_mb_s"
-            ],
-            "group": [
-              "data_type"
-            ],
-            "markerBy": "flags",
-            "dashBy": "system",
-            "xScale": "log2",
-            "showLegend": true,
-            "transformScript": "def map_compiler_flags_names(flags_name):\n  if 'autovec' in flags_name:\n    return 'autovec'\n  elif 'novec' in flags_name:\n    return 'novec'\n  return flags_name\n\ndata['stream']['flags'] = data['stream']['compiler_extra_flags_name'].map(map_compiler_flags_names)\n\ndata['result'] = data['stream']",
-            "errorStyle": "bars"
-          }
-        ],
-        "shareX": false,
-        "shareY": false,
-        "xgap": 0.2,
-        "ygap": 0.24,
-        "panelLabels": false,
-        "facetByGroup": true,
-        "legendPosition": "top",
-        "legendTitle": "",
-        "showLegend": true,
-        "shareLegend": true,
-        "facetGroupCols": [],
-        "facetAxis": "cols",
-        "facetCount": 2,
-        "groupBy": [],
-        "figureWidth": 0,
-        "figureHeight": 0,
-        "subplotWidth": 4,
-        "subplotHeight": 3.3,
-        "facetLabelFormat": "{column}={value}"
-      }
-    },
-    {
-      "version": 3,
-      "label": "CopyOneSystem",
+      "label": "Test",
       "mode": "facet",
       "rendererBackend": "matplotlib",
       "single": {
         "database": "data",
         "sql": "",
         "plotType": "line",
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
         "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
         "errorStyle": "bars"
       },
       "grid": {
@@ -119,66 +31,94 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT system, array_mem_mb, compiler, compiler_extra_flags_name AS flags, compiler_opt, data_type, ncpus, copy_rate_mb_s, add_rate_mb_s, scale_rate_mb_s, triad_rate_mb_s\nFROM stream\nWHERE system=\"dalek-mono-rpi-5b\"\nORDER BY data_type, ncpus",
+            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup' AND system != 'isarco-epyc9135'",
             "plotType": "line",
-            "columns": [
-              "system",
-              "array_mem_mb",
-              "compiler",
-              "flags",
-              "compiler_opt",
-              "data_type",
-              "ncpus",
-              "copy_rate_mb_s",
-              "add_rate_mb_s",
-              "scale_rate_mb_s",
-              "triad_rate_mb_s"
-            ],
-            "x": "ncpus",
+            "x": "threads",
             "y": [
-              "copy_rate_mb_s",
-              "add_rate_mb_s",
-              "scale_rate_mb_s",
-              "triad_rate_mb_s"
+              "GBps"
             ],
             "group": [
-              "flags",
-              "data_type"
+              "system"
             ],
-            "xLabel": "Cores",
-            "yLabel": "MB/s",
+            "dashBy": [
+              "group",
+              "config"
+            ],
+            "yLabel": "Bandwidth [GB/s]",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
             "xScale": "log2",
             "xTickFmt": ".0f",
-            "legendOrientation": "horizontal",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
+            "legendRows": 5,
             "showLegend": true,
+            "shortLegend": false,
+            "shortLegendLabels": {
+              "color": true,
+              "linestyle": true,
+              "marker": true
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\nset_system_column(df)\ndf = agg.summarize(df, ['system', 'compiler', 'compiler_extra_flags_name', 'compiler_opt', 'data_type', 'group', 'config', 'kernel', 'threads'], 'GBps')",
+            "errorY": "GBps_err",
             "errorStyle": "bars"
           }
         ],
-        "shareX": false,
-        "shareY": true,
-        "xgap": "0",
+        "shareX": true,
+        "shareY": false,
+        "shareXMode": "both",
+        "shareYMode": "label",
+        "xgap": 0.2,
         "ygap": 0.24,
         "panelLabels": false,
-        "facetByGroup": true,
+        "facetByGroup": false,
         "legendPosition": "top",
         "legendTitle": "",
         "showLegend": true,
         "shareLegend": true,
         "facetGroupCols": [
-          "flags",
-          "data_type"
+          "kernel"
         ],
         "facetAxis": "cols",
         "facetCount": 2,
         "groupBy": [
-          "flags",
-          "data_type"
+          "kernel"
         ],
         "figureWidth": 0,
         "figureHeight": 0,
-        "subplotWidth": 6,
-        "subplotHeight": 4,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
         "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 12,
+        "tick_size": 11,
+        "legend_size": 11,
+        "title_size": 14,
+        "line_width": 2,
+        "marker_size": 7,
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
       }
     }
   ],
@@ -190,6 +130,29 @@
     "legend_size": 11,
     "title_size": 14,
     "line_width": 2,
-    "marker_size": 7
-  }
+    "marker_size": 7,
+    "category_style_map": {
+      "color": {
+        "by_field": {
+          "system": {
+            "Milk-V Pioneer": "#FFB300",
+            "Banana Pi F3": "#4A148C",
+            "SpacemiT K3 Pico": "#BA68C8",
+            "Jetson Orin NX": "#1B5E20",
+            "Hardkernel Odroid H5": "#29B6F6",
+            "AMD Zen 4": "#0D47A1",
+            "Raspberry Pi 5": "#8BC34A",
+            "SG2042": "#D84315",
+            "SG2044": "#FF6D00",
+            "Intel Sapphire Rapids": "#880E4F",
+            "Grace": "#00897B",
+            "AMD EPYC 9135": "#FF5252"
+          }
+        }
+      }
+    }
+  },
+  "script_paths": [
+    "../common"
+  ]
 }

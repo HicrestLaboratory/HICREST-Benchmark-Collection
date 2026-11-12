@@ -72,8 +72,24 @@ def _remove_ncm_logs(stdout: str) -> str:
     return '\n'.join(res)
 
 
+def _remove_amduprof_logs(stdout: str) -> str:
+    res = []
+    for s in stdout.splitlines():
+        if s.startswith((
+            '/opt/AMDuProf',
+            'Profiling started...',
+            'Profile Elapse ',
+            'Profile finished',
+            'Generated data files path:',
+            'Live Profile Output file :',
+        )):
+            continue
+        res.append(s)
+    return '\n'.join(res)
+
+
 def remove_energy_logs(stdout: str) -> str:
-    return _remove_ncm_logs(_remove_examon_logs(stdout))
+    return _remove_ncm_logs(_remove_examon_logs(_remove_amduprof_logs(stdout)))
 
 
 def remove_useless_job_meta(data: dict) -> dict:
