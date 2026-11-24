@@ -7,9 +7,10 @@
  * How it works
  * ------------
  * The three STREAM arrays are cut into one slice per NUMA node.  The threads
- * pinned to node N always work on slice N, so every configuration does the
- * same work with the same threads.  The only thing that changes from one
- * configuration to the next is which node's memory holds each slice:
+ * pinned to node N always work on slice N, and every thread gets the same
+ * number of elements, so every configuration does the same work with the same
+ * threads.  The only thing that changes from one configuration to the next is
+ * which node's memory holds each slice:
  *
  *   aware       slice N is on node N (every node uses its own memory)
  *   remote+K    slice N is on node (N+K) mod nodes (every access is remote)
@@ -69,8 +70,20 @@
  *   ./numa_aware_stream -m pairs -c 0    node 0 threads against every node
  *   ./numa_aware_stream -m system        all nodes at once
  *   ./numa_aware_stream -T 16            at most 16 threads per node
+ *   ./numa_aware_stream -N 8             8 threads in all, node 0 filled first
+ *   ./numa_aware_stream -N 8 --fill spread   8 threads dealt out over the nodes
  *   ./numa_aware_stream -v               full log (see below)
  *   ./numa_aware_stream -h               all options
+ *
+ * Number of threads
+ * -----------------
+ * Without options every usable CPU gets a thread.  -T limits the threads per
+ * node, the same number on every node.  -N gives the total for the machine,
+ * for a scaling sweep such as 1, 2, 4, ... threads; --fill says how they are
+ * handed out: "compact" (the default) fills one node before it starts the
+ * next, "spread" gives the nodes one thread at a time in turn.  A node always
+ * uses whole cores before SMT siblings.  With -N the nodes can have different
+ * numbers of threads; a node's slice is then proportional to its threads.
  *
  * Output
  * ------
@@ -194,7 +207,9 @@ struct options {
     size_t elements;            /* per array, summed over all slices */
     int    iterations;
     int    warmup;              /* leading iterations left out of the result */
-    int    threads_per_node;    /* 0 = every usable CPU */
+    int    threads_per_node;    /* -T; 0 = every usable CPU */
+    int    total_threads;       /* -N; 0 = not given */
+    bool   spread;              /* --fill spread: deal the -N threads out over the nodes */
     int    source_node;         /* pairs mode: -1 = every node */
     bool   run_system;
     bool   run_pairs;
@@ -229,6 +244,7 @@ struct config {
 
 struct slice {
     elem_t *a, *b, *c;
+    size_t  elements;       /* in each of the three arrays */
 };
 
 struct worker {
@@ -502,6 +518,47 @@ static int order_cores_first(int *cpus, int count)
     return num_cores;
 }
 
+/*
+ * -N: hand the requested number of threads out to the nodes.  "compact" fills
+ * a node before it starts the next one, "spread" gives the nodes one thread at
+ * a time in turn.  The CPU lists have the cores first, so either way a node
+ * uses whole cores before SMT siblings.
+ */
+static void distribute_threads(void)
+{
+    int *wanted = xcalloc(num_nodes, sizeof(int));
+    int usable = 0;
+    int left = opt.total_threads;
+
+    for (int n = 0; n < num_nodes; n++)
+        usable += nodes[n].num_cpus;
+    if (opt.total_threads > usable)
+        die("-N %d: this machine has only %d usable CPUs", opt.total_threads, usable);
+
+    if (opt.spread) {
+        while (left > 0) {
+            for (int n = 0; n < num_nodes && left > 0; n++) {
+                if (wanted[n] < nodes[n].num_cpus) {
+                    wanted[n]++;
+                    left--;
+                }
+            }
+        }
+    } else {
+        for (int n = 0; n < num_nodes; n++) {
+            wanted[n] = left < nodes[n].num_cpus ? left : nodes[n].num_cpus;
+            left -= wanted[n];
+        }
+    }
+
+    for (int n = 0; n < num_nodes; n++) {
+        nodes[n].num_cpus = wanted[n];
+        if (nodes[n].num_cores > wanted[n])
+            nodes[n].num_cores = wanted[n];
+    }
+    free(wanted);
+}
+
 static void discover_topology(void)
 {
     cpu_set_t allowed, on_node;
@@ -534,6 +591,9 @@ static void discover_topology(void)
                 node->num_cores = node->num_cpus;
         }
     }
+
+    if (opt.total_threads > 0)
+        distribute_threads();
 }
 
 static void print_topology(void)
@@ -562,7 +622,7 @@ static void print_topology(void)
         if (nodes[n].num_cpus == 0)
             nodes_without_cpus++;
     }
-    if (nodes_without_cpus > 0)
+    if (nodes_without_cpus > 0 && opt.total_threads == 0)
         fprintf(info, "Note: %d of the %d nodes have no CPUs this program may use "
                 "(memory-only nodes, or a restricted CPU affinity).\n",
                 nodes_without_cpus, num_nodes);
@@ -687,40 +747,57 @@ static long long node_cache_bytes(const struct node *node)
  */
 static void check_array_size(void)
 {
-    long long cache = 0;
-    long long slice_bytes;
-    int cpu_nodes = 0;
-    int sharing = 1;
+    long long tight_cache = 0, tight_bytes = 0, smallest_bytes = 0;
+    long long needed = 0;
+    size_t total_threads = 0;
+
+    for (int n = 0; n < num_nodes; n++)
+        total_threads += (size_t)nodes[n].num_cpus;
 
     for (int n = 0; n < num_nodes; n++) {
-        long long node_cache;
+        size_t cpus = (size_t)nodes[n].num_cpus;
+        size_t elements = opt.elements;
+        long long cache, bytes, node_needs;
 
-        if (nodes[n].num_cpus == 0)
+        if (cpus == 0)
             continue;
-        cpu_nodes++;
-        node_cache = node_cache_bytes(&nodes[n]);
-        if (node_cache > cache)
-            cache = node_cache;
-    }
-    /* In system mode the elements are shared between all the nodes with CPUs. */
-    if (num_nodes > 1 && opt.run_system)
-        sharing = cpu_nodes;
-    slice_bytes = (long long)(opt.elements / (size_t)sharing * sizeof(elem_t));
+        /* In system mode a node gets its share of the elements, in pairs mode all of them. */
+        if (num_nodes > 1 && opt.run_system)
+            elements = opt.elements / total_threads * cpus;
+        bytes = (long long)(elements * sizeof(elem_t));
+        if (smallest_bytes == 0 || bytes < smallest_bytes)
+            smallest_bytes = bytes;
 
-    if (cache == 0) {
+        cache = node_cache_bytes(&nodes[n]);
+        if (cache == 0)
+            continue;
+        /* remember the node whose arrays are smallest compared with its cache */
+        if (tight_cache == 0 || (double)bytes / (double)cache <
+                                (double)tight_bytes / (double)tight_cache) {
+            tight_cache = cache;
+            tight_bytes = bytes;
+        }
+
+        /* the -n that would give this node arrays of four times its cache */
+        node_needs = (4 * cache + (long long)sizeof(elem_t) - 1) / (long long)sizeof(elem_t);
+        if (num_nodes > 1 && opt.run_system)
+            node_needs = (node_needs + (long long)cpus - 1) / (long long)cpus *
+                         (long long)total_threads;
+        if (bytes < 4 * cache && node_needs > needed)
+            needed = node_needs;
+    }
+
+    if (tight_cache == 0) {
         fprintf(info, "Cache sizes are not known here: make sure each array (%.0f MiB per node) "
-                "is at least 4 times the cache.\n", slice_bytes / MIB);
+                "is at least 4 times the cache.\n", smallest_bytes / MIB);
         return;
     }
 
     fprintf(info, "Last-level cache per node: %.0f MiB, smallest array per node: %.0f MiB\n",
-            cache / MIB, slice_bytes / MIB);
-    if (slice_bytes < 4 * cache) {
-        long long needed = (4 * cache + (long long)sizeof(elem_t) - 1) / (long long)sizeof(elem_t);
-
+            tight_cache / MIB, tight_bytes / MIB);
+    if (needed > 0)
         fprintf(info, "WARNING: the arrays are smaller than 4 times the cache, so the rates "
-                "include cache effects.\n         Use -n %lld or more.\n", needed * sharing);
-    }
+                "include cache effects.\n         Use -n %lld or more.\n", needed);
 }
 
 /* Kernel settings that change the rates, printed so that they end up in the log. */
@@ -812,13 +889,13 @@ static bool pin_to_cpu(int cpu)
  */
 
 /* MPOL_BIND does not fall back to another node, so check before allocating. */
-static bool memory_is_available(struct config *cfg, size_t slice_bytes)
+static bool memory_is_available(struct config *cfg, const struct slice *slices)
 {
     double *needed = xcalloc(num_nodes, sizeof(double));
     bool ok = true;
 
     for (int n = 0; n < num_nodes && ok; n++) {
-        double bytes = 3.0 * slice_bytes;
+        double bytes = 3.0 * (double)slices[n].elements * sizeof(elem_t);
 
         if (!cfg->active[n])
             continue;
@@ -861,29 +938,33 @@ static void *allocate_array(const struct config *cfg, int node, size_t bytes)
     return alloc_on_node(bytes, cfg->memory_node[node]);
 }
 
-static bool allocate_slices(const struct config *cfg, struct slice *slices, size_t slice_bytes)
+static bool allocate_slices(const struct config *cfg, struct slice *slices)
 {
     for (int n = 0; n < num_nodes; n++) {
+        size_t bytes = slices[n].elements * sizeof(elem_t);
+
         if (!cfg->active[n])
             continue;
-        slices[n].a = allocate_array(cfg, n, slice_bytes);
-        slices[n].b = allocate_array(cfg, n, slice_bytes);
-        slices[n].c = allocate_array(cfg, n, slice_bytes);
+        slices[n].a = allocate_array(cfg, n, bytes);
+        slices[n].b = allocate_array(cfg, n, bytes);
+        slices[n].c = allocate_array(cfg, n, bytes);
         if (!slices[n].a || !slices[n].b || !slices[n].c)
             return false;
     }
     return true;
 }
 
-static void free_slices(struct slice *slices, size_t slice_bytes)
+static void free_slices(struct slice *slices)
 {
     for (int n = 0; n < num_nodes; n++) {
+        size_t bytes = slices[n].elements * sizeof(elem_t);
+
         if (slices[n].a)
-            free_array(slices[n].a, slice_bytes);
+            free_array(slices[n].a, bytes);
         if (slices[n].b)
-            free_array(slices[n].b, slice_bytes);
+            free_array(slices[n].b, bytes);
         if (slices[n].c)
-            free_array(slices[n].c, slice_bytes);
+            free_array(slices[n].c, bytes);
     }
 }
 
@@ -958,7 +1039,7 @@ static int sample_pages(void *array, size_t bytes, int *pages_on_node)
     return found;
 }
 
-static bool pages_are_in_place(struct config *cfg, struct slice *slices, size_t slice_bytes)
+static bool pages_are_in_place(struct config *cfg, struct slice *slices)
 {
     int *pages_on_node;
     bool ok = true;
@@ -969,6 +1050,7 @@ static bool pages_are_in_place(struct config *cfg, struct slice *slices, size_t 
 
     pages_on_node = xcalloc(num_nodes, sizeof(int));
     for (int n = 0; n < num_nodes && ok; n++) {
+        size_t slice_bytes = slices[n].elements * sizeof(elem_t);
         int wanted = cfg->memory_node[n];
         int found = 0;
         int nodes_used = 0;
@@ -1041,8 +1123,7 @@ static size_t count_wrong(const elem_t *x, size_t count, double expected, double
  * multiply-add or not), so they get a few rounding errors per iteration as
  * tolerance.
  */
-static bool results_are_correct(struct config *cfg, const struct slice *slices,
-                                size_t slice_elements)
+static bool results_are_correct(struct config *cfg, const struct slice *slices)
 {
     double tolerance = 8.0 * EPSILON * opt.iterations;
     elem_t a, b, c;
@@ -1058,9 +1139,9 @@ static bool results_are_correct(struct config *cfg, const struct slice *slices,
 
         if (!cfg->active[n])
             continue;
-        wrong = count_wrong(slices[n].a, slice_elements, (double)a, tolerance) +
-                count_wrong(slices[n].b, slice_elements, (double)b, tolerance) +
-                count_wrong(slices[n].c, slice_elements, (double)c, tolerance);
+        wrong = count_wrong(slices[n].a, slices[n].elements, (double)a, tolerance) +
+                count_wrong(slices[n].b, slices[n].elements, (double)b, tolerance) +
+                count_wrong(slices[n].c, slices[n].elements, (double)c, tolerance);
         if (wrong > 0) {
             set_status(cfg, FAILED, "%zu wrong values in the arrays of node %d's slice",
                        wrong, n);
@@ -1075,9 +1156,9 @@ static bool results_are_correct(struct config *cfg, const struct slice *slices,
  * Running one configuration
  */
 
-/* Give each thread its CPU and its share of its node's slice. */
+/* Give each thread its CPU and its part of its node's slice. */
 static void assign_workers(const struct config *cfg, const struct slice *slices,
-                           size_t slice_elements, struct worker *workers)
+                           size_t per_thread, struct worker *workers)
 {
     int t = 0;
 
@@ -1089,8 +1170,8 @@ static void assign_workers(const struct config *cfg, const struct slice *slices,
 
             w->node = n;
             w->cpu = nodes[n].cpus[i];
-            w->begin = slice_elements * (size_t)i / (size_t)nodes[n].num_cpus;
-            w->end = slice_elements * (size_t)(i + 1) / (size_t)nodes[n].num_cpus;
+            w->begin = per_thread * (size_t)i;
+            w->end = per_thread * (size_t)(i + 1);
             w->a = slices[n].a;
             w->b = slices[n].b;
             w->c = slices[n].c;
@@ -1105,16 +1186,14 @@ static void run_config(struct config *cfg)
     struct slice *slices;
     struct worker *workers;
     double **elapsed = cfg->seconds;
-    size_t slice_elements, slice_bytes;
-    int active_nodes = 0;
+    size_t per_thread;
+    size_t smallest = SIZE_MAX;
     int num_threads = 0;
     int team_size = 0;
 
     for (int n = 0; n < num_nodes; n++) {
-        if (cfg->active[n]) {
-            active_nodes++;
+        if (cfg->active[n])
             num_threads += nodes[n].num_cpus;
-        }
     }
     cfg->num_threads = num_threads;
     if (num_threads == 0) {
@@ -1122,26 +1201,36 @@ static void run_config(struct config *cfg)
         return;
     }
 
-    slice_elements = opt.elements / (size_t)active_nodes;
-    slice_bytes = slice_elements * sizeof(elem_t);
-    if (slice_elements < MIN_SLICE_ELEMENTS) {
-        set_status(cfg, SKIPPED, "only %zu elements per node, use a larger -n", slice_elements);
-        return;
+    slices = xcalloc(num_nodes, sizeof(*slices));
+    workers = xcalloc(num_threads, sizeof(*workers));
+
+    /*
+     * Every thread gets the same number of elements, so a node's slice is as
+     * large as its number of threads asks for.
+     */
+    per_thread = opt.elements / (size_t)num_threads;
+    for (int n = 0; n < num_nodes; n++) {
+        if (!cfg->active[n])
+            continue;
+        slices[n].elements = per_thread * (size_t)nodes[n].num_cpus;
+        if (slices[n].elements < smallest)
+            smallest = slices[n].elements;
     }
-    if (!memory_is_available(cfg, slice_bytes))
-        return;
+    if (smallest < MIN_SLICE_ELEMENTS) {
+        set_status(cfg, SKIPPED, "only %zu elements per node, use a larger -n", smallest);
+        goto out;
+    }
+    if (!memory_is_available(cfg, slices))
+        goto out;
 
     /* Progress message, switched off so that only the results are printed. */
     /* fprintf(stderr, "running %s ...\n", cfg->name); */
 
-    slices = xcalloc(num_nodes, sizeof(*slices));
-    workers = xcalloc(num_threads, sizeof(*workers));
-
-    if (!allocate_slices(cfg, slices, slice_bytes)) {
+    if (!allocate_slices(cfg, slices)) {
         set_status(cfg, FAILED, "could not allocate the arrays");
         goto out;
     }
-    assign_workers(cfg, slices, slice_elements, workers);
+    assign_workers(cfg, slices, per_thread, workers);
 
     #pragma omp parallel num_threads(num_threads)
     {
@@ -1189,14 +1278,14 @@ static void run_config(struct config *cfg)
 
     if (!threads_stayed_put(cfg, workers, num_threads))
         goto out;
-    if (!pages_are_in_place(cfg, slices, slice_bytes))
+    if (!pages_are_in_place(cfg, slices))
         goto out;
-    if (!results_are_correct(cfg, slices, slice_elements))
+    if (!results_are_correct(cfg, slices))
         goto out;
 
     for (int k = 0; k < NUM_KERNELS; k++) {
         double bytes = (double)kernel_streams[k] * sizeof(elem_t) *
-                       (double)slice_elements * active_nodes;
+                       (double)per_thread * num_threads;
         double best = elapsed[k][opt.warmup];
 
         cfg->bytes[k] = bytes;
@@ -1210,7 +1299,7 @@ static void run_config(struct config *cfg)
     set_status(cfg, OK, "ok");
 
 out:
-    free_slices(slices, slice_bytes);
+    free_slices(slices);
     free(slices);
     free(workers);
 }
@@ -1522,6 +1611,10 @@ static void usage(const char *program)
            "  -w N       leading iterations left out of the result (default %d)\n"
            "  -T N       threads per NUMA node; whole cores are used before SMT\n"
            "             siblings (default: every usable CPU)\n"
+           "  -N N       threads in total, for example for a sweep 1, 2, 4, ...;\n"
+           "             cannot be combined with -T\n"
+           "  --fill HOW with -N: compact fills one node before the next (default),\n"
+           "             spread gives the nodes one thread at a time in turn\n"
            "  -m MODE    system, pairs or both (default both)\n"
            "  -c NODE    pairs mode: only run the threads of this node\n"
            "  -v         also print the system description, the warnings, the table\n"
@@ -1564,10 +1657,12 @@ static void parse_options(int argc, char **argv)
     static const struct option long_options[] = {
         { "csv",  no_argument, NULL, 'C' },
         { "summary", no_argument, NULL, 's' },
+        { "fill", required_argument, NULL, 'F' },
         { "help", no_argument, NULL, 'h' },
         { NULL, 0, NULL, 0 }
     };
     unsigned long long value;
+    bool fill_given = false;
     int c;
 
     opt.elements = DEFAULT_ELEMENTS;
@@ -1577,7 +1672,7 @@ static void parse_options(int argc, char **argv)
     opt.run_system = true;
     opt.run_pairs = true;
 
-    while ((c = getopt_long(argc, argv, "n:t:w:T:m:c:svh", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "n:t:w:T:N:m:c:svh", long_options, NULL)) != -1) {
         switch (c) {
         case 'n':
             value = parse_number(optarg, "-n", 1, MAX_ELEMENTS);
@@ -1593,6 +1688,18 @@ static void parse_options(int argc, char **argv)
             break;
         case 'T':
             opt.threads_per_node = (int)parse_number(optarg, "-T", 1, 100000);
+            break;
+        case 'N':
+            opt.total_threads = (int)parse_number(optarg, "-N", 1, 100000);
+            break;
+        case 'F':
+            if (strcasecmp(optarg, "spread") == 0)
+                opt.spread = true;
+            else if (strcasecmp(optarg, "compact") == 0)
+                opt.spread = false;
+            else
+                die("--fill: '%s' is not compact or spread", optarg);
+            fill_given = true;
             break;
         case 'c':
             opt.source_node = (int)parse_number(optarg, "-c", 0, 100000);
@@ -1627,6 +1734,10 @@ static void parse_options(int argc, char **argv)
         die("unexpected argument '%s'", argv[optind]);
     if (opt.warmup >= opt.iterations)
         die("-w (%d) must be smaller than -t (%d)", opt.warmup, opt.iterations);
+    if (opt.total_threads > 0 && opt.threads_per_node > 0)
+        die("-T and -N cannot be used together");
+    if (fill_given && opt.total_threads == 0)
+        die("--fill needs -N");
 }
 
 /*
@@ -1671,7 +1782,7 @@ int main(int argc, char **argv)
         die("no usable CPUs or no memory found");
     if (opt.source_node >= num_nodes ||
         (opt.source_node >= 0 && nodes[opt.source_node].num_cpus == 0))
-        die("-c %d: there is no such node with usable CPUs (nodes are 0 to %d)",
+        die("-c %d: there is no such node with threads to run (nodes are 0 to %d)",
             opt.source_node, num_nodes - 1);
 
     /* By default only the result tables are printed; -v adds the rest. */
