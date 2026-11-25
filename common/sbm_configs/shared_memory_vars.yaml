@@ -419,7 +419,7 @@ energy_measure_stop:
     MN5-GPP:            ['[ -f "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" ] && mv "./metrics_gpp_sbatch.${SLURM_JOB_NODELIST}.time.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
     MN5-GRACE:          ['[ -f "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
     MN5-GRACE:          ['[ -f "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" ] && mv "./metrics_grace_sbatch_${SLURM_JOB_NODELIST}_apps.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
-    isarco-epyc9135:    ['[ -f "./energy_measures/${SBATCHMAN_JOB_TAG}/timechart.csv" ] && mv "./energy_measures/${SBATCHMAN_JOB_TAG}/timechart.csv" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
+    isarco-epyc9135:    ['[ -f "./energy_measures/${SBATCHMAN_JOB_TAG}/timechart.csv" ] && mv "./energy_measures/${SBATCHMAN_JOB_TAG}" "${SBATCHMAN_JOB_DIR}" || >&2 echo "No energy measurements file found!"']
 
 energy_measure_before_exec:
   per_cluster:

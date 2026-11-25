@@ -4,7 +4,7 @@
   "tabs": [
     {
       "version": 3,
-      "label": "Test",
+      "label": "AllNovec",
       "mode": "facet",
       "rendererBackend": "matplotlib",
       "single": {
@@ -31,7 +31,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup' AND system != 'isarco-epyc9135'",
+            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup'\n      -- AND compiler_extra_flags_name LIKE 'novec%'\n      AND `group` = 'system'",
             "plotType": "line",
             "x": "threads",
             "y": [
@@ -41,9 +41,9 @@
               "system"
             ],
             "dashBy": [
-              "group",
               "config"
             ],
+            "xLabel": "# of cores",
             "yLabel": "Bandwidth [GB/s]",
             "xLabelHidden": false,
             "yLabelHidden": false,
@@ -68,7 +68,7 @@
         "shareY": false,
         "shareXMode": "both",
         "shareYMode": "label",
-        "xgap": 0.2,
+        "xgap": "0.1",
         "ygap": 0.24,
         "panelLabels": false,
         "facetByGroup": false,
@@ -80,7 +80,7 @@
           "kernel"
         ],
         "facetAxis": "cols",
-        "facetCount": 2,
+        "facetCount": 4,
         "groupBy": [
           "kernel"
         ],
