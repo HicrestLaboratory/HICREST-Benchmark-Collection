@@ -30,6 +30,7 @@ HPC_SYSTEM_NAMES = [
     'MN5-GRACE',
     'MN5-GPP',
     'isarco',
+    'isarco-epyc9135',
 ]
 SYSTEMS_CATEGORICAL_ORDER = [
   'mc-SG2044',

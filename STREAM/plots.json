@@ -1,10 +1,10 @@
 {
   "version": 3,
-  "activeTabIndex": 0,
+  "activeTabIndex": 4,
   "tabs": [
     {
       "version": 3,
-      "label": "AllNovec",
+      "label": "Non-HPC novec",
       "mode": "facet",
       "rendererBackend": "matplotlib",
       "single": {
@@ -31,7 +31,7 @@
         "panels": [
           {
             "database": "data",
-            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup'\n      -- AND compiler_extra_flags_name LIKE 'novec%'\n      AND `group` = 'system'",
+            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup'\n      AND compiler_extra_flags_name LIKE 'novec%'",
             "plotType": "line",
             "x": "threads",
             "y": [
@@ -40,8 +40,8 @@
             "group": [
               "system"
             ],
-            "dashBy": [
-              "config"
+            "markerBy": [
+              "data_type"
             ],
             "xLabel": "# of cores",
             "yLabel": "Bandwidth [GB/s]",
@@ -51,23 +51,23 @@
             "xTickFmt": ".0f",
             "legendFieldSeparator": " | ",
             "legendFieldFormat": "{value}",
-            "legendRows": 5,
+            "legendRows": 2,
             "showLegend": true,
-            "shortLegend": false,
+            "shortLegend": true,
             "shortLegendLabels": {
-              "color": true,
-              "linestyle": true,
-              "marker": true
+              "color": false,
+              "linestyle": false,
+              "marker": false
             },
-            "transformScript": "from constants.systems import set_system_column, filter_by_system\nset_system_column(df)\ndf = agg.summarize(df, ['system', 'compiler', 'compiler_extra_flags_name', 'compiler_opt', 'data_type', 'group', 'config', 'kernel', 'threads'], 'GBps')",
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\ndf = filter_by_system(df, only_hpc=False)\nset_system_column(df)\ndf = agg.summarize(df, ['system', 'compiler', 'compiler_extra_flags_name', 'compiler_opt', 'data_type', 'group', 'config', 'kernel', 'threads'], 'GBps')",
             "errorY": "GBps_err",
-            "errorStyle": "bars"
+            "errorStyle": "band"
           }
         ],
         "shareX": true,
-        "shareY": false,
+        "shareY": true,
         "shareXMode": "both",
-        "shareYMode": "label",
+        "shareYMode": "both",
         "xgap": "0.1",
         "ygap": 0.24,
         "panelLabels": false,
@@ -87,6 +87,488 @@
         "figureWidth": 0,
         "figureHeight": 0,
         "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 12,
+        "tick_size": 11,
+        "legend_size": 11,
+        "title_size": 14,
+        "line_width": 2,
+        "marker_size": 7,
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "version": 3,
+      "label": "Non-HPC autovec",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
+        "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup'\n      AND compiler_extra_flags_name LIKE 'autovec%'",
+            "plotType": "line",
+            "x": "threads",
+            "y": [
+              "GBps"
+            ],
+            "group": [
+              "system"
+            ],
+            "markerBy": [
+              "data_type"
+            ],
+            "xLabel": "# of cores",
+            "yLabel": "Bandwidth [GB/s]",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
+            "legendRows": 2,
+            "showLegend": true,
+            "shortLegend": true,
+            "shortLegendLabels": {
+              "color": false,
+              "linestyle": false,
+              "marker": false
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\ndf = filter_by_system(df, only_hpc=False)\nset_system_column(df)\ndf = agg.summarize(df, ['system', 'compiler', 'compiler_extra_flags_name', 'compiler_opt', 'data_type', 'group', 'config', 'kernel', 'threads'], 'GBps')",
+            "errorY": "GBps_err",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": true,
+        "shareY": true,
+        "shareXMode": "both",
+        "shareYMode": "both",
+        "xgap": "0.1",
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "kernel"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 4,
+        "groupBy": [
+          "kernel"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 12,
+        "tick_size": 11,
+        "legend_size": 11,
+        "title_size": 14,
+        "line_width": 2,
+        "marker_size": 7,
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "version": 3,
+      "label": "HPC novec",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
+        "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup'\n      AND compiler_extra_flags_name LIKE 'novec%'",
+            "plotType": "line",
+            "x": "threads",
+            "y": [
+              "GBps"
+            ],
+            "group": [
+              "system"
+            ],
+            "markerBy": [
+              "data_type"
+            ],
+            "dashBy": [
+              "config"
+            ],
+            "xLabel": "# of cores",
+            "yLabel": "Bandwidth [GB/s]",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
+            "legendRows": 2,
+            "showLegend": true,
+            "shortLegend": true,
+            "shortLegendLabels": {
+              "color": false,
+              "linestyle": false,
+              "marker": false
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\ndf = filter_by_system(df, only_hpc=True)\nset_system_column(df)\ndf = agg.summarize(df, ['system', 'compiler', 'compiler_extra_flags_name', 'compiler_opt', 'data_type', 'group', 'config', 'kernel', 'threads'], 'GBps')",
+            "errorY": "GBps_err",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": true,
+        "shareY": true,
+        "shareXMode": "both",
+        "shareYMode": "both",
+        "xgap": "0.1",
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "kernel"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 4,
+        "groupBy": [
+          "kernel"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 12,
+        "tick_size": 11,
+        "legend_size": 11,
+        "title_size": 14,
+        "line_width": 2,
+        "marker_size": 7,
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "version": 3,
+      "label": "HPC autovec",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
+        "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup'\n      AND compiler_extra_flags_name LIKE 'autovec%'",
+            "plotType": "line",
+            "x": "threads",
+            "y": [
+              "GBps"
+            ],
+            "group": [
+              "system"
+            ],
+            "markerBy": [
+              "data_type"
+            ],
+            "xLabel": "# of cores",
+            "yLabel": "Bandwidth [GB/s]",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
+            "legendRows": 2,
+            "showLegend": true,
+            "shortLegend": true,
+            "shortLegendLabels": {
+              "color": false,
+              "linestyle": false,
+              "marker": false
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\ndf = filter_by_system(df, only_hpc=True)\nset_system_column(df)\ndf = agg.summarize(df, ['system', 'compiler', 'compiler_extra_flags_name', 'compiler_opt', 'data_type', 'group', 'config', 'kernel', 'threads'], 'GBps')",
+            "errorY": "GBps_err",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": true,
+        "shareY": true,
+        "shareXMode": "both",
+        "shareYMode": "both",
+        "xgap": "0.1",
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "kernel"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 4,
+        "groupBy": [
+          "kernel"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": 4,
+        "subplotHeight": 3.3,
+        "facetLabelFormat": "{value}"
+      },
+      "style": {
+        "width_in": 0,
+        "height_in": 0,
+        "label_size": 12,
+        "tick_size": 11,
+        "legend_size": 11,
+        "title_size": 14,
+        "line_width": 2,
+        "marker_size": 7,
+        "category_style_map": {
+          "color": {
+            "by_field": {
+              "system": {
+                "Milk-V Pioneer": "#FFB300",
+                "Banana Pi F3": "#4A148C",
+                "SpacemiT K3 Pico": "#BA68C8",
+                "Jetson Orin NX": "#1B5E20",
+                "Hardkernel Odroid H5": "#29B6F6",
+                "AMD Zen 4": "#0D47A1",
+                "Raspberry Pi 5": "#8BC34A",
+                "SG2042": "#D84315",
+                "SG2044": "#FF6D00",
+                "Intel Sapphire Rapids": "#880E4F",
+                "Grace": "#00897B",
+                "AMD EPYC 9135": "#FF5252"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "version": 3,
+      "label": "HPC novec no-errorbar",
+      "mode": "facet",
+      "rendererBackend": "matplotlib",
+      "single": {
+        "database": "data",
+        "sql": "",
+        "plotType": "line",
+        "xLabelHidden": false,
+        "yLabelHidden": false,
+        "legendFieldSeparator": " | ",
+        "legendFieldFormat": "{column}={value}",
+        "showLegend": true,
+        "shortLegend": false,
+        "shortLegendLabels": {
+          "color": true,
+          "linestyle": true,
+          "marker": true
+        },
+        "errorStyle": "bars"
+      },
+      "grid": {
+        "rows": 1,
+        "cols": 1,
+        "activePanelIndex": 0,
+        "panels": [
+          {
+            "database": "data",
+            "sql": "SELECT *\nFROM stream\nWHERE stat != 'warmup'\n      AND compiler_extra_flags_name LIKE 'novec%'",
+            "plotType": "line",
+            "x": "threads",
+            "y": [
+              "GBps"
+            ],
+            "group": [
+              "system"
+            ],
+            "markerBy": [
+              "data_type"
+            ],
+            "dashBy": [
+              "config"
+            ],
+            "xLabel": "# of cores",
+            "yLabel": "Bandwidth [GB/s]",
+            "xLabelHidden": false,
+            "yLabelHidden": false,
+            "xScale": "log2",
+            "xTickFmt": ".0f",
+            "legendFieldSeparator": " | ",
+            "legendFieldFormat": "{value}",
+            "legendRows": 2,
+            "showLegend": true,
+            "shortLegend": true,
+            "shortLegendLabels": {
+              "color": false,
+              "linestyle": false,
+              "marker": false
+            },
+            "transformScript": "from constants.systems import set_system_column, filter_by_system\ndf = filter_by_system(df, only_hpc=True)\nset_system_column(df)\ndf = agg.summarize(df, ['system', 'compiler', 'compiler_extra_flags_name', 'compiler_opt', 'data_type', 'group', 'config', 'kernel', 'threads'], 'GBps')",
+            "layoutScript": "def customize_matplotlib(fig, ax, config):\n    add_zoom_inset(\n        ax,\n        zoom_region=(0.5, 140.0, 0.0, 120.0),  # x1, x2, y1, y2\n        inset_position=(0.04, 0.58, 0.45, 0.4),  # x, y, width, height\n        draw_rect=True,\n        rect_scaling=1.0,\n        zoom_ax_kwargs={\n            'grid': {'visible': True, 'alpha': 0.25},\n            'tick_params': {'labelsize': 7},\n            'set_xscale': {'value': 'log', 'base': 2},\n            'set_xticks': [2**p for p in range(8) if 2**p <= 128],\n            'set_xticklabels': [str(2**p) for p in range(8) if 2**p <= 128],\n        },\n    )",
+            "errorStyle": "band"
+          }
+        ],
+        "shareX": true,
+        "shareY": true,
+        "shareXMode": "both",
+        "shareYMode": "both",
+        "xgap": "0.1",
+        "ygap": 0.24,
+        "panelLabels": false,
+        "facetByGroup": false,
+        "legendPosition": "top",
+        "legendTitle": "",
+        "showLegend": true,
+        "shareLegend": true,
+        "facetGroupCols": [
+          "kernel"
+        ],
+        "facetAxis": "cols",
+        "facetCount": 4,
+        "groupBy": [
+          "kernel"
+        ],
+        "figureWidth": 0,
+        "figureHeight": 0,
+        "subplotWidth": "6",
         "subplotHeight": 3.3,
         "facetLabelFormat": "{value}"
       },
