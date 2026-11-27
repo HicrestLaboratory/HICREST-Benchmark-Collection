@@ -40,7 +40,7 @@ jobs:
           {energy_measure_before_exec}./bin/{isa}/${BIN_NAME} 
           -n {elements}
           -t {runs}
-          -T {ncpus}
+          -N {ncpus}
           -w {warmup}
           -m system
           --csv
